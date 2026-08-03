@@ -26,7 +26,7 @@ namespace Hlight.Debug.Hub
             {
                 var category = group.Key;
                 var commands = group.Value;
-                panel.AddButton($"{category}  ({commands.Count})", () => panel.Push(CategoryPage(category, commands)));
+                panel.AddNavigation($"{category}  <color=#7A828C>{commands.Count}</color>", CategoryPage(category, commands));
             }
         }
 
@@ -40,10 +40,10 @@ namespace Hlight.Debug.Hub
                     var label = LabelOf(command, commands);
                     if (command.parameterTypes.Length == 0)
                     {
-                        panel.AddButton(label, () => Run(command, Array.Empty<string>(), null));
+                        panel.AddAction(label, () => Run(command, Array.Empty<string>(), null));
                         continue;
                     }
-                    panel.AddButton(label, () => panel.Push(ParamsPage(command)));
+                    panel.AddNavigation(label, ParamsPage(command));
                 }
             });
         }
@@ -82,7 +82,7 @@ namespace Hlight.Debug.Hub
                 }
 
                 var status = panel.AddText(string.Empty);
-                panel.AddButton("Run", () => Run(command, values, status));
+                panel.AddAction("Run", () => Run(command, values, status));
             });
         }
 
@@ -90,11 +90,15 @@ namespace Hlight.Debug.Hub
         {
             if (TryExecute(command, values, out var message))
             {
-                if (status) status.text = string.Empty;
+                if (status) status.gameObject.SetActive(false);
                 return;
             }
 
-            if (status) status.text = message;
+            if (status)
+            {
+                status.text = message;
+                status.gameObject.SetActive(true);
+            }
             UnityEngine.Debug.LogWarning(message);
         }
 

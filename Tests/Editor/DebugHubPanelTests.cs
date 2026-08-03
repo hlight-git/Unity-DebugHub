@@ -158,7 +158,7 @@ namespace Hlight.Debug.Hub.Tests
             wanted.onClick.Invoke();
 
             Assert.AreEqual(nameof(LogType.Exception), captured);
-            Assert.AreEqual("Enum", panel.transform.Find("Window/Title").GetComponent<Text>().text,
+            Assert.AreEqual("Enum", panel.transform.Find("Window/Header/Title").GetComponent<Text>().text,
                 "picking a value must return to the page that owns the field");
         }
     }

@@ -177,7 +177,7 @@ namespace Hlight.Debug.Hub.Tests
             Assert.IsTrue(Rows().Any(r => LabelOf(r).StartsWith("flowtest.noarg")), "should be back on the category page");
 
             ClickBackground();
-            Assert.IsTrue(Rows().Any(r => LabelOf(r).StartsWith("flowtest  (")), "should be back on the category list");
+            Assert.IsTrue(Rows().Any(r => LabelOf(r).StartsWith("flowtest  ")), "should be back on the category list");
 
             ClickBackground();
             Assert.IsFalse(panel.IsOpen, "background on root page should close the panel");
@@ -197,14 +197,34 @@ namespace Hlight.Debug.Hub.Tests
 
             var rows = Rows();
             Assert.AreEqual(3, rows.Count);
+            var total = 0f;
             foreach (var row in rows)
             {
                 var rect = (RectTransform)row.transform;
-                Assert.AreEqual(ROW_HEIGHT, rect.rect.height, 0.5f, $"row '{LabelOf(row)}' has height {rect.rect.height}");
+                Assert.GreaterOrEqual(rect.rect.height, ROW_HEIGHT - 0.5f,
+                    $"row '{LabelOf(row)}' is {rect.rect.height} tall, below the {ROW_HEIGHT} touch target");
+                total += rect.rect.height;
             }
 
             var contentHeight = ((RectTransform)content).rect.height;
-            Assert.GreaterOrEqual(contentHeight, rows.Count * ROW_HEIGHT, "content must be tall enough to hold every row");
+            Assert.GreaterOrEqual(contentHeight, total, "content must be tall enough to hold every row");
+        }
+
+        /// Back phải nhìn thấy được, không chỉ dựa vào việc bấm ra ngoài panel.
+        [Test]
+        public void BackButton_HiddenOnRootPage_VisibleDeeper_AndPops()
+        {
+            var back = panel.transform.Find("Window/Header/Back").GetComponent<Button>();
+
+            panel.Show(CommandsPage.Root());
+            Assert.IsFalse(back.gameObject.activeSelf, "root page has nowhere to go back to");
+
+            Click("flowtest");
+            Assert.IsTrue(back.gameObject.activeSelf, "sub page must show the back button");
+
+            panel.Pop();
+            Assert.IsTrue(Rows().Any(r => LabelOf(r).StartsWith("flowtest  ")), "back must return to the category list");
+            Assert.IsFalse(back.gameObject.activeSelf);
         }
     }
 }

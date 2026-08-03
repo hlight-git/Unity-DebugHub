@@ -135,8 +135,8 @@ namespace Hlight.Debug.Hub
                 page.AddToggle("Auto enable console", console.AutoEnable, value => console.AutoEnable = value);
                 if (proxima.Supported) page.AddToggle("Proxima", proxima.Enabled, value => proxima.Enabled = value);
                 page.AddToggle("Show entry button", entry.Activating, value => entry.Activating = value);
-                page.AddButton("Commands", () => page.Push(CommandsPage.Root()));
-                page.AddButton("Help", () => page.Push(HelpPage.Build()));
+                page.AddNavigation("Commands", CommandsPage.Root());
+                page.AddNavigation("Help", HelpPage.Build());
             });
         }
     }

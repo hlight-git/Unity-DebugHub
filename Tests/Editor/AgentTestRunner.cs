@@ -1,72 +1,76 @@
+using System;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 using System.Text;
 using UnityEditor;
-using UnityEditor.TestTools.TestRunner.Api;
-using UnityEngine;
 
 namespace Hlight.Debug.Hub.Tests
 {
-    /// Chạy EditMode test của package rồi ghi kết quả ra file.
-    /// Tồn tại vì agent/MCP không gọi được TestRunnerApi trực tiếp — chỉ gọi được menu item.
+    /// Chạy EditMode test của package và ghi kết quả ra file, **đồng bộ**.
+    ///
+    /// Tồn tại vì agent/MCP không gọi được TestRunnerApi trực tiếp, mà TestRunnerApi lại chạy async
+    /// và có lúc kẹt hẳn (ví dụ sau một lần bị gọi trong Play Mode) nên không có kết quả trả về.
+    /// Runner này gọi thẳng [SetUp]/[Test]/[TearDown] nên luôn có kết quả trong cùng một lệnh.
+    ///
+    /// Chỉ hỗ trợ SetUp/Test/TearDown — không có TestCase, OneTimeSetUp, UnityTest.
     /// Người thì cứ dùng cửa sổ Test Runner như bình thường.
     public static class AgentTestRunner
     {
         private const string RESULT_PATH = "Temp/debug-hub-tests.txt";
-        private const string ASSEMBLY = "Hlight.Debug.Hub.Tests";
-
-        // Giữ static: TestRunnerApi là ScriptableObject, để nó rơi ra khỏi scope thì
-        // callback bị GC và RunFinished không bao giờ được gọi.
-        private static TestRunnerApi api;
 
         [MenuItem("Tools/Hlight/Run Debug Hub Tests")]
         public static void Run()
         {
-            if (File.Exists(RESULT_PATH)) File.Delete(RESULT_PATH);
+            var report = new StringBuilder();
+            var passed = 0;
+            var failed = 0;
 
-            if (api == null) api = ScriptableObject.CreateInstance<TestRunnerApi>();
-            api.RegisterCallbacks(new ResultWriter());
-            api.Execute(new ExecutionSettings(new Filter
+            foreach (var type in typeof(AgentTestRunner).Assembly.GetTypes())
             {
-                testMode = TestMode.EditMode,
-                assemblyNames = new[] { ASSEMBLY }
-            }));
-        }
+                var tests = type.GetMethods().Where(m => Has(m, "TestAttribute")).ToArray();
+                if (tests.Length == 0) continue;
 
-        private class ResultWriter : ICallbacks
-        {
-            public void RunStarted(ITestAdaptor testsToRun)
-            {
-                File.WriteAllText(RESULT_PATH + ".started", testsToRun.TestCaseCount.ToString());
-            }
+                var setUps = type.GetMethods().Where(m => Has(m, "SetUpAttribute")).ToArray();
+                var tearDowns = type.GetMethods().Where(m => Has(m, "TearDownAttribute")).ToArray();
 
-            public void RunFinished(ITestResultAdaptor testResults)
-            {
-                var builder = new StringBuilder();
-                builder.Append("PASS=").Append(testResults.PassCount)
-                       .Append(" FAIL=").Append(testResults.FailCount)
-                       .Append(" SKIP=").Append(testResults.SkipCount).Append('\n');
-                Collect(testResults, builder);
-                File.WriteAllText(RESULT_PATH, builder.ToString());
-            }
-
-            private static void Collect(ITestResultAdaptor node, StringBuilder builder)
-            {
-                if (!node.HasChildren)
+                foreach (var test in tests)
                 {
-                    builder.Append(node.TestStatus).Append(' ').Append(node.FullName).Append('\n');
-                    if (node.TestStatus == TestStatus.Failed)
+                    object fixture = null;
+                    try
                     {
-                        builder.Append("  ").Append(node.Message).Append('\n');
-                        builder.Append("  ").Append(node.StackTrace).Append('\n');
+                        fixture = Activator.CreateInstance(type);
+                        foreach (var setUp in setUps) setUp.Invoke(fixture, null);
+                        test.Invoke(fixture, null);
+                        passed++;
+                        report.Append("Passed ").Append(type.Name).Append('.').Append(test.Name).Append('\n');
+                    }
+                    catch (Exception exception)
+                    {
+                        failed++;
+                        var actual = exception is TargetInvocationException ? exception.InnerException : exception;
+                        report.Append("Failed ").Append(type.Name).Append('.').Append(test.Name).Append('\n')
+                              .Append("  ").Append(actual.Message.Replace("\n", "\n  ")).Append('\n');
+                    }
+                    finally
+                    {
+                        foreach (var tearDown in tearDowns)
+                        {
+                            try { tearDown.Invoke(fixture, null); }
+                            catch (Exception exception) { report.Append("  teardown: ").Append(exception.Message).Append('\n'); }
+                        }
                     }
                 }
-
-                if (node.Children == null) return;
-                foreach (var child in node.Children) Collect(child, builder);
             }
 
-            public void TestStarted(ITestAdaptor test) { }
-            public void TestFinished(ITestResultAdaptor result) { }
+            var summary = $"PASS={passed} FAIL={failed}\n";
+            File.WriteAllText(RESULT_PATH, summary + report);
+            UnityEngine.Debug.Log("[AgentTestRunner] " + summary.Trim());
+        }
+
+        private static bool Has(MethodInfo method, string attributeName)
+        {
+            return method.GetCustomAttributes().Any(a => a.GetType().Name == attributeName);
         }
     }
 }

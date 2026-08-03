@@ -66,7 +66,19 @@ Enum dùng page chọn giá trị chứ không dùng `UI.Dropdown`: dropdown sin
 
 Window cao đúng bằng nội dung, chặn trên bởi `maxWindowHeight` (mặc định 1500, quá thì scroll).
 
-Tự thêm page riêng bằng `DebugPage` + các hàm `AddButton/AddToggle/AddField/AddChoice/AddText` của `DebugHubPanel`.
+### Ngôn ngữ hình ảnh
+
+| Row | Nghĩa | API |
+|---|---|---|
+| row tối + `›` | mở page khác | `AddNavigation(label, page)` |
+| row xanh accent | chạy ngay | `AddAction(label, onClick)` |
+| row tối + switch | bật/tắt trạng thái | `AddToggle(label, value, onChanged)` |
+| label + input | nhập giá trị | `AddField(label, type, current, onChanged)` |
+| row tối trung tính | không ngụ ý gì | `AddButton(label, onClick)` |
+
+Back có nút `‹` ở header (tự ẩn ở page gốc), hoặc bấm ra ngoài panel.
+
+Tự thêm page riêng bằng `DebugPage` + các hàm trên của `DebugHubPanel`.
 
 Dev note ở page Help: thêm vào `DebugHub.Notes`.
 
