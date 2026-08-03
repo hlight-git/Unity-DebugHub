@@ -3,8 +3,10 @@
     "rootNamespace": "Hlight.Debug.Hub",
     "references": [
         "IngameDebugConsole.Runtime",
+        "Unity.InputSystem",
         "Proxima",
-        "MaxSdk.Scripts"
+        "MaxSdk.Scripts",
+        "GoogleMobileAds"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
