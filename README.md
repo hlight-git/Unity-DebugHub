@@ -22,13 +22,25 @@ Thiếu bước này thì `ThirdParty/UnityIngameDebugConsole` rỗng và toàn 
 
 Kéo `Prefabs/DebugHub.prefab` vào scene đầu tiên. Nhập password (field `password` trên component `DebugHub`) theo trigger của platform để mở panel.
 
-Thêm cheat = đăng ký command cho IngameDebugConsole. Đặt tên `<category>.<tên>` để nó tự vào category tương ứng trong page Commands:
+Thêm cheat = đăng ký command cho IngameDebugConsole. Đặt tên `<category>.<tên>` để nó tự vào category tương ứng trong page Commands. Command không có dấu `.` nằm trong category `General`.
+
+Cách gọn nhất, không cần generic và không cần gọi hàm đăng ký — chỉ cần `public static` trên một type public:
 
 ```csharp
-DebugLogConsole.AddCommand<int>("economy.addgold", "Cộng vàng", AddGold);
+[ConsoleMethod("economy.addgold", "Cộng vàng")]
+public static void AddGold(int amount) { }
 ```
 
-Command không có dấu `.` sẽ nằm trong category `General`.
+`[ConsoleMethod]` được scan trong `DebugLogConsole.ResetStatics()` (`[RuntimeInitializeOnLoadMethod]`) nên tự đăng ký lúc game start, không phụ thuộc việc console UI có được bật hay không.
+
+Với method instance hoặc static của type khác, cũng không cần generic:
+
+```csharp
+DebugLogConsole.AddCommandInstance("player.heal", "Hồi máu", nameof(Heal), this);
+DebugLogConsole.AddCommandStatic("save.wipe", "Xoá save", nameof(Wipe), typeof(SaveSystem));
+```
+
+Dạng generic `AddCommand<T1, T2>(...)` chỉ cần khi muốn truyền delegate trực tiếp.
 
 ## Panel
 
@@ -44,9 +56,15 @@ Debug Hub                 Commands              time                  time.scale
       Help
 ```
 
-Command không tham số: bấm là chạy. Có tham số: mở page nhập liệu, mỗi param một field theo đúng kiểu — enum ra dropdown, bool ra toggle, số chỉ nhập được số, còn lại là text với placeholder là tên kiểu. Giá trị được validate bằng `DebugLogConsole.ParseArgument` (sai thì chữ đỏ, bấm Run báo lỗi và không chạy). Khi chạy thì gọi thẳng `MethodInfo` nên overload cùng tên không bị chọn sai.
+Row chỉ hiện tên command; overload cùng tên trong một category thì kèm số lượng tham số để phân biệt.
 
-Tự thêm page riêng bằng `DebugPage` + các hàm `AddButton/AddToggle/AddField/AddText` của `DebugHubPanel`.
+Command không tham số: bấm là chạy. Có tham số: mở page nhập liệu, mỗi param một field theo đúng kiểu — bool ra toggle, số chỉ nhập được số, enum ra page chọn giá trị, còn lại là text với placeholder là tên kiểu. Giá trị được validate bằng `DebugLogConsole.ParseArgument` (sai thì chữ đỏ, bấm Run báo lỗi và không chạy). Khi chạy thì gọi thẳng `MethodInfo` nên overload cùng tên không bị chọn sai.
+
+Enum dùng page chọn giá trị chứ không dùng `UI.Dropdown`: dropdown sinh canvas lồng + blocker bên trong `Mask` của scroll view nên list bị mờ và không bấm được. Cách này cũng giống `PickerEnumFieldGUI` của `Assets/Plugins/DebugPanel`.
+
+Window cao đúng bằng nội dung, chặn trên bởi `maxWindowHeight` (mặc định 1500, quá thì scroll).
+
+Tự thêm page riêng bằng `DebugPage` + các hàm `AddButton/AddToggle/AddField/AddChoice/AddText` của `DebugHubPanel`.
 
 Dev note ở page Help: thêm vào `DebugHub.Notes`.
 

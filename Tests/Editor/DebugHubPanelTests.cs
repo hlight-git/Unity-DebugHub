@@ -81,6 +81,26 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(1, RowCount());
         }
 
+        /// Panel phải cao theo nội dung, không phải luôn cao gần full màn hình.
+        [Test]
+        public void Window_GrowsWithContent_AndClampsAtMax()
+        {
+            var window = (RectTransform)panel.transform.Find("Window");
+
+            panel.Show(new DebugPage("Short", p => p.AddButton("a", () => { })));
+            var shortHeight = window.rect.height;
+
+            panel.Show(new DebugPage("Long", p =>
+            {
+                for (var i = 0; i < 30; i++) p.AddButton("row " + i, () => { });
+            }));
+            var longHeight = window.rect.height;
+
+            Assert.Less(shortHeight, 500f, $"one row should not give a {shortHeight} tall window");
+            Assert.Less(shortHeight, longHeight, "window must grow with content");
+            Assert.LessOrEqual(longHeight, 1500.5f, $"window must stay within maxWindowHeight, got {longHeight}");
+        }
+
         [Test]
         public void AddField_PicksWidgetByType()
         {
@@ -92,8 +112,8 @@ namespace Hlight.Debug.Hub.Tests
                 p.AddField("vector", typeof(Vector3), string.Empty, _ => { });
             }));
 
-            Assert.AreEqual(1, content.GetComponentsInChildren<Dropdown>(false).Length, "enum should be a dropdown");
             Assert.AreEqual(1, content.GetComponentsInChildren<Toggle>(false).Length, "bool should be a toggle");
+            Assert.AreEqual(1, content.GetComponentsInChildren<Button>(false).Length, "enum should be a choice row (button)");
 
             var inputs = content.GetComponentsInChildren<InputField>(false);
             Assert.AreEqual(2, inputs.Length, "int and Vector3 should both be input fields");
@@ -101,13 +121,45 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(InputField.ContentType.Standard, inputs[1].contentType);
         }
 
+        /// Scene không có EventSystem thì không gõ được password. Prefab phải tự mang một cái,
+        /// inactive, để EventSystemHandler chỉ bật khi scene chưa có.
         [Test]
-        public void AddField_ReportsSelectedEnumValueImmediately()
+        public void Prefab_ShipsWithInactiveEventSystem_WiredToHandler()
+        {
+            var eventSystem = instance.transform.Find("EventSystem");
+            Assert.IsNotNull(eventSystem, "prefab must carry its own EventSystem");
+            Assert.IsFalse(eventSystem.gameObject.activeSelf, "embedded EventSystem must start inactive");
+            Assert.IsNotNull(eventSystem.GetComponent<UnityEngine.EventSystems.EventSystem>());
+            Assert.IsNotNull(eventSystem.GetComponent<UnityEngine.EventSystems.BaseInputModule>(), "EventSystem needs an input module");
+
+            var handler = instance.GetComponent<IngameDebugConsole.EventSystemHandler>();
+            Assert.IsNotNull(handler, "EventSystemHandler missing on prefab root");
+            var wired = new SerializedObject(handler).FindProperty("embeddedEventSystem");
+            Assert.AreEqual(eventSystem.gameObject, wired.objectReferenceValue);
+        }
+
+        /// Enum dùng page chọn giá trị thay cho UI.Dropdown: bấm row -> liệt kê -> chọn -> tự back.
+        [Test]
+        public void AddField_ForEnum_OpensChoicePage_AndReportsPickedValue()
         {
             var captured = string.Empty;
-            panel.Show(new DebugPage("Enum", p => p.AddField("enum", typeof(LogType), nameof(LogType.Assert), v => captured = v)));
+            panel.Show(new DebugPage("Enum", p =>
+                p.AddField("type", typeof(LogType), nameof(LogType.Log), v => captured = v)));
 
-            Assert.AreEqual(nameof(LogType.Assert), captured);
+            var row = content.GetComponentsInChildren<Button>(false)[0];
+            StringAssert.Contains(nameof(LogType.Log), row.GetComponentInChildren<Text>(true).text);
+
+            row.onClick.Invoke();
+            var options = content.GetComponentsInChildren<Button>(false);
+            Assert.AreEqual(System.Enum.GetNames(typeof(LogType)).Length, options.Length, "choice page must list every enum value");
+
+            var wanted = System.Array.Find(options, o => o.GetComponentInChildren<Text>(true).text.StartsWith(nameof(LogType.Exception)));
+            Assert.IsNotNull(wanted, "Exception option missing");
+            wanted.onClick.Invoke();
+
+            Assert.AreEqual(nameof(LogType.Exception), captured);
+            Assert.AreEqual("Enum", panel.transform.Find("Window/Title").GetComponent<Text>().text,
+                "picking a value must return to the page that owns the field");
         }
     }
 }

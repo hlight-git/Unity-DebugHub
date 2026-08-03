@@ -16,12 +16,14 @@ namespace Hlight.Debug.Hub
         [SerializeField] private Text title;
         [SerializeField] private ScrollRect scrollRect;
         [SerializeField] private RectTransform content;
+        [SerializeField] private RectTransform window;
+        [Tooltip("Chiều cao tối đa của window; quá thì scroll.")]
+        [SerializeField] private float maxWindowHeight = 1500f;
 
         [Header("Row templates (inactive children of content)")]
         [SerializeField] private DebugHubRow buttonTemplate;
         [SerializeField] private DebugHubRow toggleTemplate;
         [SerializeField] private DebugHubRow inputTemplate;
-        [SerializeField] private DebugHubRow dropdownTemplate;
         [SerializeField] private DebugHubRow textTemplate;
 
         private readonly Stack<DebugPage> stack = new();
@@ -66,7 +68,21 @@ namespace Hlight.Debug.Hub
             var page = stack.Peek();
             title.text = page.Title;
             page.Build?.Invoke(this);
+            FitWindowToContent();
             if (scrollRect) scrollRect.verticalNormalizedPosition = 1f;
+        }
+
+        /// Window cao đúng bằng nội dung, chặn trên bởi maxWindowHeight (quá thì scroll).
+        private void FitWindowToContent()
+        {
+            if (!window || !scrollRect) return;
+
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            var viewport = (RectTransform)scrollRect.transform;
+            // Scroll view neo stretch trong window nên khoảng chừa cho title + padding = offset trên/dưới.
+            var chrome = viewport.offsetMin.y - viewport.offsetMax.y;
+            var desired = LayoutUtility.GetPreferredHeight(content) + chrome;
+            window.sizeDelta = new Vector2(window.sizeDelta.x, Mathf.Min(desired, maxWindowHeight));
         }
 
         private void Clear()
@@ -105,6 +121,26 @@ namespace Hlight.Debug.Hub
             return Spawn(textTemplate, content).label;
         }
 
+        /// Chọn một giá trị trong danh sách: row hiện giá trị hiện tại, bấm vào thì mở page liệt kê
+        /// lựa chọn, chọn xong tự back. Dùng page thay cho UI.Dropdown vì dropdown sinh canvas lồng
+        /// bên trong Mask của scroll view nên list bị mờ và không bấm được.
+        public void AddChoice(string label, IReadOnlyList<string> options, string current, Action<string> onChanged)
+        {
+            var row = Spawn(buttonTemplate, $"{label}: {current}");
+            row.button.onClick.AddListener(() => Push(new DebugPage(label, page =>
+            {
+                foreach (var option in options)
+                {
+                    var picked = option;
+                    page.AddButton(picked == current ? $"{picked}  <b>*</b>" : picked, () =>
+                    {
+                        onChanged?.Invoke(picked);
+                        page.Pop();
+                    });
+                }
+            })));
+        }
+
         /// Field cho một giá trị kiểu <paramref name="type"/>: enum ra dropdown, bool ra toggle,
         /// số ra input chỉ nhận số, còn lại là input text. Mọi giá trị được validate bằng
         /// DebugLogConsole.ParseArgument nên không có kiểu nào lọt qua mà không kiểm.
@@ -118,14 +154,7 @@ namespace Hlight.Debug.Hub
 
             if (type.IsEnum && !Attribute.IsDefined(type, typeof(FlagsAttribute)))
             {
-                var names = new List<string>(Enum.GetNames(type));
-                var dropdownRow = Spawn(dropdownTemplate, label);
-                dropdownRow.dropdown.ClearOptions();
-                dropdownRow.dropdown.AddOptions(names);
-                var index = Mathf.Max(0, names.IndexOf(current));
-                dropdownRow.dropdown.SetValueWithoutNotify(index);
-                onChanged?.Invoke(names[index]);
-                dropdownRow.dropdown.onValueChanged.AddListener(i => onChanged?.Invoke(names[i]));
+                AddChoice(label, Enum.GetNames(type), current, onChanged);
                 return;
             }
 

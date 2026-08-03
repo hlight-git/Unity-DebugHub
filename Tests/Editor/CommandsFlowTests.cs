@@ -17,9 +17,17 @@ namespace Hlight.Debug.Hub.Tests
 
         private static int lastInt;
         private static bool noArgCalled;
+        private static int lastMixedAmount;
+        private static LogType lastMixedType;
 
         private static void TakeInt(int value) => lastInt = value;
         private static void NoArg() => noArgCalled = true;
+
+        private static void TakeMixed(int amount, LogType type)
+        {
+            lastMixedAmount = amount;
+            lastMixedType = type;
+        }
 
         private GameObject instance;
         private DebugHubPanel panel;
@@ -30,6 +38,7 @@ namespace Hlight.Debug.Hub.Tests
         {
             DebugLogConsole.AddCommand<int>("flowtest.takeint", "test", TakeInt);
             DebugLogConsole.AddCommand("flowtest.noarg", "test", NoArg);
+            DebugLogConsole.AddCommand<int, LogType>("flowtest.mixed", "test", TakeMixed);
 
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PREFAB_PATH);
             instance = Object.Instantiate(prefab);
@@ -42,6 +51,7 @@ namespace Hlight.Debug.Hub.Tests
         {
             DebugLogConsole.RemoveCommand("flowtest.takeint");
             DebugLogConsole.RemoveCommand("flowtest.noarg");
+            DebugLogConsole.RemoveCommand("flowtest.mixed");
             Object.DestroyImmediate(instance);
         }
 
@@ -90,6 +100,19 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
+        public void CommandRows_ShowNameOnly_WithoutParameterSignature()
+        {
+            panel.Show(CommandsPage.Root());
+            Click("flowtest");
+
+            foreach (var row in Rows())
+            {
+                Assert.IsFalse(LabelOf(row).Contains("["), "row label must not carry the parameter signature: " + LabelOf(row));
+            }
+            Assert.IsTrue(Rows().Any(r => LabelOf(r) == "flowtest.takeint"), "expected a row labelled exactly 'flowtest.takeint'");
+        }
+
+        [Test]
         public void CommandWithoutParams_RunsOnClick()
         {
             noArgCalled = false;
@@ -115,6 +138,31 @@ namespace Hlight.Debug.Hub.Tests
             Click("Run");
 
             Assert.AreEqual(7, lastInt);
+        }
+
+        /// Page được build lại mỗi lần Push/Pop, nên đi chọn enum rồi quay lại không được mất
+        /// giá trị đã gõ ở các field khác.
+        [Test]
+        public void PickingEnum_KeepsValuesTypedInOtherFields()
+        {
+            lastMixedAmount = 0;
+            lastMixedType = LogType.Log;
+
+            panel.Show(CommandsPage.Root());
+            Click("flowtest");
+            Click("flowtest.mixed");
+
+            content.GetComponentsInChildren<InputField>(false).Single().text = "7";
+
+            Click("type:");
+            Click(nameof(LogType.Exception));
+
+            Assert.AreEqual("7", content.GetComponentsInChildren<InputField>(false).Single().text,
+                "typed value must survive the trip to the choice page");
+
+            Click("Run");
+            Assert.AreEqual(7, lastMixedAmount);
+            Assert.AreEqual(LogType.Exception, lastMixedType);
         }
 
         [Test]

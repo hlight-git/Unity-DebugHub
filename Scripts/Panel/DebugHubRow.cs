@@ -11,6 +11,5 @@ namespace Hlight.Debug.Hub
         public Button button;
         public Toggle toggle;
         public InputField input;
-        public Dropdown dropdown;
     }
 }

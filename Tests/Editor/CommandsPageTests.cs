@@ -15,12 +15,14 @@ namespace Hlight.Debug.Hub.Tests
 
         private static void TakeInt(int value) => lastInt = value;
         private static void TakeEnum(LogType value) => lastEnum = value;
+        private static void TakeTwo(string first, int second) { }
 
         [SetUp]
         public void SetUp()
         {
             DebugLogConsole.AddCommand<int>("hubtest.takeint", DESCRIPTION, TakeInt);
             DebugLogConsole.AddCommand<LogType>("hubtest.takeenum", DESCRIPTION, TakeEnum);
+            DebugLogConsole.AddCommand<string, int>("hubtest.taketwo", DESCRIPTION, TakeTwo);
             DebugLogConsole.AddCommand("hubtestnodot", DESCRIPTION, () => { });
         }
 
@@ -29,6 +31,7 @@ namespace Hlight.Debug.Hub.Tests
         {
             DebugLogConsole.RemoveCommand("hubtest.takeint");
             DebugLogConsole.RemoveCommand("hubtest.takeenum");
+            DebugLogConsole.RemoveCommand("hubtest.taketwo");
             DebugLogConsole.RemoveCommand("hubtestnodot");
         }
 
@@ -53,18 +56,30 @@ namespace Hlight.Debug.Hub.Tests
             var groups = CommandsPage.Group(DebugLogConsole.GetAllCommands());
 
             Assert.IsTrue(groups.ContainsKey("hubtest"));
-            Assert.AreEqual(2, groups["hubtest"].Count);
+            Assert.AreEqual(3, groups["hubtest"].Count, "takeint + takeenum + taketwo");
             CollectionAssert.IsOrdered(groups.Keys, StringComparer.OrdinalIgnoreCase);
         }
 
         [Test]
-        public void HeaderOf_StripsRichTextAndDescription()
+        public void HeaderOf_IsCommandNameOnly_NoSignatureNoDescription()
         {
             var header = CommandsPage.HeaderOf(Find("hubtest.takeint"));
 
+            Assert.AreEqual("hubtest.takeint", header);
             Assert.IsFalse(header.Contains("<b>"), header);
             Assert.IsFalse(header.Contains(DESCRIPTION), header);
-            StringAssert.StartsWith("hubtest.takeint", header);
+            Assert.IsFalse(header.Contains("["), header);
+        }
+
+        /// IDC để lại dấu cách ở cuối `parameters[i]` với tham số không phải cuối cùng, nên trim
+        /// ngoặc trước khi trim whitespace sẽ sót dấu ']'.
+        [Test]
+        public void ParameterLabelOf_IsBareName_IncludingNonLastParameter()
+        {
+            var command = Find("hubtest.taketwo");
+
+            Assert.AreEqual("first", CommandsPage.ParameterLabelOf(command, 0));
+            Assert.AreEqual("second", CommandsPage.ParameterLabelOf(command, 1));
         }
 
         [Test]

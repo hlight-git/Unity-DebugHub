@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
@@ -97,8 +98,15 @@ namespace Hlight.Debug.Hub
 
             CurrentAuthenticationState = AuthenticationState.Processing;
             authenticationInputField.gameObject.SetActive(true);
-            authenticationInputField.Select();
-            authenticationInputField.ActivateInputField();
+            StartCoroutine(FocusNextFrame(authenticationInputField));
+        }
+
+        /// Focus ngay trong frame vừa SetActive thì bị InputField.OnEnable xoá -> đợi một frame.
+        private static IEnumerator FocusNextFrame(InputField field)
+        {
+            yield return null;
+            field.Select();
+            field.ActivateInputField();
         }
 
         private void OnAuthenticationInputFieldSubmitted(string input)

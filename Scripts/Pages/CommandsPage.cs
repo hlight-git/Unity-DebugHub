@@ -37,27 +37,48 @@ namespace Hlight.Debug.Hub
                 foreach (var info in commands)
                 {
                     var command = info;
+                    var label = LabelOf(command, commands);
                     if (command.parameterTypes.Length == 0)
                     {
-                        panel.AddButton(HeaderOf(command), () => Run(command, Array.Empty<string>(), null));
+                        panel.AddButton(label, () => Run(command, Array.Empty<string>(), null));
                         continue;
                     }
-                    panel.AddButton(HeaderOf(command), () => panel.Push(ParamsPage(command)));
+                    panel.AddButton(label, () => panel.Push(ParamsPage(command)));
                 }
             });
         }
 
+        /// Row chỉ hiện tên command. Overload cùng tên trong một category thì thêm số lượng tham số,
+        /// không thì hai row giống nhau y hệt và không biết bấm cái nào.
+        private static string LabelOf(ConsoleMethodInfo command, List<ConsoleMethodInfo> siblings)
+        {
+            var duplicated = false;
+            foreach (var sibling in siblings)
+            {
+                if (sibling == command || sibling.command != command.command) continue;
+                duplicated = true;
+                break;
+            }
+            return duplicated ? $"{command.command}  ({command.parameterTypes.Length} args)" : command.command;
+        }
+
         private static DebugPage ParamsPage(ConsoleMethodInfo command)
         {
+            // values nằm ngoài builder: page được build lại mỗi lần Push/Pop, để trong closure
+            // thì giá trị đã nhập bị reset khi quay lại từ page chọn giá trị.
+            var values = new string[command.parameterTypes.Length];
+            for (var i = 0; i < values.Length; i++)
+            {
+                values[i] = DefaultValueFor(command.parameterTypes[i]);
+            }
+
             return new DebugPage(HeaderOf(command), panel =>
             {
-                var values = new string[command.parameterTypes.Length];
                 for (var i = 0; i < values.Length; i++)
                 {
                     var index = i;
-                    var type = command.parameterTypes[i];
-                    values[i] = DefaultValueFor(type);
-                    panel.AddField(LabelOf(command, i), type, values[i], value => values[index] = value);
+                    panel.AddField(ParameterLabelOf(command, index), command.parameterTypes[index], values[index],
+                        value => values[index] = value);
                 }
 
                 var status = panel.AddText(string.Empty);
@@ -87,7 +108,7 @@ namespace Hlight.Debug.Hub
                 var value = i < values.Length ? values[i] : string.Empty;
                 if (DebugLogConsole.ParseArgument(value, command.parameterTypes[i], out args[i])) continue;
 
-                message = $"'{value}' is not a valid {DebugLogConsole.GetTypeReadableName(command.parameterTypes[i])} for {LabelOf(command, i)}";
+                message = $"'{value}' is not a valid {DebugLogConsole.GetTypeReadableName(command.parameterTypes[i])} for {ParameterLabelOf(command, i)}";
                 return false;
             }
 
@@ -133,22 +154,23 @@ namespace Hlight.Debug.Hub
             return dot > 0 ? command.command.Substring(0, dot) : DEFAULT_CATEGORY;
         }
 
-        /// `signature` có dạng "&lt;b&gt;cmd [Int a]&lt;/b&gt;: description" — chỉ lấy phần trong thẻ b.
+        /// Tên command, không kèm chữ ký tham số.
         public static string HeaderOf(ConsoleMethodInfo command)
         {
-            var signature = command.signature;
-            var end = signature.IndexOf("</b>", StringComparison.Ordinal);
-            if (end >= 0) signature = signature.Substring(0, end);
-            return signature.Replace("<b>", string.Empty).Trim();
+            return command.command;
         }
 
-        /// `parameters[i]` có dạng "[Int amount]".
-        private static string LabelOf(ConsoleMethodInfo command, int index)
+        /// `parameters[i]` có dạng "[Int amount]" — và với tham số không phải cuối cùng thì IDC
+        /// còn để lại dấu cách ở cuối, nên phải trim whitespace TRƯỚC khi cắt ngoặc.
+        /// Chỉ lấy tên tham số; kiểu đã hiện ở placeholder của field.
+        public static string ParameterLabelOf(ConsoleMethodInfo command, int index)
         {
             if (command.parameters != null && index < command.parameters.Length)
             {
-                var label = command.parameters[index].Trim('[', ']').Trim();
-                if (label.Length > 0) return label;
+                var chunk = command.parameters[index].Trim().Trim('[', ']').Trim();
+                var space = chunk.LastIndexOf(' ');
+                var name = space >= 0 ? chunk.Substring(space + 1) : chunk;
+                if (name.Length > 0) return name;
             }
             return DebugLogConsole.GetTypeReadableName(command.parameterTypes[index]);
         }
