@@ -18,6 +18,8 @@ git submodule update --init --recursive
 
 Thiếu bước này thì `ThirdParty/UnityIngameDebugConsole` rỗng và toàn bộ package không compile.
 
+Lưu ý: sau khi Unity import, submodule sẽ ở trạng thái dirty vì Unity nâng version importer trong các file `.meta` của sprite. **Đừng commit vào submodule** — cứ để nguyên, hoặc `git -C ThirdParty/UnityIngameDebugConsole checkout -- .` (Unity sẽ ghi lại lần import sau).
+
 ## Sử dụng
 
 Kéo `Prefabs/DebugHub.prefab` vào scene đầu tiên. Nhập password (field `password` trên component `DebugHub`) theo trigger của platform để mở panel.
