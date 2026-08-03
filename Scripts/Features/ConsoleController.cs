@@ -6,21 +6,44 @@ using UnityEngine.UI;
 
 namespace Hlight.Debug.Hub
 {
-    public class ConsoleController : ADebugOperation
+    public class ConsoleController : MonoBehaviour
     {
         public const string DEFAULT_ASSEMBLY = "Assembly-CSharp";
         private const string AUTO_ENABLE_KEY = "AutoEnableDebugConsole";
         [SerializeField] private string resourcePath;
-        [SerializeField] private Toggle autoEnableToggle;
 
         private Canvas inGameDebugConsoleCanvas;
         object ans;
 
-        protected override void Awake()
+        /// Console đang hiện hay không. Lần bật đầu tiên mới instantiate prefab console.
+        public bool Enabled
         {
-            base.Awake();
-            autoEnableToggle.onValueChanged.AddListener(OnAutoEnableToggleValueChanged);
-            
+            get => inGameDebugConsoleCanvas && inGameDebugConsoleCanvas.enabled;
+            set
+            {
+                if (inGameDebugConsoleCanvas)
+                {
+                    inGameDebugConsoleCanvas.enabled = value;
+                    return;
+                }
+                if (value) inGameDebugConsoleCanvas = Instantiate(Resources.Load<Canvas>(resourcePath));
+            }
+        }
+
+        /// Tự bật console ở lần chạy sau.
+        public bool AutoEnable
+        {
+            get => PlayerPrefs.GetInt(AUTO_ENABLE_KEY) == 1;
+            set => PlayerPrefs.SetInt(AUTO_ENABLE_KEY, value ? 1 : 0);
+        }
+
+        public void TryEnableConsole()
+        {
+            if (AutoEnable) Enabled = true;
+        }
+
+        private void Awake()
+        {
             DebugLogConsole.AddCommand<string>("prefs.get", "Log giá trị được lưu trong PlayerPrefs.", GetPlayerPrefsValue);
             DebugLogConsole.AddCommand<string, string>("prefs.set.str", "Dùng tương tự PlayerPrefs.SetString().", SetPlayerPrefsValue);
             DebugLogConsole.AddCommand<string, int>("prefs.set.int", "Dùng tương tự PlayerPrefs.SetInt().", SetPlayerPrefsValue);
@@ -45,39 +68,6 @@ namespace Hlight.Debug.Hub
             #if USE_ADMOB
             DebugLogConsole.AddCommand("ad.admob", "Show admob inspector", ShowAdMobDebugger);
             #endif
-        }
-
-        private void OnEnable()
-        {
-            var consoleActivated = inGameDebugConsoleCanvas && inGameDebugConsoleCanvas.enabled;
-            toggle.SetIsOnWithoutNotify(consoleActivated);
-            autoEnableToggle.SetIsOnWithoutNotify(PlayerPrefs.GetInt(AUTO_ENABLE_KEY) == 1);
-        }
-
-        protected override void OnToggleValueChanged(bool value)
-        {
-            if (inGameDebugConsoleCanvas)
-            {
-                inGameDebugConsoleCanvas.enabled = value;
-                return;
-            }
-            if (value)
-            {
-                inGameDebugConsoleCanvas = Instantiate(Resources.Load<Canvas>(resourcePath));
-            }
-        }
-
-        public void TryEnableConsole()
-        {
-            if (PlayerPrefs.GetInt(AUTO_ENABLE_KEY) == 1)
-            {
-                OnToggleValueChanged(true);
-            }
-        }
-
-        private void OnAutoEnableToggleValueChanged(bool value)
-        {
-            PlayerPrefs.SetInt(AUTO_ENABLE_KEY, value ? 1 : 0);
         }
 
         #region Commands

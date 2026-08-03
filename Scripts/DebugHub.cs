@@ -8,16 +8,21 @@ namespace Hlight.Debug.Hub
     public class DebugHub : MonoBehaviour
     {
         private const string AUTHENTICATION_KEY = "DebugHub.AuthenticationState";
-        internal static DebugHub InternalInstance { get; private set; }
-        
+        private static DebugHub instance;
+
         private enum AuthenticationState { None, Processing , Success }
         [SerializeField] private string password;
         [SerializeField] private DebugHubEntry entry;
-        [SerializeField] private ConsoleController inGameDebugConsoleTrigger;
-        [SerializeField] private ShowDebugObjects showDebugObjects;
+        [SerializeField] private DebugHubPanel panel;
+        [SerializeField] private ConsoleController console;
         [SerializeField] private InputField authenticationInputField;
         [SerializeField] private MobileDeviceDebuggerAuthenticationTrigger mobileDeviceDebuggerAuthenticationTrigger;
         [SerializeField] private StandaloneDebuggerAuthenticationTrigger standaloneDebuggerAuthenticationTrigger;
+
+        private ProximaFeature proxima;
+
+        /// Dev note hiện ở page Help.
+        public static List<string> Notes { get; } = new();
 
         private AuthenticationState cachedCurrentAuthenticationState;
         private AuthenticationState CurrentAuthenticationState
@@ -58,33 +63,30 @@ namespace Hlight.Debug.Hub
                 return null;
             }
         }
-        
-        public ConsoleController InGameDebugConsoleAdapter => inGameDebugConsoleTrigger;
-        
-        internal string Password => password;
-        internal List<DebugObject> DebugObjects { get; } = new();
 
         private void Awake()
         {
 #if !PRODUCTION
-            if (InternalInstance)
+            if (instance)
 #endif
             {
                 Destroy(gameObject);
                 return;
             }
-            
-            inGameDebugConsoleTrigger.TryEnableConsole();
+
+            console.TryEnableConsole();
             DontDestroyOnLoad(this);
-            InternalInstance = this;
+            instance = this;
+            proxima = new ProximaFeature(password);
+            entry.Clicked += OpenRootPage;
             authenticationInputField.onEndEdit.AddListener(OnAuthenticationInputFieldSubmitted);
-            
+
             cachedCurrentAuthenticationState = (AuthenticationState)PlayerPrefs.GetInt(AUTHENTICATION_KEY);
         }
 
         private void Update()
         {
-            if (entry.Activating || entry.IsMainMenuActivating) return;
+            if (entry.Activating || panel.IsOpen) return;
             if (CurrentAuthenticationState == AuthenticationState.Processing) return;
             if (CurrentAuthenticationState == AuthenticationState.Success)
             {
@@ -92,7 +94,7 @@ namespace Hlight.Debug.Hub
                 return;
             }
             if (DebuggerAuthenticationTrigger == null || !DebuggerAuthenticationTrigger.IsPerformedTriggerAction()) return;
-            
+
             CurrentAuthenticationState = AuthenticationState.Processing;
             authenticationInputField.gameObject.SetActive(true);
             authenticationInputField.Select();
@@ -112,26 +114,22 @@ namespace Hlight.Debug.Hub
             CurrentAuthenticationState = AuthenticationState.Success;
         }
 
-        #region API
-
-        public static bool RegisterDebugObject(DebugObject debugObject, out bool active)
+        private void OpenRootPage()
         {
-#if PRODUCTION
-            active = false;
-            return false;
-#endif
-            InternalInstance.DebugObjects.Add(debugObject);
-            active = InternalInstance.showDebugObjects.IsOn;
-            return true;
+            panel.Show(RootPage());
         }
 
-        public static void UnregisterDebugObject(DebugObject debugObject)
+        private DebugPage RootPage()
         {
-#if !PRODUCTION
-            InternalInstance.DebugObjects.Remove(debugObject);
-#endif
+            return new DebugPage("Debug Hub", page =>
+            {
+                page.AddToggle("Console", console.Enabled, value => console.Enabled = value);
+                page.AddToggle("Auto enable console", console.AutoEnable, value => console.AutoEnable = value);
+                if (proxima.Supported) page.AddToggle("Proxima", proxima.Enabled, value => proxima.Enabled = value);
+                page.AddToggle("Show entry button", entry.Activating, value => entry.Activating = value);
+                page.AddButton("Commands", () => page.Push(CommandsPage.Root()));
+                page.AddButton("Help", () => page.Push(HelpPage.Build()));
+            });
         }
-
-        #endregion
     }
 }

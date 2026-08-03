@@ -1,3 +1,4 @@
+using System;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -6,9 +7,9 @@ namespace Hlight.Debug.Hub
     public class DebugHubEntry : MonoBehaviour
     {
         [SerializeField] private Button button;
-        [SerializeField] private GameObject mainMenuGo;
-        [SerializeField] private Button closeMainMenuButton;
         [SerializeField] private FloatingBubble floatingBubble;
+
+        public event Action Clicked;
 
         public bool Activating
         {
@@ -19,23 +20,11 @@ namespace Hlight.Debug.Hub
                 button.gameObject.SetActive(value);
             }
         }
-        public bool IsMainMenuActivating => mainMenuGo.activeInHierarchy;
 
         private void Awake()
         {
-            button.onClick.AddListener(OpenMainMenu);
-            closeMainMenuButton.onClick.AddListener(CloseMainMenu);
+            button.onClick.AddListener(() => Clicked?.Invoke());
             floatingBubble.DragStateChanged += value => button.enabled = !value;
-        }
-
-        private void OpenMainMenu()
-        {
-            mainMenuGo.SetActive(true);
-        }
-
-        private void CloseMainMenu()
-        {
-            mainMenuGo.SetActive(false);
         }
     }
 }
