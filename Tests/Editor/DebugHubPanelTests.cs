@@ -101,6 +101,27 @@ namespace Hlight.Debug.Hub.Tests
             Assert.LessOrEqual(longHeight, 1500.5f, $"window must stay within maxWindowHeight, got {longHeight}");
         }
 
+        /// Panel phải co lại, không chỉ nở ra: row của page cũ không được tính vào chiều cao
+        /// (trong Play Mode Destroy() bị hoãn tới cuối frame nên chúng phải bị tắt trước khi đo).
+        [Test]
+        public void Window_ShrinksWhenNextPageHasFewerRows()
+        {
+            var window = (RectTransform)panel.transform.Find("Window");
+
+            panel.Show(new DebugPage("Long", p =>
+            {
+                for (var i = 0; i < 20; i++) p.AddButton("row " + i, () => { });
+            }));
+            var tall = window.rect.height;
+
+            panel.Push(new DebugPage("Short", p => p.AddButton("only one", () => { })));
+            var shrunk = window.rect.height;
+
+            Assert.Less(shrunk, tall, $"window must shrink back: {tall} -> {shrunk}");
+            Assert.Less(shrunk, 500f, $"one row page should be short, got {shrunk}");
+            Assert.AreEqual(1, RowCount(), "stale rows from the previous page must be gone");
+        }
+
         [Test]
         public void AddField_PicksWidgetByType()
         {

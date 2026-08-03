@@ -104,14 +104,19 @@ namespace Hlight.Debug.Hub
         {
             foreach (var row in spawnedRows)
             {
-                if (row) DestroyRow(row);
+                if (!row) continue;
+
+                // Tắt trước khi destroy: trong Play Mode, Destroy() bị hoãn tới cuối frame nên row
+                // của page cũ vẫn được layout group tính vào chiều cao -> panel chỉ nở, không co lại.
+                row.SetActive(false);
+                DestroyRow(row);
             }
             spawnedRows.Clear();
         }
 
         private static void DestroyRow(GameObject row)
         {
-            // Test chạy ở EditMode nên Destroy() sẽ bị hoãn tới cuối frame và không bao giờ tới.
+            // Ở EditMode (test) thì Destroy() bị hoãn tới cuối frame và không bao giờ tới.
             if (Application.isPlaying) Destroy(row);
             else DestroyImmediate(row);
         }
