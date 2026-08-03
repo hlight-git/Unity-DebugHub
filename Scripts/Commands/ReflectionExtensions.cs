@@ -1,13 +1,15 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System;
 
 namespace Hlight.Debug.Hub
 {
-    public static class ReflectionExtensions
+    internal static class ReflectionExtensions
     {
-        public static object GetValueOfFieldOrPropertyRecursive(this Type type, object source, string memberName, out Type memberInfoType, BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+        private const BindingFlags ALL = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
+
+        public static object GetValueOfFieldOrPropertyRecursive(this Type type, object source, string memberName, out Type memberInfoType, BindingFlags bindingFlags = ALL)
         {
             FieldInfo fieldInfo = type.GetFieldRecursive(memberName, bindingFlags);
             if (fieldInfo != null)
@@ -15,7 +17,8 @@ namespace Hlight.Debug.Hub
                 memberInfoType = fieldInfo.FieldType;
                 return fieldInfo.GetValue(source);
             }
-            PropertyInfo propertyInfo = type.GetProperty(memberName, bindingFlags);
+
+            PropertyInfo propertyInfo = type.GetPropertyRecursive(memberName, bindingFlags);
             if (propertyInfo != null)
             {
                 memberInfoType = propertyInfo.PropertyType;
@@ -25,64 +28,51 @@ namespace Hlight.Debug.Hub
             memberInfoType = null;
             return null;
         }
-        public static Type TryGetTypeOfFieldOrPropertyRecursive(this Type type, object source, string memberName, out object value, BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+
+        /// Kiểu của field/property, null nếu không có member nào tên đó.
+        public static Type GetMemberType(this Type type, string memberName, BindingFlags bindingFlags = ALL)
+        {
+            FieldInfo fieldInfo = type.GetFieldRecursive(memberName, bindingFlags);
+            if (fieldInfo != null) return fieldInfo.FieldType;
+            return type.GetPropertyRecursive(memberName, bindingFlags)?.PropertyType;
+        }
+
+        /// Ghi giá trị vào field/property. Truyền source null cho member static.
+        /// Ném lỗi khi không tìm thấy member hoặc property không có setter — im lặng bỏ qua thì
+        /// người dùng tưởng lệnh đã chạy.
+        public static void SetMemberValue(this Type type, object source, string memberName, object value, BindingFlags bindingFlags = ALL)
         {
             FieldInfo fieldInfo = type.GetFieldRecursive(memberName, bindingFlags);
             if (fieldInfo != null)
             {
-                value = fieldInfo.GetValue(source);
-                return fieldInfo.FieldType;
-            }
-            PropertyInfo propertyInfo = type.GetProperty(memberName, bindingFlags);
-            if (propertyInfo != null)
-            {
-                value = propertyInfo.GetValue(source);
-                return propertyInfo.PropertyType;
+                fieldInfo.SetValue(source, value);
+                return;
             }
 
-            value = null;
-            return null;
+            PropertyInfo propertyInfo = type.GetPropertyRecursive(memberName, bindingFlags);
+            if (propertyInfo == null)
+                throw new Exception($"Not found field (or property) \"{memberName}\" in `{type.Name}`.");
+            if (!propertyInfo.CanWrite)
+                throw new Exception($"Property \"{memberName}\" in `{type.Name}` is read-only.");
+
+            propertyInfo.SetValue(source, value);
         }
 
-        public static PropertyInfo GetIndexerRecursive(this Type type, IEnumerable<Type> parameterTypes, BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
-        {
-            var indexerInfo = type.GetProperties(bindingFlags | BindingFlags.DeclaredOnly).FirstOrDefault(p => p.GetIndexParameters().Select(p => p.ParameterType).SequenceEqual(parameterTypes));
-            if (indexerInfo == null && type.BaseType != null)
-                return type.BaseType.GetIndexerRecursive(parameterTypes, bindingFlags);
-            return indexerInfo;
-        }
-
-        public static void AddIndexersRecursive(this Type type, List<PropertyInfo> indexers, Func<PropertyInfo, bool> predicate, BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+        public static void AddIndexersRecursive(this Type type, List<PropertyInfo> indexers, Func<PropertyInfo, bool> predicate, BindingFlags bindingFlags = ALL)
         {
             indexers.AddRange(type.GetProperties(bindingFlags | BindingFlags.DeclaredOnly).Where(predicate));
             if (type.BaseType != null)
                 AddIndexersRecursive(type.BaseType, indexers, predicate, bindingFlags);
         }
 
-        public static MethodInfo GetMethodRecursive(this Type type, string methodName, BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
-        {
-            var methodInfo = type.GetMethod(methodName, bindingFlags | BindingFlags.DeclaredOnly);
-            if (methodInfo == null && type.BaseType != null)
-                return type.BaseType.GetMethodRecursive(methodName, bindingFlags);
-            return methodInfo;
-        }
-
-        public static void AddMethodsRecursive(this Type type, List<MethodInfo> methodInfos, Func<MethodInfo, bool> predicate, BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+        public static void AddMethodsRecursive(this Type type, List<MethodInfo> methodInfos, Func<MethodInfo, bool> predicate, BindingFlags bindingFlags = ALL)
         {
             methodInfos.AddRange(type.GetMethods(bindingFlags | BindingFlags.DeclaredOnly).Where(predicate));
             if (type.BaseType != null)
                 AddMethodsRecursive(type.BaseType, methodInfos, predicate, bindingFlags);
         }
 
-        public static MethodInfo GetMethodRecursive(this Type type, string methodName, IEnumerable<Type> parameterTypes, BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
-        {
-            var methodInfo = type.GetMethods(bindingFlags | BindingFlags.DeclaredOnly).FirstOrDefault(m => m.Name == methodName && m.GetParameters().Select(p => p.ParameterType).SequenceEqual(parameterTypes));
-            if (methodInfo == null && type.BaseType != null)
-                return type.BaseType.GetMethodRecursive(methodName, parameterTypes, bindingFlags);
-            return methodInfo;
-        }
-
-        public static FieldInfo GetFieldRecursive(this Type type, string name, BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+        public static FieldInfo GetFieldRecursive(this Type type, string name, BindingFlags bindingFlags = ALL)
         {
             var fieldInfo = type.GetField(name, bindingFlags | BindingFlags.DeclaredOnly);
             if (fieldInfo == null && type.BaseType != null)
@@ -90,25 +80,13 @@ namespace Hlight.Debug.Hub
             return fieldInfo;
         }
 
-        public static PropertyInfo GetPropertyRecursive(this Type type, string name, BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
+        /// GetProperty() không trả về property non-public của class cha, nên phải tự đi lên.
+        public static PropertyInfo GetPropertyRecursive(this Type type, string name, BindingFlags bindingFlags = ALL)
         {
             var propertyInfo = type.GetProperty(name, bindingFlags | BindingFlags.DeclaredOnly);
             if (propertyInfo == null && type.BaseType != null)
                 return type.BaseType.GetPropertyRecursive(name, bindingFlags);
             return propertyInfo;
-        }
-
-        public static void TrySetValue(this object source, string memberName, object value, BindingFlags bindingFlags = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public)
-        {
-            Type type = source.GetType();
-            FieldInfo fieldInfo = type.GetFieldRecursive(memberName, bindingFlags);
-            if (fieldInfo != null)
-            {
-                fieldInfo.SetValue(source, value);
-                return;
-            }
-            PropertyInfo propertyInfo = type.GetProperty(memberName, bindingFlags);
-            propertyInfo?.SetValue(source, value);
         }
     }
 }

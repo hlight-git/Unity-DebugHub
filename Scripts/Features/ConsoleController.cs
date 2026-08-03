@@ -179,7 +179,7 @@ namespace Hlight.Debug.Hub
 
         void RegistryGet(string key)
         {
-            UnityEngine.Debug.Log(Executor.GetRegistedObject(key));
+            UnityEngine.Debug.Log(Executor.GetRegisteredObject(key));
         }
 
         void RegistrySetAns(string key)

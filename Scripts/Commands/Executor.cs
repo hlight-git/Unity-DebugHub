@@ -10,10 +10,9 @@ namespace Hlight.Debug.Hub
 {
     internal static class Executor
     {
-        const BindingFlags BINDING_FLAGS = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
         readonly static Dictionary<string, object> registry = new();
         const string DOT_OUTSIDE_BRACKETS_PATTERN = @"\.(?![^\[\](){}]*[\]\)}])";
-        const string OPEN_SQUARE_BRECKET_PATTERN = @"(?=\[)";
+        const string OPEN_SQUARE_BRACKET_PATTERN = @"(?=\[)";
 
         public abstract class Entry
         {
@@ -63,7 +62,7 @@ namespace Hlight.Debug.Hub
             public IndexerEntry(Type sourceType, object source, string entry)
             {
                 List<string> stringArgs = new();
-                DebugLogConsole.FetchArgumentsFromCommand(SubStringBetween(entry, '[', ']', out _), stringArgs);
+                DebugLogConsole.FetchArgumentsFromCommand(SubStringBetween(entry, '[', ']'), stringArgs);
                 int paramCount = stringArgs.Count;
 
                 if (paramCount == 0)
@@ -87,7 +86,7 @@ namespace Hlight.Debug.Hub
                 }
                 else if (entry.Contains('{') && entry.Contains('}'))
                 {
-                    Indexer = sameNumberOfParamIndexers[int.Parse(SubStringBetween(entry, '{', '}', out _))];
+                    Indexer = sameNumberOfParamIndexers[int.Parse(SubStringBetween(entry, '{', '}'))];
                 }
                 else
                 {
@@ -108,7 +107,7 @@ namespace Hlight.Debug.Hub
                 List<string> stringArgs = new();
                 DebugLogConsole.FetchArgumentsFromCommand(entry[(entry.IndexOf('(') + 1)..^1], stringArgs);
 
-                float paramCount = stringArgs.Count;
+                int paramCount = stringArgs.Count;
 
                 StringBuilder methodNameBuilder = new();
 
@@ -138,7 +137,7 @@ namespace Hlight.Debug.Hub
                 }
                 else if (entry.Contains('{') && entry.Contains('}')) // isOverloadedMethod
                 {
-                    method = overloads[int.Parse(SubStringBetween(entry, '{', '}', out _))];
+                    method = overloads[int.Parse(SubStringBetween(entry, '{', '}'))];
                 }
                 else
                 {
@@ -149,8 +148,8 @@ namespace Hlight.Debug.Hub
                 if (entry.Contains('<') && entry.Contains('>')) // isGenericMethod
                 {
                     List<string> buffer = new();
-                    DebugLogConsole.FetchArgumentsFromCommand(SubStringBetween(entry, '<', '>', out _), buffer);
-                    method = method.MakeGenericMethod(buffer.Select(a => GetRegistedObject(a.Substring(1))).Cast<Type>().ToArray());
+                    DebugLogConsole.FetchArgumentsFromCommand(SubStringBetween(entry, '<', '>'), buffer);
+                    method = method.MakeGenericMethod(buffer.Select(a => GetRegisteredObject(a.Substring(1))).Cast<Type>().ToArray());
                 }
                 else if (method.IsGenericMethod)
                 {
@@ -164,20 +163,27 @@ namespace Hlight.Debug.Hub
             }
         }
 
-        static string SubStringBetween(string str, char head, char tail, out int index)
+        /// Lấy đoạn giữa cặp ký tự đầu tiên. Không xử lý lồng nhau: "a[b[0]]" trả về "b[0",
+        /// nên query lồng ngoặc phải qua registry ($x) thay vì viết trực tiếp.
+        /// ponytail: nâng lên parser thật khi nào thực sự cần query lồng.
+        static string SubStringBetween(string str, char head, char tail)
         {
             int startIndex = str.IndexOf(head) + 1;
-            int length = str.IndexOf(tail, startIndex) - startIndex;
-            index = startIndex;
-            return str.Substring(startIndex, length);
+            int endIndex = str.IndexOf(tail, startIndex);
+            if (startIndex == 0 || endIndex < 0)
+            {
+                throw new Exception($"\"{str}\" is missing a matching '{head}' ... '{tail}' pair.");
+            }
+            return str.Substring(startIndex, endIndex - startIndex);
         }
 
         internal static object ParseObject(string str, Type type)
         {
             if (str == "null") return null;
-            if (str.StartsWith('$')) return GetRegistedObject(str.Substring(1));
+            if (str.StartsWith('$')) return GetRegisteredObject(str.Substring(1));
+            if (type == null) throw new Exception($"Cannot parse argument '{str}' because the target type is unknown.");
             if (DebugLogConsole.ParseArgument(str, type, out object output)) return output;
-            throw new Exception($"Cannot Parse argument '{str}' to type '{type.FullName}'");
+            throw new Exception($"Cannot parse argument '{str}' to type '{type.FullName}'");
         }
 
         static object Get(Assembly assembly, string typeName, string[] entryRequest)
@@ -196,7 +202,7 @@ namespace Hlight.Debug.Hub
 
         static string[] GetEntryRequest(string query)
         {
-            return Regex.Split(query, DOT_OUTSIDE_BRACKETS_PATTERN).SelectMany(s => Regex.Split(s, OPEN_SQUARE_BRECKET_PATTERN)).ToArray();
+            return Regex.Split(query, DOT_OUTSIDE_BRACKETS_PATTERN).SelectMany(s => Regex.Split(s, OPEN_SQUARE_BRACKET_PATTERN)).ToArray();
         }
 
         public static void Bind(string key, object value)
@@ -214,21 +220,26 @@ namespace Hlight.Debug.Hub
             if (typeName.Contains('<') && typeName.Contains('>')) // isGenericMethod
             {
                 List<string> buffer = new();
-                DebugLogConsole.FetchArgumentsFromCommand(SubStringBetween(typeName, '<', '>', out _), buffer);
+                DebugLogConsole.FetchArgumentsFromCommand(SubStringBetween(typeName, '<', '>'), buffer);
                 typeName = typeName.Substring(0, typeName.IndexOf('<')) + $"`{buffer.Count}";
-                Type type = assembly.GetType(typeName) ?? throw new Exception($"{assembly.GetName().Name} do not contains type \"{typeName}\". Are you missing a namespace?"); ;
-                return type.MakeGenericType(buffer.Select(a => GetRegistedObject(a.Substring(1))).Cast<Type>().ToArray());
+                Type type = assembly.GetType(typeName) ?? throw new Exception($"{assembly.GetName().Name} do not contains type \"{typeName}\". Are you missing a namespace?");
+                return type.MakeGenericType(buffer.Select(a => GetRegisteredObject(a.Substring(1))).Cast<Type>().ToArray());
             }
             return assembly.GetType(typeName) ?? throw new Exception($"{assembly.GetName().Name} do not contains type \"{typeName}\". Are you missing a namespace?");
         }
 
-        public static object GetRegistedObject(string key)
+        public static object GetRegisteredObject(string key)
         {
-            if (registry.ContainsKey(key))
-            {
-                return registry[key];
-            }
+            if (registry.TryGetValue(key, out var value)) return value;
             throw new Exception($"\"{key}\" is not registered!");
+        }
+
+        /// Registry giữ object của session trước khi bật "Enter Play Mode without domain reload",
+        /// nên phải xoá như IngameDebugConsole làm với danh sách command của nó.
+        [UnityEngine.RuntimeInitializeOnLoadMethod(UnityEngine.RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            registry.Clear();
         }
 
         public static object Get(Assembly assembly, string typeName, string query)
@@ -239,21 +250,33 @@ namespace Hlight.Debug.Hub
         public static void Set(Assembly assembly, string typeName, string query, string value)
         {
             string[] entryRequest = GetEntryRequest(query);
-            object source;
+            string lastEntry = entryRequest[^1];
+
             if (entryRequest.Length == 1)
             {
-                source = Get(assembly, typeName, entryRequest[0]);
-                Type valueType = source.GetType().TryGetTypeOfFieldOrPropertyRecursive(source, entryRequest[0], out _);
-                source.TrySetValue(entryRequest[0], ParseObject(value, valueType));
+                if (Entry.IsIndexer(lastEntry))
+                {
+                    throw new Exception($"An indexer needs an object in front of it. For example: \"Items{lastEntry}\".");
+                }
+
+                // Query một tầng = member static của chính type đó: set trực tiếp trên type với source null.
+                // (Đi qua Get() sẽ trả về *giá trị* của member rồi tìm member đó trên chính giá trị đó.)
+                Type staticOwner = GetType(assembly, typeName);
+                staticOwner.SetMemberValue(null, lastEntry, ParseObject(value, MemberTypeOf(staticOwner, lastEntry)));
                 return;
             }
 
-            source = Get(assembly, typeName, entryRequest[..^1]);
-            if (Entry.IsIndexer(entryRequest[^1]))
+            object source = Get(assembly, typeName, entryRequest[..^1]);
+            if (source == null)
             {
-                string entry = entryRequest[^1];
+                throw new Exception($"Cannot set \"{lastEntry}\" because the object in front of it is null.");
+            }
+
+            if (Entry.IsIndexer(lastEntry))
+            {
+                string entry = lastEntry;
                 List<string> stringArgs = new();
-                DebugLogConsole.FetchArgumentsFromCommand(SubStringBetween(entry, '[', ']', out _), stringArgs);
+                DebugLogConsole.FetchArgumentsFromCommand(SubStringBetween(entry, '[', ']'), stringArgs);
                 int paramCount = stringArgs.Count;
 
                 if (paramCount == 0)
@@ -263,7 +286,8 @@ namespace Hlight.Debug.Hub
 
                 MethodInfo setter;
 
-                List<MethodInfo> matchSetters = source.GetType().GetMethods(BINDING_FLAGS).Where(m => m.Name == "set_Item" && m.GetParameters().Length == paramCount + 1).ToList();
+                List<MethodInfo> matchSetters = new();
+                source.GetType().AddMethodsRecursive(matchSetters, m => m.Name == "set_Item" && m.GetParameters().Length == paramCount + 1);
 
                 int matchCount = matchSetters.Count();
 
@@ -277,7 +301,7 @@ namespace Hlight.Debug.Hub
                 }
                 else if (entry.Contains('{') && entry.Contains('}'))
                 {
-                    setter = matchSetters[int.Parse(SubStringBetween(entry, '{', '}', out _))];
+                    setter = matchSetters[int.Parse(SubStringBetween(entry, '{', '}'))];
                 }
                 else
                 {
@@ -296,12 +320,26 @@ namespace Hlight.Debug.Hub
                 args[paramCount] = ParseObject(value, parameterInfos[paramCount].ParameterType);
 
                 setter.Invoke(source, args);
+                return;
             }
-            else
+
+            Type owner = source.GetType();
+
+            // Struct lấy ra từ query là bản copy đã boxing: ghi vào đây thì object gốc không đổi.
+            // ponytail: báo lỗi rõ, không viết cơ chế write-back ngược cả chuỗi query cho một debug tool.
+            if (owner.IsValueType)
             {
-                Type valueType = source.GetType().TryGetTypeOfFieldOrPropertyRecursive(source, entryRequest[^1], out _);
-                source.TrySetValue(entryRequest[^1], ParseObject(value, valueType));
+                throw new Exception($"\"{lastEntry}\" belongs to struct `{owner.Name}`, which was copied when it was read, " +
+                    "so writing to it would be lost. Set the whole struct or call a method on the owner instead.");
             }
+
+            owner.SetMemberValue(source, lastEntry, ParseObject(value, MemberTypeOf(owner, lastEntry)));
+        }
+
+        static Type MemberTypeOf(Type owner, string memberName)
+        {
+            return owner.GetMemberType(memberName)
+                ?? throw new Exception($"Not found field (or property) \"{memberName}\" in `{owner.Name}`.");
         }
     }
 }
