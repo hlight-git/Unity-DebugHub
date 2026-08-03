@@ -25,6 +25,15 @@ namespace Hlight.Debug.Hub
         /// Dev note hiện ở page Help.
         public static List<string> Notes { get; } = new();
 
+        /// Static giữ nguyên giữa các lần Play khi bật "Enter Play Mode without domain reload",
+        /// không xoá thì note bị nhân đôi mỗi lần chạy.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics()
+        {
+            Notes.Clear();
+            instance = null;
+        }
+
         private AuthenticationState cachedCurrentAuthenticationState;
         private AuthenticationState CurrentAuthenticationState
         {

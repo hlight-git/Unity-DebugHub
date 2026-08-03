@@ -4,6 +4,9 @@
     "displayName": "Hlight Debug Hub",
     "description": "In-game debug hub for Hlight Unity projects: console, cheat commands by category, and diagnostics behind a password gate.",
     "unity": "6000.0",
+    "dependencies": {
+        "com.unity.ugui": "2.0.0"
+    },
     "author": {
         "name": "Hlight"
     }

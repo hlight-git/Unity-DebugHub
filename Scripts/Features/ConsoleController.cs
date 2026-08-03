@@ -26,7 +26,16 @@ namespace Hlight.Debug.Hub
                     inGameDebugConsoleCanvas.enabled = value;
                     return;
                 }
-                if (value) inGameDebugConsoleCanvas = Instantiate(Resources.Load<Canvas>(resourcePath));
+                if (!value) return;
+
+                var prefab = Resources.Load<Canvas>(resourcePath);
+                if (prefab == null)
+                {
+                    // Ví dụ khi build PRODUCTION: RenameFolderOnBuild đã đổi tên folder Resources.
+                    UnityEngine.Debug.LogError($"Console prefab not found in Resources at \"{resourcePath}\".");
+                    return;
+                }
+                inGameDebugConsoleCanvas = Instantiate(prefab);
             }
         }
 
