@@ -1,0 +1,10 @@
+{
+    "name": "com.hlight.debug-hub",
+    "version": "1.0.0",
+    "displayName": "Hlight Debug Hub",
+    "description": "In-game debug hub for Hlight Unity projects: console, cheat commands by category, and diagnostics behind a password gate.",
+    "unity": "6000.0",
+    "author": {
+        "name": "Hlight"
+    }
+}

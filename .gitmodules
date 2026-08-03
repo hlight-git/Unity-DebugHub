@@ -1,0 +1,3 @@
+[submodule "ThirdParty/UnityIngameDebugConsole"]
+	path = ThirdParty/UnityIngameDebugConsole
+	url = https://github.com/yasirkula/UnityIngameDebugConsole.git
