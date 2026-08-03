@@ -1,0 +1,25 @@
+{
+    "name": "Hlight.Debug.Hub.Tests",
+    "rootNamespace": "Hlight.Debug.Hub.Tests",
+    "references": [
+        "Hlight.Debug.Hub",
+        "IngameDebugConsole.Runtime",
+        "UnityEngine.TestRunner",
+        "UnityEditor.TestRunner"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
