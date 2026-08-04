@@ -122,6 +122,24 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(1, RowCount(), "stale rows from the previous page must be gone");
         }
 
+        /// Row có chiều cao phụ thuộc chiều rộng (text wrap) chỉ đo đúng sau khi width đã được áp,
+        /// nếu không thì page Help co lại còn vài dòng.
+        [Test]
+        public void Window_FitsLongWrappedText()
+        {
+            var window = (RectTransform)panel.transform.Find("Window");
+            var help = new System.Text.StringBuilder("<b>Available commands:</b>");
+            for (var i = 0; i < 25; i++)
+            {
+                help.Append("\n  - command.name").Append(i).Append(" [String query]: description of what this command does");
+            }
+
+            panel.Show(new DebugPage("Help", p => p.AddText(help.ToString())));
+
+            Assert.Greater(window.rect.height, 1000f,
+                $"a 25-line help text must not collapse the window to {window.rect.height}");
+        }
+
         [Test]
         public void AddField_PicksWidgetByType()
         {

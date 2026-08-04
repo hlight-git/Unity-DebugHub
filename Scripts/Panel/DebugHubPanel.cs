@@ -37,6 +37,10 @@ namespace Hlight.Debug.Hub
 
         public bool IsOpen => gameObject.activeSelf;
 
+        /// Số tầng đang mở. Test dùng để biết một cú bấm đã pop hay chưa thay vì giả định
+        /// Awake có chạy hay không.
+        internal int StackDepth => stack.Count;
+
         private void Awake()
         {
             backgroundButton.onClick.AddListener(Pop);
@@ -85,7 +89,12 @@ namespace Hlight.Debug.Hub
         {
             if (!window || !scrollRect) return;
 
+            // Hai lần: pass đầu áp chiều rộng cho row, pass sau mới đo được chiều cao của row mà
+            // chiều cao phụ thuộc chiều rộng (text wrap). Đo một lần thì page Help co lại còn vài dòng
+            // vì text được đo ở width của template.
             LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(content);
+
             var viewport = (RectTransform)scrollRect.transform;
             // Scroll view neo stretch trong window nên khoảng chừa cho header + padding = offset trên/dưới.
             var chrome = viewport.offsetMin.y - viewport.offsetMax.y;
