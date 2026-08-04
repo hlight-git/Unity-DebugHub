@@ -2645,7 +2645,7 @@ MonoBehaviour:
   console: {fileID: 3471618365899173944}
   authenticationInputField: {fileID: 5174757713519839758}
   mobileDeviceDebuggerAuthenticationTrigger:
-    shakeThreshold: 50
+    shakeThreshold: 20
     triggerSteps: 0100000004000000030000000200000001000000
   standaloneDebuggerAuthenticationTrigger:
     activeKeyCode: 96

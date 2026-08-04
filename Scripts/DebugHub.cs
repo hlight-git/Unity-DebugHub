@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -5,6 +6,14 @@ using UnityEngine.UI;
 
 namespace Hlight.Debug.Hub
 {
+    /// Việc mà DebugHub cần làm trong một frame, sau khi hỏi trigger action.
+    internal enum DebugHubAction
+    {
+        None,
+        ShowEntry,
+        AskPassword,
+    }
+
     [DefaultExecutionOrder(-100)]
     public class DebugHub : MonoBehaviour
     {
@@ -96,18 +105,40 @@ namespace Hlight.Debug.Hub
 
         private void Update()
         {
-            if (entry.Activating || panel.IsOpen) return;
-            if (CurrentAuthenticationState == AuthenticationState.Processing) return;
-            if (CurrentAuthenticationState == AuthenticationState.Success)
-            {
-                entry.Activating = true;
-                return;
-            }
-            if (DebuggerAuthenticationTrigger == null || !DebuggerAuthenticationTrigger.IsPerformedTriggerAction()) return;
+            var action = DecideAction(
+                panel.IsOpen,
+                entry.Activating,
+                CurrentAuthenticationState == AuthenticationState.Processing,
+                CurrentAuthenticationState == AuthenticationState.Success,
+                () => DebuggerAuthenticationTrigger != null && DebuggerAuthenticationTrigger.IsPerformedTriggerAction());
 
-            CurrentAuthenticationState = AuthenticationState.Processing;
-            authenticationInputField.gameObject.SetActive(true);
-            StartCoroutine(FocusNextFrame(authenticationInputField));
+            switch (action)
+            {
+                case DebugHubAction.ShowEntry:
+                    entry.Activating = true;
+                    break;
+
+                case DebugHubAction.AskPassword:
+                    CurrentAuthenticationState = AuthenticationState.Processing;
+                    authenticationInputField.gameObject.SetActive(true);
+                    StartCoroutine(FocusNextFrame(authenticationInputField));
+                    break;
+            }
+        }
+
+        /// Trigger action là cửa cho cả hai việc: đã xác thực rồi thì nó hiện lại entry, chưa thì nó
+        /// mở ô nhập password. Nhờ vậy tắt "Show entry button" mới giữ được sau khi đóng panel —
+        /// bật entry ngay khi state là Success thì mỗi frame nó tự hiện lại.
+        ///
+        /// triggerPerformed là delegate chứ không phải bool: trigger trên mobile có state machine
+        /// theo từng touch, hỏi nó lúc không cần sẽ làm hỏng chuỗi bước người dùng đang gõ.
+        internal static DebugHubAction DecideAction(bool panelOpen, bool entryVisible, bool processing,
+            bool authenticated, Func<bool> triggerPerformed)
+        {
+            if (panelOpen || entryVisible || processing) return DebugHubAction.None;
+            if (triggerPerformed == null || !triggerPerformed()) return DebugHubAction.None;
+
+            return authenticated ? DebugHubAction.ShowEntry : DebugHubAction.AskPassword;
         }
 
         /// Focus ngay trong frame vừa SetActive thì bị InputField.OnEnable xoá -> đợi một frame.
