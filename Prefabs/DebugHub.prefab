@@ -2648,7 +2648,7 @@ MonoBehaviour:
     shakeThreshold: 20
     triggerSteps: 0100000004000000030000000200000001000000
   standaloneDebuggerAuthenticationTrigger:
-    activeKeyCode: 96
+    activeKeyCode: 293
 --- !u!114 &1034409257211871641
 MonoBehaviour:
   m_ObjectHideFlags: 0
