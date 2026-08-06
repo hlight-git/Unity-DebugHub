@@ -19,7 +19,6 @@ namespace Hlight.Debug.Hub.Tests
     {
         private const string RESULT_PATH = "Temp/debug-hub-tests.txt";
 
-        [MenuItem("Tools/Hlight/Run Debug Hub Tests")]
         public static void Run()
         {
             var report = new StringBuilder();
