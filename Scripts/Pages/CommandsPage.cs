@@ -9,7 +9,7 @@ namespace Hlight.Debug.Hub
     /// (phần trước dấu '.' đầu tiên) nên cheat chỉ cần đăng ký một lần là dùng được cả console lẫn panel.
     public static class CommandsPage
     {
-        private const string DEFAULT_CATEGORY = "General";
+        private const string DEFAULT_CATEGORY = "\uFFFFHub's built-in";
 
         public static DebugPage Root() => new DebugPage("Commands", BuildRoot);
 
@@ -154,8 +154,13 @@ namespace Hlight.Debug.Hub
 
         public static string CategoryOf(ConsoleMethodInfo command)
         {
+            if (command.method != null && command.method.DeclaringType != null && 
+                (command.method.DeclaringType.Assembly == typeof(CommandsPage).Assembly || command.method.DeclaringType.Assembly == typeof(DebugLogConsole).Assembly))
+            {
+                return DEFAULT_CATEGORY;
+            }
             var dot = command.command.IndexOf('.');
-            return dot > 0 ? command.command.Substring(0, dot) : DEFAULT_CATEGORY;
+            return dot > 0 ? command.command.Substring(0, dot) : string.Empty;
         }
 
         /// Tên command, không kèm chữ ký tham số.
