@@ -6,11 +6,12 @@ using UnityEngine.Networking;
 
 namespace Hlight.Debug.Hub
 {
-    /// Coi máy như đã xác thực nếu reachable tới bất kỳ một địa chỉ nội bộ nào trong checkUrls
-    /// (nhiều target dùng cho các server dự phòng của cùng mạng công ty). checkUrls để trống trong
-    /// code, điền URL/IP thật qua Inspector.
+    /// Coi máy như đã xác thực nếu reachable tới bất kỳ một địa chỉ nào trong checkUrls (nhiều
+    /// target dùng cho các endpoint dự phòng của cùng một mạng). checkUrls để trống trong code,
+    /// điền URL/IP thật qua Inspector tuỳ nhu cầu (mạng nội bộ công ty, VPN, hay bất kỳ mạng nào
+    /// khác muốn coi là đã tin cậy).
     [Serializable]
-    public class CompanyNetworkAuthenticationBypass
+    public class NetworkReachabilityAuthenticationBypass
     {
         [SerializeField] private string[] checkUrls;
         [SerializeField] private int timeoutSeconds = 3;

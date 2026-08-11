@@ -28,7 +28,7 @@ namespace Hlight.Debug.Hub
         [SerializeField] private InputField authenticationInputField;
         [SerializeField] private MobileDeviceDebuggerAuthenticationTrigger mobileDeviceDebuggerAuthenticationTrigger;
         [SerializeField] private StandaloneDebuggerAuthenticationTrigger standaloneDebuggerAuthenticationTrigger;
-        [SerializeField] private CompanyNetworkAuthenticationBypass companyNetworkAuthenticationBypass;
+        [SerializeField] private NetworkReachabilityAuthenticationBypass networkReachabilityAuthenticationBypass;
 
         private ProximaFeature proxima;
 
@@ -107,7 +107,7 @@ namespace Hlight.Debug.Hub
             // không được bắn network request thật — chỉ start khi Play thật (giống DestroyRow bên DebugHubPanel).
             if (Application.isPlaying && CurrentAuthenticationState != AuthenticationState.Success)
             {
-                StartCoroutine(companyNetworkAuthenticationBypass.Check(reachable =>
+                StartCoroutine(networkReachabilityAuthenticationBypass.Check(reachable =>
                 {
                     if (!reachable) return;
                     if (CurrentAuthenticationState == AuthenticationState.Processing) AcceptAuthentication();

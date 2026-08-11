@@ -24,6 +24,12 @@ Lưu ý: sau khi Unity import, submodule sẽ ở trạng thái dirty vì Unity 
 
 Kéo `Prefabs/DebugHub.prefab` vào scene đầu tiên. Nhập password (field `password` trên component `DebugHub`) theo trigger của platform để mở panel.
 
+### Bỏ qua password theo mạng
+
+Field `networkReachabilityAuthenticationBypass` trên component `DebugHub` (mảng `checkUrls`, để trống mặc định) cho phép coi máy như đã xác thực nếu nó reachable (`HEAD` request thành công) tới bất kỳ URL nào trong danh sách — không cần biết password. Dùng khi muốn tester trong một mạng cụ thể (VPN, mạng nội bộ...) vào thẳng không cần gõ password.
+
+**Trước khi điền `checkUrls`:** target phải thật sự bị chặn ở tầng mạng (firewall/security group theo IP nguồn) với bất kỳ ai ngoài mạng đó — domain/IP public không tự động có nghĩa là "không ai vào được", vì `HEAD` request coi cả trang redirect-sang-login là thành công. Nếu target không bị chặn đúng cách, bất kỳ ai có internet cũng được coi là đã xác thực, vĩnh viễn (state lưu qua cùng `PlayerPrefs` với password).
+
 Thêm cheat = đăng ký command cho IngameDebugConsole. Đặt tên `<category>.<tên>` để nó tự vào category tương ứng trong page Commands. Command không có dấu `.` nằm trong category `General`.
 
 Cách gọn nhất, không cần generic và không cần gọi hàm đăng ký — chỉ cần `public static` trên một type public:
@@ -46,16 +52,16 @@ Dạng generic `AddCommand<T1, T2>(...)` chỉ cần khi muốn truyền delegat
 
 ## Panel
 
-Cả hub là **một panel duy nhất** điều hướng theo stack. Bấm lớp background phía sau = back một tầng; ở page gốc = đóng panel.
+Cả hub là **một panel duy nhất** điều hướng theo stack. Bấm lớp background phía sau = đóng hẳn panel (bất kể đang ở page nào); nút `‹` ở header = lùi một tầng.
 
 ```
 Debug Hub                 Commands              time                  time.scale [Float speed]
-  [x] Console        ->     time  (3)      ->     time.scale     ->      Float speed [ 0.5 ]
-  [ ] Auto enable           prefs (4)             time.skip             (status line)
-  [ ] Proxima               reg   (5)             time.skip                  [ Run ]
-  [ ] Show entry            ...
-      Commands
-      Help
+  Commands           ->     time  (3)      ->     time.scale     ->      Float speed [ 0.5 ]
+  Help                      prefs (4)             time.skip             (status line)
+  [x] Console               reg   (5)             time.skip                  [ Run ]
+  [ ] Auto enable           ...
+  [ ] Proxima
+  [ ] Show entry
 ```
 
 Row chỉ hiện tên command; overload cùng tên trong một category thì kèm số lượng tham số để phân biệt.
@@ -76,7 +82,7 @@ Window cao đúng bằng nội dung, chặn trên bởi `maxWindowHeight` (mặc
 | label + input | nhập giá trị | `AddField(label, type, current, onChanged)` |
 | row tối trung tính | không ngụ ý gì | `AddButton(label, onClick)` |
 
-Back có nút `‹` ở header (tự ẩn ở page gốc), hoặc bấm ra ngoài panel.
+Back có nút `‹` ở header (tự ẩn ở page gốc, lùi một tầng). Bấm ra vùng tối ngoài panel đóng hẳn, không lùi từng tầng.
 
 Tự thêm page riêng bằng `DebugPage` + các hàm trên của `DebugHubPanel`.
 
