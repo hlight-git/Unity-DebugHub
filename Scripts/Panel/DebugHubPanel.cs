@@ -7,7 +7,7 @@ using UnityEngine.UI;
 namespace Hlight.Debug.Hub
 {
     /// Panel duy nhất của debug hub. Nội dung do page dựng ra qua các hàm Add*;
-    /// điều hướng bằng stack, back bằng nút ‹ ở header hoặc bấm ra ngoài panel.
+    /// điều hướng bằng stack. Back (nút ‹ ở header) lùi từng bước; bấm ra vùng tối bên ngoài đóng hẳn.
     ///
     /// Ngôn ngữ hình ảnh: row tối + chevron = đi sang page khác, row xanh = chạy ngay,
     /// row tối + switch = bật/tắt trạng thái.
@@ -43,7 +43,7 @@ namespace Hlight.Debug.Hub
 
         private void Awake()
         {
-            backgroundButton.onClick.AddListener(Pop);
+            backgroundButton.onClick.AddListener(Close);
             if (backButton) backButton.onClick.AddListener(Pop);
         }
 
@@ -71,6 +71,14 @@ namespace Hlight.Debug.Hub
                 return;
             }
             Rebuild();
+        }
+
+        /// Bấm ra ngoài panel: đóng hẳn bất kể đang ở page nào, khác với Pop() (lùi từng bước qua nút back).
+        public void Close()
+        {
+            stack.Clear();
+            Clear();
+            gameObject.SetActive(false);
         }
 
         private void Rebuild()

@@ -85,11 +85,10 @@ namespace Hlight.Debug.Hub.Tests
 
         private void ClickBackground()
         {
-            var before = panel.StackDepth;
             panel.transform.Find("BG").GetComponent<Button>().onClick.Invoke();
 
-            // Awake có chạy hay không ở EditMode là tuỳ Unity; chỉ Pop tay khi cú bấm không có tác dụng.
-            if (panel.StackDepth == before) panel.Pop();
+            // Awake có chạy hay không ở EditMode là tuỳ Unity; chỉ Close tay khi cú bấm không có tác dụng.
+            if (panel.IsOpen) panel.Close();
         }
 
         [Test]
@@ -168,7 +167,7 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
-        public void Background_GoesBackOneLevel()
+        public void Background_ClosesPanel_RegardlessOfStackDepth()
         {
             panel.Show(CommandsPage.Root());
             Click("flowtest");
@@ -176,14 +175,8 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(1, content.GetComponentsInChildren<InputField>(false).Length, "should be on the params page");
 
             ClickBackground();
-            Assert.IsTrue(Rows().Any(r => LabelOf(r).StartsWith("flowtest.noarg")),
-                "should be back on the category page. Rows: " + string.Join(" | ", Rows().Select(LabelOf)));
 
-            ClickBackground();
-            Assert.IsTrue(Rows().Any(r => LabelOf(r).StartsWith("flowtest  ")), "should be back on the category list");
-
-            ClickBackground();
-            Assert.IsFalse(panel.IsOpen, "background on root page should close the panel");
+            Assert.IsFalse(panel.IsOpen, "background must close the panel even from a deep page");
         }
 
         [Test]

@@ -200,5 +200,17 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual("Enum", panel.transform.Find("Window/Header/Title").GetComponent<Text>().text,
                 "picking a value must return to the page that owns the field");
         }
+
+        [Test]
+        public void Close_FromChildPage_ClosesWholeStackImmediately()
+        {
+            panel.Show(new DebugPage("Root", p => p.AddButton("only-root", () => { })));
+            panel.Push(new DebugPage("Child", p => p.AddButton("a", () => { })));
+
+            panel.Close();
+
+            Assert.IsFalse(panel.IsOpen);
+            Assert.AreEqual(0, RowCount());
+        }
     }
 }
