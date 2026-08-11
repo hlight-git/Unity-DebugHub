@@ -28,6 +28,7 @@ namespace Hlight.Debug.Hub
         [SerializeField] private InputField authenticationInputField;
         [SerializeField] private MobileDeviceDebuggerAuthenticationTrigger mobileDeviceDebuggerAuthenticationTrigger;
         [SerializeField] private StandaloneDebuggerAuthenticationTrigger standaloneDebuggerAuthenticationTrigger;
+        [SerializeField] private CompanyNetworkAuthenticationBypass companyNetworkAuthenticationBypass;
 
         private ProximaFeature proxima;
 
@@ -101,6 +102,16 @@ namespace Hlight.Debug.Hub
             authenticationInputField.onEndEdit.AddListener(OnAuthenticationInputFieldSubmitted);
 
             cachedCurrentAuthenticationState = (AuthenticationState)PlayerPrefs.GetInt(AUTHENTICATION_KEY);
+
+            // EditMode test không tick player loop nên coroutine không bao giờ resume sau yield, và test
+            // không được bắn network request thật — chỉ start khi Play thật (giống DestroyRow bên DebugHubPanel).
+            if (Application.isPlaying && cachedCurrentAuthenticationState != AuthenticationState.Success)
+            {
+                StartCoroutine(companyNetworkAuthenticationBypass.Check(reachable =>
+                {
+                    if (reachable) CurrentAuthenticationState = AuthenticationState.Success;
+                }));
+            }
         }
 
         private void Update()
