@@ -171,12 +171,12 @@ namespace Hlight.Debug.Hub
         {
             return new DebugPage("Debug Hub", page =>
             {
+                page.AddNavigation("Commands", CommandsPage.Root());
+                page.AddNavigation("Help", HelpPage.Build());
                 page.AddToggle("Console", console.Enabled, value => console.Enabled = value);
                 page.AddToggle("Auto enable console", console.AutoEnable, value => console.AutoEnable = value);
                 if (proxima.Supported) page.AddToggle("Proxima", proxima.Enabled, value => proxima.Enabled = value);
                 page.AddToggle("Show entry button", entry.Activating, value => entry.Activating = value);
-                page.AddNavigation("Commands", CommandsPage.Root());
-                page.AddNavigation("Help", HelpPage.Build());
             });
         }
     }
