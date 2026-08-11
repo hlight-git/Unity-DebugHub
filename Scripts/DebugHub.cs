@@ -105,11 +105,13 @@ namespace Hlight.Debug.Hub
 
             // EditMode test không tick player loop nên coroutine không bao giờ resume sau yield, và test
             // không được bắn network request thật — chỉ start khi Play thật (giống DestroyRow bên DebugHubPanel).
-            if (Application.isPlaying && cachedCurrentAuthenticationState != AuthenticationState.Success)
+            if (Application.isPlaying && CurrentAuthenticationState != AuthenticationState.Success)
             {
                 StartCoroutine(companyNetworkAuthenticationBypass.Check(reachable =>
                 {
-                    if (reachable) CurrentAuthenticationState = AuthenticationState.Success;
+                    if (!reachable) return;
+                    if (CurrentAuthenticationState == AuthenticationState.Processing) AcceptAuthentication();
+                    else CurrentAuthenticationState = AuthenticationState.Success;
                 }));
             }
         }
@@ -168,6 +170,11 @@ namespace Hlight.Debug.Hub
                 authenticationInputField.gameObject.SetActive(false);
                 return;
             }
+            AcceptAuthentication();
+        }
+
+        private void AcceptAuthentication()
+        {
             entry.Activating = true;
             Destroy(authenticationInputField.gameObject);
             CurrentAuthenticationState = AuthenticationState.Success;

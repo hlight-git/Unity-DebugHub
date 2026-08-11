@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using System.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 
@@ -16,18 +17,20 @@ namespace Hlight.Debug.Hub
 
         public IEnumerator Check(Action<bool> onResult)
         {
-            if (checkUrls == null || checkUrls.Length == 0)
+            var urls = checkUrls?.Where(url => !string.IsNullOrWhiteSpace(url)).ToArray() ?? Array.Empty<string>();
+            if (urls.Length == 0)
             {
                 onResult(false);
                 yield break;
             }
 
-            var requests = new UnityWebRequest[checkUrls.Length];
-            var ops = new UnityWebRequestAsyncOperation[checkUrls.Length];
-            for (var i = 0; i < checkUrls.Length; i++)
+            var timeout = Mathf.Max(1, timeoutSeconds);
+            var requests = new UnityWebRequest[urls.Length];
+            var ops = new UnityWebRequestAsyncOperation[urls.Length];
+            for (var i = 0; i < urls.Length; i++)
             {
-                requests[i] = UnityWebRequest.Head(checkUrls[i]);
-                requests[i].timeout = timeoutSeconds;
+                requests[i] = UnityWebRequest.Head(urls[i]);
+                requests[i].timeout = timeout;
                 ops[i] = requests[i].SendWebRequest();
             }
 

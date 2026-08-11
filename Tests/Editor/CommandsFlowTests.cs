@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using IngameDebugConsole;
 using NUnit.Framework;
 using UnityEditor;
@@ -83,14 +84,6 @@ namespace Hlight.Debug.Hub.Tests
             button.onClick.Invoke();
         }
 
-        private void ClickBackground()
-        {
-            panel.transform.Find("BG").GetComponent<Button>().onClick.Invoke();
-
-            // Awake có chạy hay không ở EditMode là tuỳ Unity; chỉ Close tay khi cú bấm không có tác dụng.
-            if (panel.IsOpen) panel.Close();
-        }
-
         [Test]
         public void CommandsRoot_ListsCategories()
         {
@@ -169,12 +162,15 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void Background_ClosesPanel_RegardlessOfStackDepth()
         {
+            typeof(DebugHubPanel).GetMethod("Awake", BindingFlags.NonPublic | BindingFlags.Instance)
+                .Invoke(panel, null);
+
             panel.Show(CommandsPage.Root());
             Click("flowtest");
             Click("flowtest.takeint");
             Assert.AreEqual(1, content.GetComponentsInChildren<InputField>(false).Length, "should be on the params page");
 
-            ClickBackground();
+            panel.transform.Find("BG").GetComponent<Button>().onClick.Invoke();
 
             Assert.IsFalse(panel.IsOpen, "background must close the panel even from a deep page");
         }
