@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using UnityEngine;
 
 namespace Hlight.Debug.Hub.Tests
 {
@@ -68,6 +69,55 @@ namespace Hlight.Debug.Hub.Tests
         {
             Assert.AreEqual(DebugHubAction.None,
                 DebugHub.DecideAction(false, false, false, true, null));
+        }
+
+        private class UngatedStubTrigger : DebuggerAuthenticationTrigger
+        {
+            public override bool IsPerformedTriggerAction() => true;
+        }
+
+        private class RequiresAuthStubTrigger : DebuggerAuthenticationTrigger
+        {
+            public override bool RequiresAlreadyAuthenticated => true;
+            public override bool IsPerformedTriggerAction() => true;
+        }
+
+        /// Lắc chỉ được coi là trigger hợp lệ khi máy đã xác thực rồi — không phải một cách để mở
+        /// khoá lần đầu, chỉ để gọi lại entry đã ẩn cho tiện.
+        [Test]
+        public void AnyTriggerPerformed_SkipsAuthGatedTrigger_WhenNotAuthenticated()
+        {
+            var go = new GameObject();
+            try
+            {
+                var gated = go.AddComponent<RequiresAuthStubTrigger>();
+
+                Assert.IsFalse(DebugHub.AnyTriggerPerformed(new DebuggerAuthenticationTrigger[] { gated }, authenticated: false),
+                    "trigger yêu cầu đã xác thực không được fire khi chưa xác thực");
+                Assert.IsTrue(DebugHub.AnyTriggerPerformed(new DebuggerAuthenticationTrigger[] { gated }, authenticated: true),
+                    "trigger yêu cầu đã xác thực phải fire được khi đã xác thực");
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
+        }
+
+        [Test]
+        public void AnyTriggerPerformed_UngatedTrigger_FiresRegardlessOfAuthentication()
+        {
+            var go = new GameObject();
+            try
+            {
+                var ungated = go.AddComponent<UngatedStubTrigger>();
+
+                Assert.IsTrue(DebugHub.AnyTriggerPerformed(new DebuggerAuthenticationTrigger[] { ungated }, authenticated: false));
+                Assert.IsTrue(DebugHub.AnyTriggerPerformed(new DebuggerAuthenticationTrigger[] { ungated }, authenticated: true));
+            }
+            finally
+            {
+                Object.DestroyImmediate(go);
+            }
         }
     }
 }

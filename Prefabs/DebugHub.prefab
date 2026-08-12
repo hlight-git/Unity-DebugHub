@@ -2533,6 +2533,11 @@ GameObject:
   - component: {fileID: 5433206147468939136}
   - component: {fileID: 1393048876752705852}
   - component: {fileID: 1034409257211871641}
+  - component: {fileID: 8858921632344736950}
+  - component: {fileID: 9178012900531611001}
+  - component: {fileID: 1658178726349375965}
+  - component: {fileID: 7188442633568669273}
+  - component: {fileID: 4261131633176167364}
   m_Layer: 5
   m_Name: DebugHub
   m_TagString: Untagged
@@ -2644,14 +2649,15 @@ MonoBehaviour:
   panel: {fileID: 1922751164727360317}
   console: {fileID: 3471618365899173944}
   authenticationInputField: {fileID: 5174757713519839758}
-  mobileDeviceDebuggerAuthenticationTrigger:
-    shakeThreshold: 20
-    triggerSteps: 0100000004000000030000000200000001000000
-  standaloneDebuggerAuthenticationTrigger:
-    activeKey: 105
   networkReachabilityAuthenticationBypass:
     checkUrls: []
     timeoutSeconds: 3
+  triggers:
+  - {fileID: 9178012900531611001}
+  - {fileID: 8858921632344736950}
+  - {fileID: 1658178726349375965}
+  - {fileID: 7188442633568669273}
+  - {fileID: 4261131633176167364}
 --- !u!114 &1034409257211871641
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2665,6 +2671,71 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: IngameDebugConsole.Runtime::IngameDebugConsole.EventSystemHandler
   embeddedEventSystem: {fileID: 8360178772633069424}
+--- !u!114 &8858921632344736950
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7194699060072450601}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a01373637a5b414d9053a9625ccebb8c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Hlight.Debug.Hub::Hlight.Debug.Hub.CornerPatternDebuggerAuthenticationTrigger
+  triggerSteps: 0100000004000000030000000200000001000000
+--- !u!114 &9178012900531611001
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7194699060072450601}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d8ce14ba6da648d282760480bb1b93ab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Hlight.Debug.Hub::Hlight.Debug.Hub.KeyPressDebuggerAuthenticationTrigger
+  activeKey: 105
+--- !u!114 &1658178726349375965
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7194699060072450601}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 40a70f0af55ae05469e83405a41985fb, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Hlight.Debug.Hub::Hlight.Debug.Hub.ScribbleDebuggerAuthenticationTrigger
+  minDragDistance: 3500
+--- !u!114 &7188442633568669273
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7194699060072450601}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 524bb9bfb4d623b45816e37c39a56962, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Hlight.Debug.Hub::Hlight.Debug.Hub.ShakeDebuggerAuthenticationTrigger
+  shakeThreshold: 20
+--- !u!114 &4261131633176167364
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7194699060072450601}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d8ce14ba6da648d282760480bb1b93ab, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Hlight.Debug.Hub::Hlight.Debug.Hub.KeyPressDebuggerAuthenticationTrigger
+  activeKey: 4
 --- !u!1 &7762046051718295664
 GameObject:
   m_ObjectHideFlags: 0

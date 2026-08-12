@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 #if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
 using UnityEngine.InputSystem;
@@ -6,8 +5,7 @@ using UnityEngine.InputSystem;
 
 namespace Hlight.Debug.Hub
 {
-    [Serializable]
-    public class MobileDeviceDebuggerAuthenticationTrigger : IDebuggerAuthenticationTrigger
+    public class CornerPatternDebuggerAuthenticationTrigger : DebuggerAuthenticationTrigger
     {
         enum ScreenPosition
         {
@@ -27,7 +25,6 @@ namespace Hlight.Debug.Hub
             Ended,
         }
 
-        [SerializeField] private float shakeThreshold = 50f;
         [SerializeField] private ScreenPosition[] triggerSteps =
         {
             ScreenPosition.TopLeft,
@@ -73,13 +70,8 @@ namespace Hlight.Debug.Hub
             return ScreenPosition.Unknown;
         }
 
-        public bool IsPerformedTriggerAction()
+        public override bool IsPerformedTriggerAction()
         {
-            if (ShakeSqrMagnitude() >= shakeThreshold)
-            {
-                return true;
-            }
-
             if (!TryReadPrimaryTouch(out Vector2 position, out TouchState state))
             {
                 validatedStepCount = 0;
@@ -119,17 +111,6 @@ namespace Hlight.Debug.Hub
         }
 
 #if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
-        float ShakeSqrMagnitude()
-        {
-            var accelerometer = Accelerometer.current;
-            if (accelerometer == null) return 0f;
-
-            // Sensor của Input System mặc định bị disable, không bật thì đọc ra 0 mãi.
-            if (!accelerometer.enabled) InputSystem.EnableDevice(accelerometer);
-
-            return accelerometer.acceleration.ReadValue().sqrMagnitude;
-        }
-
         bool TryReadPrimaryTouch(out Vector2 position, out TouchState state)
         {
             position = default;
@@ -152,11 +133,6 @@ namespace Hlight.Debug.Hub
             return true;
         }
 #else
-        float ShakeSqrMagnitude()
-        {
-            return Input.acceleration.sqrMagnitude;
-        }
-
         bool TryReadPrimaryTouch(out Vector2 position, out TouchState state)
         {
             position = default;

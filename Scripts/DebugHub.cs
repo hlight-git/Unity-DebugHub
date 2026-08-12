@@ -26,11 +26,16 @@ namespace Hlight.Debug.Hub
         [SerializeField] private DebugHubPanel panel;
         [SerializeField] private ConsoleController console;
         [SerializeField] private InputField authenticationInputField;
-        [SerializeField] private MobileDeviceDebuggerAuthenticationTrigger mobileDeviceDebuggerAuthenticationTrigger;
-        [SerializeField] private StandaloneDebuggerAuthenticationTrigger standaloneDebuggerAuthenticationTrigger;
         [SerializeField] private NetworkReachabilityAuthenticationBypass networkReachabilityAuthenticationBypass;
 
         private ProximaFeature proxima;
+
+        /// Mọi trigger trong danh sách đều được hỏi mỗi frame, bất kể platform/editor window — mỗi
+        /// trigger tự biết đọc input của nó có sẵn hay không (không có touchscreen/keyboard thì tự
+        /// trả false), nên không cần chọn trước một cách theo nền tảng. Thêm cách trigger mới chỉ
+        /// cần viết class con của DebuggerAuthenticationTrigger rồi kéo component vào đây, không
+        /// cần sửa file này.
+        [SerializeField] private DebuggerAuthenticationTrigger[] triggers;
 
         /// Dev note hiện ở page Help.
         public static List<string> Notes { get; } = new();
@@ -67,21 +72,16 @@ namespace Hlight.Debug.Hub
             }
         }
 
-        private IDebuggerAuthenticationTrigger DebuggerAuthenticationTrigger
+        /// Trigger có RequiresAlreadyAuthenticated (ví dụ lắc) chỉ được hỏi khi đã xác thực rồi —
+        /// không phải một cách để mở khoá lần đầu, chỉ để gọi lại entry đã ẩn cho tiện.
+        internal static bool AnyTriggerPerformed(IEnumerable<DebuggerAuthenticationTrigger> triggers, bool authenticated)
         {
-            get
+            foreach (var trigger in triggers)
             {
-#if UNITY_EDITOR
-                var playingWindowTitle = UnityEditor.EditorWindow.focusedWindow?.titleContent.text;
-                if (playingWindowTitle == "Game") return standaloneDebuggerAuthenticationTrigger;
-                if (playingWindowTitle == "Simulator") return mobileDeviceDebuggerAuthenticationTrigger;
-#elif UNITY_ANDROID || UNITY_IOS || UNITY_IPHONE
-                return mobileDeviceDebuggerAuthenticationTrigger;
-#else
-                return standaloneDebuggerAuthenticationTrigger;
-#endif
-                return null;
+                if (trigger.RequiresAlreadyAuthenticated && !authenticated) continue;
+                if (trigger.IsPerformedTriggerAction()) return true;
             }
+            return false;
         }
 
         private void Awake()
@@ -118,12 +118,13 @@ namespace Hlight.Debug.Hub
 
         private void Update()
         {
+            var authenticated = CurrentAuthenticationState == AuthenticationState.Success;
             var action = DecideAction(
                 panel.IsOpen,
                 entry.Activating,
                 CurrentAuthenticationState == AuthenticationState.Processing,
-                CurrentAuthenticationState == AuthenticationState.Success,
-                () => DebuggerAuthenticationTrigger != null && DebuggerAuthenticationTrigger.IsPerformedTriggerAction());
+                authenticated,
+                () => AnyTriggerPerformed(triggers, authenticated));
 
             switch (action)
             {
