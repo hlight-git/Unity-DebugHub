@@ -4,8 +4,15 @@ using UnityEngine;
 
 namespace Hlight.Debug.Hub.Tests
 {
+    /// Base có method virtual để test override không bị đếm thành 2 overload giả (base + derived
+    /// đều "declare" một MethodInfo riêng cho cùng một slot).
+    public class ExecutorTargetBase
+    {
+        public virtual int Multiply(int x) => x;
+    }
+
     /// Target cho Executor: nằm ở top level để `get`/`set` gọi được bằng tên đầy đủ.
-    public class ExecutorTarget
+    public class ExecutorTarget : ExecutorTargetBase
     {
         public static int StaticNumber;
         public static string StaticText;
@@ -22,6 +29,7 @@ namespace Hlight.Debug.Hub.Tests
 
         public int Twice(int value) => value * 2;
         public int Hidden => hidden;
+        public override int Multiply(int x) => x * 3;
 
         public class Nested
         {
@@ -69,6 +77,16 @@ namespace Hlight.Debug.Hub.Tests
         public void Get_ReadsPrivateFieldThroughProperty()
         {
             Assert.AreEqual(0, Executor.Get(Assembly, TARGET, "Instance.hidden"));
+        }
+
+        /// Multiply là virtual trên ExecutorTargetBase, override trên ExecutorTarget: base và derived
+        /// đều "declare" một MethodInfo riêng cho cùng slot, nên nếu không lọc override ra thì
+        /// AddMethodsRecursive thấy "2 overload" giả và bắt buộc phải disambiguate bằng {index} dù
+        /// chỉ có một method thật để gọi.
+        [Test]
+        public void Get_CallsOverriddenMethod_WithoutAmbiguousOverloadError()
+        {
+            Assert.AreEqual(21, Executor.Get(Assembly, TARGET, "Instance.Multiply(7)"));
         }
 
         [Test]

@@ -217,7 +217,7 @@ namespace Hlight.Debug.Hub
                 throw new Exception($"Assembly not found!");
             }
 
-            if (typeName.Contains('<') && typeName.Contains('>')) // isGenericMethod
+            if (typeName.Contains('<') && typeName.Contains('>')) // isGenericType
             {
                 List<string> buffer = new();
                 DebugLogConsole.FetchArgumentsFromCommand(SubStringBetween(typeName, '<', '>'), buffer);

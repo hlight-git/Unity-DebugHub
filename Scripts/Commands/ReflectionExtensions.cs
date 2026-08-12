@@ -58,16 +58,30 @@ namespace Hlight.Debug.Hub
             propertyInfo.SetValue(source, value);
         }
 
+        /// Method/indexer virtual bị override thì base type và derived type đều "declare" một
+        /// MethodInfo riêng cho cùng một slot — GetBaseDefinition() trỏ về cùng khai báo gốc, dùng
+        /// để lọc bản ở base type ra, tránh báo "nhiều overload" giả cho một method chỉ bị override.
+        static bool IsOverriddenBy(MethodInfo candidate, IEnumerable<MethodInfo> alreadyCollected)
+        {
+            return candidate.IsVirtual && alreadyCollected.Any(m => m.IsVirtual && m.GetBaseDefinition().Equals(candidate.GetBaseDefinition()));
+        }
+
         public static void AddIndexersRecursive(this Type type, List<PropertyInfo> indexers, Func<PropertyInfo, bool> predicate, BindingFlags bindingFlags = ALL)
         {
-            indexers.AddRange(type.GetProperties(bindingFlags | BindingFlags.DeclaredOnly).Where(predicate));
+            var collectedAccessors = indexers.Select(i => i.GetMethod ?? i.SetMethod).Where(a => a != null).ToList();
+            foreach (var indexer in type.GetProperties(bindingFlags | BindingFlags.DeclaredOnly).Where(predicate))
+            {
+                var accessor = indexer.GetMethod ?? indexer.SetMethod;
+                if (accessor != null && IsOverriddenBy(accessor, collectedAccessors)) continue;
+                indexers.Add(indexer);
+            }
             if (type.BaseType != null)
                 AddIndexersRecursive(type.BaseType, indexers, predicate, bindingFlags);
         }
 
         public static void AddMethodsRecursive(this Type type, List<MethodInfo> methodInfos, Func<MethodInfo, bool> predicate, BindingFlags bindingFlags = ALL)
         {
-            methodInfos.AddRange(type.GetMethods(bindingFlags | BindingFlags.DeclaredOnly).Where(predicate));
+            methodInfos.AddRange(type.GetMethods(bindingFlags | BindingFlags.DeclaredOnly).Where(predicate).Where(m => !IsOverriddenBy(m, methodInfos)));
             if (type.BaseType != null)
                 AddMethodsRecursive(type.BaseType, methodInfos, predicate, bindingFlags);
         }
