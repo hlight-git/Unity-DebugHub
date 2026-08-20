@@ -40,6 +40,36 @@ namespace Hlight.Debug.Hub
         /// Dev note hiện ở page Help.
         public static List<string> Notes { get; } = new();
 
+        /// Ẩn/hiện nhanh cả hub từ bất kỳ đâu — cho code game gọi, và cho
+        /// <see cref="DismissMode.HideHub"/> dùng sau khi chạy command.
+        ///
+        /// Ẩn = đóng panel + ẩn entry; panel giữ stack nên gọi lại là về đúng page đang xem. Đường gọi
+        /// lại vẫn là trigger (lắc / gõ 4 góc) như khi tắt "Show entry button".
+        ///
+        /// Bật lại chỉ ăn khi đã xác thực: nếu không, gọi Visible = true từ code game là một đường vòng
+        /// qua password.
+        public static bool Visible
+        {
+            get => instance && instance.entry.Activating;
+            set
+            {
+                if (!instance) return;
+
+                if (value)
+                {
+                    if (instance.CurrentAuthenticationState != AuthenticationState.Success) return;
+                    instance.entry.Activating = true;
+                    return;
+                }
+
+                // Ẩn cả dòng kết quả: "ẩn hub" là để màn hình sạch (chụp ảnh level, xem UI game),
+                // chừa lại một dòng chữ nổi ở đáy thì vẫn dính vào ảnh.
+                instance.entry.Activating = false;
+                instance.panel.HideResult();
+                instance.panel.Close();
+            }
+        }
+
         /// Static giữ nguyên giữa các lần Play khi bật "Enter Play Mode without domain reload",
         /// không xoá thì note bị nhân đôi mỗi lần chạy.
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -99,6 +129,8 @@ namespace Hlight.Debug.Hub
             instance = this;
             proxima = new ProximaFeature(password);
             entry.Clicked += OpenRootPage;
+            // Kết quả dài bị cắt ở dòng nổi; toàn văn kèm stack trace nằm ở log window.
+            panel.ResultClicked += () => console.Enabled = true;
             authenticationInputField.onEndEdit.AddListener(OnAuthenticationInputFieldSubmitted);
 
             cachedCurrentAuthenticationState = (AuthenticationState)PlayerPrefs.GetInt(AUTHENTICATION_KEY);

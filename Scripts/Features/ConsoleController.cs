@@ -53,30 +53,60 @@ namespace Hlight.Debug.Hub
 
         private void Awake()
         {
-            DebugLogConsole.AddCommand<string>("prefs.get", "Log giá trị được lưu trong PlayerPrefs.", GetPlayerPrefsValue);
-            DebugLogConsole.AddCommand<string, string>("prefs.set.str", "Dùng tương tự PlayerPrefs.SetString().", SetPlayerPrefsValue);
-            DebugLogConsole.AddCommand<string, int>("prefs.set.int", "Dùng tương tự PlayerPrefs.SetInt().", SetPlayerPrefsValue);
-            DebugLogConsole.AddCommand<string, float>("prefs.set.float", "Dùng tương tự PlayerPrefs.SetFloat().", SetPlayerPrefsValue);
-            DebugLogConsole.AddCommand<float>("time.scale", "Set giá trị time scale.", SetTimeScale);
-            DebugLogConsole.AddCommand<float>("time.skip", "Tua nhanh với time scale là 100.", FastForward);
-            DebugLogConsole.AddCommand<float, float>("time.skip", "Tua nhanh với time scale là tự thiết lập.", FastForward);
-            DebugLogConsole.AddCommand<string, string>("get", "Log ra giá trị của một object hoặc một lời gọi phương thức tùy thuộc query. VD: get Class Instance.indexer[0].Method<$r1>(string, $r2)[0.1].", Get);
-            DebugLogConsole.AddCommand<string, string, string>("get", "Tương tự get<string, string> nhưng tìm type bằng tên Assembly.", Get);
-            DebugLogConsole.AddCommand<string, string, string>("set", "Set giá trị của một object, query giống get.", Set);
-            DebugLogConsole.AddCommand<string, string, string, string>("set", "Set giá trị của một object, query giống get, thêm param assemblyName.", Set);
-            DebugLogConsole.AddCommand("ans", "Log ra giá trị đã get trước đó.", GetAns);
-            DebugLogConsole.AddCommand<string>("reg.get", "Log ra giá trị đã lưu trong registry của debugger.", RegistryGet);
-            DebugLogConsole.AddCommand<string>("reg.set.ans", "Lưu giá trị trong ans vào trong registry của debugger.", RegistrySetAns);
-            DebugLogConsole.AddCommand<string, string, string>("reg.set", "Parse stringValue về type mong muốn và lưu vào trong registry của debugger.", RegistrySet);
-            DebugLogConsole.AddCommand<string, string, string, string>("reg.set", "Parse stringValue về type mong muốn và lưu vào trong registry của debugger.", RegistrySet);
-            DebugLogConsole.AddCommand<string, string>("reg.type", "Lưu type vào trong registry của debugger.", RegistrySetType);
-            DebugLogConsole.AddCommand<string, string, string>("reg.type", "Lưu type vào trong registry của debugger.", RegistrySetType);
-            #if MAX_SDK
-            DebugLogConsole.AddCommand("ad.max", "Show max debugger", ShowMaxDebugger);
-            #endif
-            #if USE_ADMOB
-            DebugLogConsole.AddCommand("ad.admob", "Show admob inspector", ShowAdMobDebugger);
-            #endif
+            // Command duy nhất còn đăng ký vào IDC: cầu để ô nhập lệnh của console vẫn chạy được
+            // command của hub sau khi hub thôi dùng registry của IDC. VD: hub "level.goto 5".
+            DebugLogConsole.AddCommand<string>("hub", "Chạy một command của Debug Hub, VD: hub \"level.goto 5\".",
+                line => DebugCommands.Execute(line));
+
+            // Đọc/ghi dữ liệu thì Stays(): kết quả hiện ở dòng kết quả, người ta còn tra tiếp chứ
+            // không phải chạy một lần rồi ra nhìn game.
+            DebugCommands.Add<string>(this, "prefs.get", "Log giá trị đang lưu trong PlayerPrefs.", GetPlayerPrefsValue)
+                .Stays();
+            DebugCommands.Add<string, string>(this, "prefs.set.str", "Ghi PlayerPrefs dạng string.", SetPlayerPrefsValue)
+                .Stays();
+            DebugCommands.Add<string, int>(this, "prefs.set.int", "Ghi PlayerPrefs dạng int.", SetPlayerPrefsValue)
+                .Stays();
+            DebugCommands.Add<string, float>(this, "prefs.set.float", "Ghi PlayerPrefs dạng float.", SetPlayerPrefsValue)
+                .Stays();
+
+            DebugCommands.AddValue(this, "time.scale", "Time scale hiện tại.", () => Time.timeScale, SetTimeScale);
+
+            // Các overload cũ chỉ tồn tại để đặt sẵn một tham số (speed = 100, assembly =
+            // Assembly-CSharp). Page nhập liệu prefill được nên gộp về một command, đỡ hai row trùng tên.
+            DebugCommands.Add<float, float>(this, "time.skip", "Tua nhanh sec giây với time scale speed.", FastForward)
+                .Defaults("1", "100");
+
+            // "inspect" thay cho get/set/reg trần ở gốc: cây page chỉ hiện tên lá nên một row tên
+            // "get" không nói được nó đọc cái gì. Description phải một câu, ví dụ query để ở dev note.
+            DebugCommands.Add<string, string, string>(this, "inspect.get",
+                    "Đọc giá trị của một object hoặc một lời gọi phương thức theo query.", Get)
+                .Defaults(DEFAULT_ASSEMBLY, string.Empty, string.Empty).Stays();
+            DebugCommands.Add<string, string, string, string>(this, "inspect.set",
+                    "Ghi giá trị vào một object, query giống inspect.get.", Set)
+                .Defaults(DEFAULT_ASSEMBLY, string.Empty, string.Empty, string.Empty).Stays();
+            DebugCommands.Add(this, "inspect.last", "Log lại giá trị của lần đọc gần nhất.", GetAns)
+                .Stays();
+
+            DebugHub.Notes.Add("query của inspect: inspect.get Assembly-CSharp Class Instance.indexer[0].Method<$r1>(string, $r2)[0.1]");
+
+            // Biến của debugger: đặt tên cho một giá trị/type rồi dùng lại trong query bằng $tên.
+            DebugCommands.Add<string>(this, "inspect.var.get", "Log giá trị đang gán cho một biến.", RegistryGet)
+                .Stays();
+            DebugCommands.Add<string>(this, "inspect.var.save", "Gán giá trị của lần đọc gần nhất cho một biến.", RegistrySetAns)
+                .Stays();
+            DebugCommands.Add<string, string, string, string>(this, "inspect.var.set",
+                    "Parse stringValue theo type rồi gán cho một biến.", RegistrySet)
+                .Defaults(string.Empty, DEFAULT_ASSEMBLY, string.Empty, string.Empty).Stays();
+            DebugCommands.Add<string, string, string>(this, "inspect.var.type", "Gán một type cho một biến.", RegistrySetType)
+                .Defaults(string.Empty, DEFAULT_ASSEMBLY, string.Empty).Stays();
+
+            // Debugger của SDK là UI riêng: hub còn hiện thì che mất, phải bấm được vào nó.
+#if MAX_SDK
+            DebugCommands.Add(this, "sdk.max", "Mở mediation debugger của MAX.", ShowMaxDebugger).HidesHub();
+#endif
+#if USE_ADMOB
+            DebugCommands.Add(this, "sdk.admob", "Mở ad inspector của AdMob.", ShowAdMobDebugger).HidesHub();
+#endif
         }
 
         #region Commands
@@ -121,12 +151,6 @@ namespace Hlight.Debug.Hub
             UnityEngine.Debug.Log("Current time scale: " + Time.timeScale);
         }
 
-        void FastForward(float sec)
-        {
-            FastForward(sec, 100);
-            UnityEngine.Debug.Log("Current time scale: " + Time.timeScale);
-        }
-
         Coroutine timeSkip;
         void FastForward(float sec, float speed)
         {
@@ -153,11 +177,6 @@ namespace Hlight.Debug.Hub
             }
         }
 
-        public void Get(string typeName, string query)
-        {
-            Get(DEFAULT_ASSEMBLY, typeName, query);
-        }
-
         public void Get(string assemblyName, string typeName, string query)
         {
             ans = ExecuteAndGet(assemblyName, typeName, query);
@@ -167,11 +186,6 @@ namespace Hlight.Debug.Hub
         public object ExecuteAndGet(string assemblyName, string typeName, string query)
         {
             return Executor.Get(AppDomain.CurrentDomain.Load(assemblyName), typeName, query);
-        }
-        
-        public void Set(string typeName, string query, string value)
-        {
-            Set(DEFAULT_ASSEMBLY, typeName, query, value);
         }
         
         public void Set(string assemblyName, string typeName, string query, string value)
@@ -196,21 +210,11 @@ namespace Hlight.Debug.Hub
             Executor.Bind(key, ans);
         }
 
-        void RegistrySet(string key, string typeName, string stringValue)
-        {
-            RegistrySet(key, DEFAULT_ASSEMBLY, typeName, stringValue);
-        }
-
         void RegistrySet(string key, string assemblyName, string typeName, string stringValue)
         {
             object parsedObj = Executor.ParseObject(stringValue, AppDomain.CurrentDomain.Load(assemblyName).GetType(typeName));
             Executor.Bind(key, parsedObj);
             UnityEngine.Debug.Log($"Registered: \"{key}\" - \"{parsedObj}\" (type: {parsedObj?.GetType()})");
-        }
-
-        void RegistrySetType(string key, string typeName)
-        {
-            RegistrySetType(key, DEFAULT_ASSEMBLY, typeName);
         }
 
         void RegistrySetType(string key, string assemblyName, string typeName)

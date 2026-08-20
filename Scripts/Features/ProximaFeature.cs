@@ -45,10 +45,12 @@ namespace Hlight.Debug.Hub
             }
         }
 
+        /// Chạy qua registry của hub, không phải của IDC: cheat không còn đăng ký vào IDC nên
+        /// DebugLogConsole.ExecuteCommand ở đây sẽ không thấy command nào của game.
         [Proxima.ProximaCommand("Custom", "exec")]
         public static void ExecuteCommandInDebugConsole(string command)
         {
-            IngameDebugConsole.DebugLogConsole.ExecuteCommand(command);
+            DebugCommands.Execute(command);
         }
 #else
         public bool Supported => false;

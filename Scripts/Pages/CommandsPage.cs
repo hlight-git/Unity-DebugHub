@@ -1,200 +1,298 @@
 using System;
 using System.Collections.Generic;
-using IngameDebugConsole;
-using UnityEngine.UI;
 
 namespace Hlight.Debug.Hub
 {
-    /// Page Commands: lấy thẳng command registry của IngameDebugConsole, chia theo category
-    /// (phần trước dấu '.' đầu tiên) nên cheat chỉ cần đăng ký một lần là dùng được cả console lẫn panel.
+    /// Page Commands: cây page dựng từ path của command trong storage của hub. Mỗi dấu '.' là một
+    /// tầng (prefs.set.int -> prefs › set › int) nên không còn khái niệm "category" đặc biệt, chỉ có
+    /// thư mục và lá; command không có dấu '.' nằm ngay ở tầng đầu.
+    ///
+    /// Page dựng từ **prefix**, không giữ sẵn danh sách command: panel giữ stack khi đóng nên page
+    /// sống rất lâu, giữ danh sách thì mở lại có thể dựng row cho command đã rụng (owner bị Destroy).
     public static class CommandsPage
     {
-        private const string DEFAULT_CATEGORY = "\uFFFFHub's built-in";
+        private const int DESCRIPTION_LIMIT = 90;
 
-        public static DebugPage Root() => new DebugPage("Commands", BuildRoot);
+        private static string query = string.Empty;
 
-        private static void BuildRoot(DebugHubPanel panel)
+        private const string BUILT_IN = "Built-in";
+
+        public static DebugPage Root() => Folder(Array.Empty<string>(), "Commands", false);
+
+        /// <paramref name="builtIn"/> chọn nửa nào của cây: command của game, hay command có sẵn của
+        /// package. Hai nửa không trộn vào nhau ở bất kỳ tầng nào.
+        internal static DebugPage Folder(string[] prefix, string title, bool builtIn)
         {
-            var groups = Group(DebugLogConsole.GetAllCommands());
-            if (groups.Count == 0)
+            return new DebugPage(title, panel => BuildFolder(panel, prefix, builtIn));
+        }
+
+        private static void BuildFolder(DebugHubPanel panel, string[] prefix, bool builtIn)
+        {
+            var folders = new SortedDictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var leaves = new List<DebugCommand>();
+            var builtInCount = 0;
+
+            foreach (var command in DebugCommands.All)
             {
-                panel.AddText("No command registered.");
+                if (command.IsBuiltIn != builtIn)
+                {
+                    if (command.IsBuiltIn) builtInCount++;
+                    continue;
+                }
+                if (!Contains(command.Segments, prefix)) continue;
+
+                if (command.Segments.Length == prefix.Length + 1)
+                {
+                    leaves.Add(command);
+                    continue;
+                }
+
+                var folder = command.Segments[prefix.Length];
+                folders.TryGetValue(folder, out var count);
+                folders[folder] = count + 1;
+            }
+
+            // Recent/Search dò cả hai nửa nên chỉ cần ở gốc của cây game.
+            if (prefix.Length == 0 && !builtIn)
+            {
+                var recent = DebugCommands.Recent;
+                if (recent.Count > 0) panel.AddShortcut("Recent", RecentPage(), recent.Count.ToString());
+                panel.AddShortcut("Search", SearchPage());
+            }
+
+            foreach (var folder in folders)
+            {
+                var name = folder.Key;
+                panel.AddNavigation(name, Folder(Concat(prefix, name), name, builtIn), null, folder.Value.ToString());
+            }
+
+            foreach (var leaf in leaves) AddLeaf(panel, leaf, leaves, false);
+
+            if (folders.Count == 0 && leaves.Count == 0) panel.AddText("No command registered.");
+
+            // Cuối cùng, sau cả leaf: đồ có sẵn của package không được chen vào giữa cheat của game.
+            if (prefix.Length == 0 && !builtIn && builtInCount > 0)
+            {
+                panel.AddShortcut(BUILT_IN, Folder(Array.Empty<string>(), BUILT_IN, true), builtInCount.ToString());
+            }
+        }
+
+        /// Một row cho một command, hình thái theo <see cref="DebugCommand.IsInstant"/> /
+        /// <see cref="DebugCommand.IsInline"/> / <see cref="DebugCommand.Page"/>.
+        /// <paramref name="fullPath"/> = true ở page Recent/Search, nơi chỉ có tên lá thì mất ngữ cảnh.
+        private static void AddLeaf(DebugHubPanel panel, DebugCommand command, IReadOnlyList<DebugCommand> siblings,
+            bool fullPath)
+        {
+            var label = LabelOf(command, siblings, fullPath);
+            var description = string.IsNullOrEmpty(command.Description) ? null : Shorten(command.Description);
+
+            if (command.Page != null)
+            {
+                panel.AddNavigation(label, new DebugPage(command.Path, command.Page), description);
                 return;
             }
 
-            foreach (var group in groups)
+            if (command.IsInstant)
             {
-                var category = group.Key;
-                var commands = group.Value;
-                panel.AddNavigation($"{category}  <color=#7A828C>{commands.Count}</color>", CategoryPage(category, commands));
+                panel.AddAction(label, () => ConfirmThenRun(panel, command, Array.Empty<string>()), description);
+                return;
             }
-        }
 
-        private static DebugPage CategoryPage(string category, List<ConsoleMethodInfo> commands)
-        {
-            return new DebugPage(category, panel =>
+            if (command.IsInline)
             {
-                foreach (var info in commands)
-                {
-                    var command = info;
-                    var label = LabelOf(command, commands);
-                    if (command.parameterTypes.Length == 0)
-                    {
-                        panel.AddAction(label, () => Run(command, Array.Empty<string>(), null));
-                        continue;
-                    }
-                    panel.AddNavigation(label, ParamsPage(command));
-                }
-            });
+                var parameter = command.Parameters[0];
+                panel.AddField(label, parameter.Type, DebugCommands.ToText(parameter.Current()), null,
+                    value => ConfirmThenRun(panel, command, new[] { value }), description);
+                return;
+            }
+
+            panel.AddNavigation(label, ParamsPage(command), description);
         }
 
-        /// Row chỉ hiện tên command. Overload cùng tên trong một category thì thêm số lượng tham số,
-        /// không thì hai row giống nhau y hệt và không biết bấm cái nào.
-        private static string LabelOf(ConsoleMethodInfo command, List<ConsoleMethodInfo> siblings)
+        /// Tên hiện trên row: mặc định là segment cuối. Overload trùng tên trong cùng một thư mục thì
+        /// thêm số tham số, không thì hai row giống nhau y hệt. Description do panel format.
+        internal static string LabelOf(DebugCommand command, IReadOnlyList<DebugCommand> siblings, bool fullPath)
         {
-            var duplicated = false;
+            var name = fullPath ? command.Path : command.Label;
+            return Duplicated(command, siblings) ? $"{name}  ({command.Parameters.Length} args)" : name;
+        }
+
+        private static bool Duplicated(DebugCommand command, IReadOnlyList<DebugCommand> siblings)
+        {
+            if (siblings == null) return false;
             foreach (var sibling in siblings)
             {
-                if (sibling == command || sibling.command != command.command) continue;
-                duplicated = true;
-                break;
+                if (sibling != command && string.Equals(sibling.Path, command.Path, StringComparison.OrdinalIgnoreCase))
+                    return true;
             }
-            return duplicated ? $"{command.command}  ({command.parameterTypes.Length} args)" : command.command;
+            return false;
         }
 
-        private static DebugPage ParamsPage(ConsoleMethodInfo command)
+        /// Description dài thì cắt ở khoảng trắng gần nhất — toàn văn nằm ở page Help.
+        internal static string Shorten(string description)
         {
-            // values nằm ngoài builder: page được build lại mỗi lần Push/Pop, để trong closure
-            // thì giá trị đã nhập bị reset khi quay lại từ page chọn giá trị.
-            var values = new string[command.parameterTypes.Length];
-            for (var i = 0; i < values.Length; i++)
-            {
-                values[i] = DefaultValueFor(command.parameterTypes[i]);
-            }
+            if (description.Length <= DESCRIPTION_LIMIT) return description;
 
-            return new DebugPage(HeaderOf(command), panel =>
+            var cut = description.LastIndexOf(' ', DESCRIPTION_LIMIT);
+            if (cut < DESCRIPTION_LIMIT / 2) cut = DESCRIPTION_LIMIT;
+            return description.Substring(0, cut) + "…";
+        }
+
+        /// Page nhập liệu cho command nhiều tham số. Giá trị nằm ở <see cref="DebugCommand.Args"/> chứ
+        /// không phải trong closure: page được dựng lại mỗi lần điều hướng (kể cả khi back từ page chọn
+        /// enum) nên để trong closure là mất cái vừa nhập, và giữ ở đây thì lần sau vào không phải gõ lại.
+        private static DebugPage ParamsPage(DebugCommand command)
+        {
+            return new DebugPage(command.Path, panel =>
             {
-                for (var i = 0; i < values.Length; i++)
+                if (command.Args == null || command.Args.Length != command.Parameters.Length)
+                    command.Args = DebugCommands.SeedArgs(command);
+                var values = command.Args;
+
+                if (!string.IsNullOrEmpty(command.Description)) panel.AddText(command.Description);
+
+                for (var i = 0; i < command.Parameters.Length; i++)
                 {
                     var index = i;
-                    panel.AddField(ParameterLabelOf(command, index), command.parameterTypes[index], values[index],
-                        value => values[index] = value);
+                    var parameter = command.Parameters[index];
+                    panel.AddField(parameter.Name, parameter.Type, values[index], value => values[index] = value);
                 }
 
-                var status = panel.AddText(string.Empty);
-                panel.AddAction("Run", () => Run(command, values, status));
+                panel.AddPrimary("Run", () => ConfirmThenRun(panel, command, values));
             });
         }
 
-        private static void Run(ConsoleMethodInfo command, string[] values, Text status)
+        private static void ConfirmThenRun(DebugHubPanel panel, DebugCommand command, string[] values)
         {
-            if (TryExecute(command, values, out var message))
+            if (!command.Confirm)
             {
-                if (status) status.gameObject.SetActive(false);
+                Run(panel, command, values);
                 return;
             }
 
-            if (status)
+            panel.Push(new DebugPage(command.Label, page =>
             {
-                status.text = message;
-                status.gameObject.SetActive(true);
-            }
-            UnityEngine.Debug.LogWarning(message);
+                page.AddText($"Xác nhận: <b>{DebugCommands.Signature(command, values)}</b>");
+                page.AddPrimary("Chạy", () =>
+                {
+                    page.Pop();
+                    Run(page, command, values);
+                });
+                page.AddButton("Huỷ", page.Pop);
+            }));
         }
 
-        /// Gọi thẳng MethodInfo thay vì DebugLogConsole.ExecuteCommand(string): đi qua string thì
-        /// overload cùng tên (time.skip, get, set) có thể bị chọn sai.
-        public static bool TryExecute(ConsoleMethodInfo command, string[] values, out string message)
+        private static void Run(DebugHubPanel panel, DebugCommand command, string[] values)
         {
-            var args = new object[command.parameterTypes.Length];
-            for (var i = 0; i < args.Length; i++)
-            {
-                var value = i < values.Length ? values[i] : string.Empty;
-                if (DebugLogConsole.ParseArgument(value, command.parameterTypes[i], out args[i])) continue;
+            var ok = DebugCommands.TryRun(command, values, out var message);
 
-                message = $"'{value}' is not a valid {DebugLogConsole.GetTypeReadableName(command.parameterTypes[i])} for {ParameterLabelOf(command, i)}";
-                return false;
-            }
+            // Lỗi thì luôn hiện. Còn lại chỉ hiện khi command là loại cần đọc kết quả và thật sự có
+            // in ra gì: "> view.fps true" hay log của luồng load level nổi giữa màn hình chỉ là rác.
+            if (!ok) panel.ShowResult($"{command.Path}: {message}", true);
+            else if (command.ShowsResult && !string.IsNullOrEmpty(message))
+                panel.ShowResult(Result(command, values, message), false);
+            else panel.HideResult();
 
-            UnityEngine.Debug.Log($"> {command.command} {string.Join(" ", values)}".TrimEnd());
-            try
-            {
-                var returned = command.method.Invoke(command.instance, args);
-                if (command.method.ReturnType != typeof(void)) UnityEngine.Debug.Log(returned);
-            }
-            catch (Exception exception)
-            {
-                var actual = exception.InnerException ?? exception;
-                UnityEngine.Debug.LogException(actual);
-                message = actual.Message;
-                return false;
-            }
+            if (!ok) return;
 
-            message = null;
+            switch (command.Dismiss)
+            {
+                case DismissMode.ClosePanel:
+                    panel.Close();
+                    break;
+
+                case DismissMode.HideHub:
+                    // Close() cả ở đây: không có DebugHub trong scene (panel dùng riêng, test) thì
+                    // Visible không làm gì và panel sẽ nằm nguyên đó.
+                    DebugHub.Visible = false;
+                    panel.Close();
+                    break;
+            }
+        }
+
+        /// Dòng lệnh vừa chạy + log mà nó in ra. Echo lại dòng lệnh để biết log đó của command nào.
+        private static string Result(DebugCommand command, string[] values, string message)
+        {
+            return $"{DebugCommands.Signature(command, values)}\n{message}";
+        }
+
+        #region Recent, Search
+
+        private static DebugPage RecentPage()
+        {
+            return new DebugPage("Recent", panel =>
+            {
+                var recent = DebugCommands.Recent;
+                if (recent.Count == 0)
+                {
+                    panel.AddText("Chưa chạy command nào.");
+                    return;
+                }
+                foreach (var command in recent) AddLeaf(panel, command, recent, true);
+            });
+        }
+
+        private static DebugPage SearchPage()
+        {
+            return new DebugPage("Search", panel =>
+            {
+                // Nút riêng chứ không tìm ngay lúc onEndEdit: chốt bằng field thì Push() sẽ destroy
+                // đúng cái InputField đang bắn event.
+                panel.AddField("Từ khoá", typeof(string), query, value => query = value);
+                panel.AddPrimary("Tìm", () => panel.Push(ResultsPage()));
+            });
+        }
+
+        private static DebugPage ResultsPage()
+        {
+            return new DebugPage($"\"{query}\"", panel =>
+            {
+                var matches = new List<DebugCommand>();
+                foreach (var command in DebugCommands.All)
+                {
+                    if (Matches(command, query)) matches.Add(command);
+                }
+
+                if (matches.Count == 0)
+                {
+                    panel.AddText("Không có command nào khớp.");
+                    return;
+                }
+                foreach (var command in matches) AddLeaf(panel, command, matches, true);
+            });
+        }
+
+        internal static bool Matches(DebugCommand command, string keyword)
+        {
+            if (string.IsNullOrEmpty(keyword)) return true;
+            if (command.Path.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            return !string.IsNullOrEmpty(command.Description) &&
+                   command.Description.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        #endregion
+
+        #region Path
+
+        /// Command nằm dưới prefix này (và còn ít nhất một segment nữa để hiện).
+        internal static bool Contains(string[] segments, string[] prefix)
+        {
+            if (segments.Length <= prefix.Length) return false;
+            for (var i = 0; i < prefix.Length; i++)
+            {
+                if (!string.Equals(segments[i], prefix[i], StringComparison.OrdinalIgnoreCase)) return false;
+            }
             return true;
         }
 
-        public static SortedDictionary<string, List<ConsoleMethodInfo>> Group(IEnumerable<ConsoleMethodInfo> commands)
+        private static string[] Concat(string[] prefix, string segment)
         {
-            var groups = new SortedDictionary<string, List<ConsoleMethodInfo>>(StringComparer.OrdinalIgnoreCase);
-            foreach (var command in commands)
-            {
-                if (!command.IsValid()) continue;
-
-                var category = CategoryOf(command);
-                if (!groups.TryGetValue(category, out var list))
-                {
-                    list = new List<ConsoleMethodInfo>();
-                    groups[category] = list;
-                }
-                list.Add(command);
-            }
-            return groups;
+            var next = new string[prefix.Length + 1];
+            Array.Copy(prefix, next, prefix.Length);
+            next[prefix.Length] = segment;
+            return next;
         }
 
-        public static string CategoryOf(ConsoleMethodInfo command)
-        {
-            if (command.method != null && command.method.DeclaringType != null && 
-                (command.method.DeclaringType.Assembly == typeof(CommandsPage).Assembly || command.method.DeclaringType.Assembly == typeof(DebugLogConsole).Assembly))
-            {
-                return DEFAULT_CATEGORY;
-            }
-            var dot = command.command.IndexOf('.');
-            return dot > 0 ? command.command.Substring(0, dot) : string.Empty;
-        }
-
-        /// Tên command, không kèm chữ ký tham số.
-        public static string HeaderOf(ConsoleMethodInfo command)
-        {
-            return command.command;
-        }
-
-        /// `parameters[i]` có dạng "[Int amount]" — và với tham số không phải cuối cùng thì IDC
-        /// còn để lại dấu cách ở cuối, nên phải trim whitespace TRƯỚC khi cắt ngoặc.
-        /// Chỉ lấy tên tham số; kiểu đã hiện ở placeholder của field.
-        public static string ParameterLabelOf(ConsoleMethodInfo command, int index)
-        {
-            if (command.parameters != null && index < command.parameters.Length)
-            {
-                var chunk = command.parameters[index].Trim().Trim('[', ']').Trim();
-                var space = chunk.LastIndexOf(' ');
-                var name = space >= 0 ? chunk.Substring(space + 1) : chunk;
-                if (name.Length > 0) return name;
-            }
-            return DebugLogConsole.GetTypeReadableName(command.parameterTypes[index]);
-        }
-
-        public static string DefaultValueFor(Type type)
-        {
-            if (type == typeof(bool)) return "false";
-            if (type.IsEnum)
-            {
-                var names = Enum.GetNames(type);
-                return names.Length > 0 ? names[0] : "0";
-            }
-            if (type == typeof(string) || type == typeof(char)) return string.Empty;
-            if (type.IsPrimitive || type == typeof(decimal)) return "0";
-            return string.Empty;
-        }
+        #endregion
     }
 }

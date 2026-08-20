@@ -31,6 +31,17 @@ namespace Hlight.Debug.Hub.Tests
             Object.DestroyImmediate(instance);
         }
 
+        /// Row đầu tiên đang bật — template nằm trong Content nhưng luôn inactive.
+        private RectTransform FirstRow()
+        {
+            foreach (Transform child in content)
+            {
+                if (child.gameObject.activeSelf) return (RectTransform)child;
+            }
+            Assert.Fail("no active row");
+            return null;
+        }
+
         private int RowCount()
         {
             var count = 0;
@@ -90,7 +101,7 @@ namespace Hlight.Debug.Hub.Tests
             panel.Show(new DebugPage("Short", p => p.AddButton("a", () => { })));
             var shortHeight = window.rect.height;
 
-            panel.Show(new DebugPage("Long", p =>
+            panel.ShowFromRoot(new DebugPage("Long", p =>
             {
                 for (var i = 0; i < 30; i++) p.AddButton("row " + i, () => { });
             }));
@@ -138,6 +149,34 @@ namespace Hlight.Debug.Hub.Tests
 
             Assert.Greater(window.rect.height, 1000f,
                 $"a 25-line help text must not collapse the window to {window.rect.height}");
+        }
+
+        /// Mọi template phải chừa lề như nhau: text block và field nằm trong layout group nên trước đó
+        /// chỉ có 4px, dán sát mép trong khi row thường có 28px.
+        [Test]
+        public void Rows_KeepContentInsetFromTheRowEdge()
+        {
+            panel.Show(new DebugPage("Padding", p =>
+            {
+                p.AddNavigation("nav", new DebugPage("x", _ => { }));
+                p.AddAction("action", () => { });
+                p.AddToggle("toggle", false, _ => { });
+                p.AddField("field", typeof(int), "0", _ => { });
+                p.AddText("một đoạn text dài để nó phải wrap trong page Help");
+            }));
+
+            var corners = new Vector3[4];
+            foreach (Transform child in content)
+            {
+                if (!child.gameObject.activeSelf) continue;
+
+                var row = (RectTransform)child;
+                var label = child.GetComponentInChildren<Text>(true).rectTransform;
+                label.GetWorldCorners(corners);
+                var inset = row.InverseTransformPoint(corners[0]).x - row.rect.xMin;
+
+                Assert.GreaterOrEqual(inset, 24f, $"row '{child.name}' chỉ chừa {inset} so với mép");
+            }
         }
 
         [Test]
@@ -202,7 +241,7 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
-        public void Close_FromChildPage_ClosesWholeStackImmediately()
+        public void Close_FromChildPage_ClosesPanelAndClearsRows()
         {
             panel.Show(new DebugPage("Root", p => p.AddButton("only-root", () => { })));
             panel.Push(new DebugPage("Child", p => p.AddButton("a", () => { })));
@@ -211,6 +250,39 @@ namespace Hlight.Debug.Hub.Tests
 
             Assert.IsFalse(panel.IsOpen);
             Assert.AreEqual(0, RowCount());
+        }
+
+        /// Đóng rồi mở lại là về đúng page đang xem, không phải bò lại từ root; Reset mới về root.
+        [Test]
+        public void Show_AfterClose_RestoresTheClosedPage()
+        {
+            var title = panel.transform.Find("Window/Header/Title").GetComponent<Text>();
+            var root = new DebugPage("Root", p => p.AddButton("only-root", () => { }));
+
+            panel.Show(root);
+            panel.Push(new DebugPage("Child", p => p.AddButton("a", () => { })));
+            panel.Close();
+
+            panel.Show(root);
+            Assert.AreEqual("Child", title.text);
+
+            panel.ShowFromRoot(root);
+            Assert.AreEqual("Root", title.text);
+        }
+
+        /// Row có description hai dòng phải cao thêm, không cắt chữ.
+        [Test]
+        public void Rows_GrowWhenLabelWraps()
+        {
+            panel.Show(new DebugPage("Rows", p => p.AddNavigation("goto", new DebugPage("x", _ => { }))));
+            var single = FirstRow().rect.height;
+
+            panel.ShowFromRoot(new DebugPage("Rows", p => p.AddNavigation(
+                "goto\n<size=38>Nhảy tới level bất kỳ, kể cả level chưa mở, và tải lại màn đang chơi ngay lập tức</size>",
+                new DebugPage("x", _ => { }))));
+            var wrapped = FirstRow().rect.height;
+
+            Assert.Greater(wrapped, single + 1f, $"row có description phải cao hơn: {single} -> {wrapped}");
         }
     }
 }

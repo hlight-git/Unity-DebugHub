@@ -37,9 +37,29 @@ namespace Hlight.Debug.Hub.Tests
         }
     }
 
+    /// Đúng hình dạng của Zego.IGlobalService&lt;T&gt;: static member khai ở interface cha, interface con
+    /// chỉ kế thừa. Interface không có BaseType nên nếu chỉ đi bằng BaseType thì query
+    /// "IExecutorService" + "Global.X" sẽ báo không tìm thấy member.
+    public interface IExecutorGlobal<out T> where T : class
+    {
+        public static T Global { get; set; }
+        public static bool Exist => Global != null;
+    }
+
+    public interface IExecutorService : IExecutorGlobal<IExecutorService>
+    {
+        int Number { get; }
+    }
+
+    public class ExecutorService : IExecutorService
+    {
+        public int Number => 42;
+    }
+
     public class ExecutorTests
     {
         private const string TARGET = "Hlight.Debug.Hub.Tests.ExecutorTarget";
+        private const string SERVICE = "Hlight.Debug.Hub.Tests.IExecutorService";
 
         private static System.Reflection.Assembly Assembly => typeof(ExecutorTests).Assembly;
 
@@ -56,6 +76,17 @@ namespace Hlight.Debug.Hub.Tests
         public void Get_ReadsStaticField()
         {
             Assert.AreEqual(1, Executor.Get(Assembly, TARGET, "StaticNumber"));
+        }
+
+        /// Query kiểu "Zego.IAdService" + "Global.IsRewardedVideoReady": Global là static property của
+        /// interface **cha**, và interface không có BaseType để đi lên.
+        [Test]
+        public void Get_ReadsStaticMemberInheritedFromBaseInterface()
+        {
+            IExecutorGlobal<IExecutorService>.Global = new ExecutorService();
+
+            Assert.AreEqual(42, Executor.Get(Assembly, SERVICE, "Global.Number"));
+            Assert.AreEqual(true, Executor.Get(Assembly, SERVICE, "Exist"));
         }
 
         [Test]

@@ -1,128 +1,102 @@
-using System;
-using System.Linq;
-using IngameDebugConsole;
+using System.Collections.Generic;
 using NUnit.Framework;
-using UnityEngine;
 
 namespace Hlight.Debug.Hub.Tests
 {
+    /// Phần dựng nhãn/cây của page Commands. Luồng bấm thật nằm ở CommandsFlowTests.
     public class CommandsPageTests
     {
-        private const string DESCRIPTION = "marker-desc";
+        private const string DESCRIPTION = "Nhảy tới level";
 
-        private static int lastInt;
-        private static LogType lastEnum;
-
-        private static void TakeInt(int value) => lastInt = value;
-        private static void TakeEnum(LogType value) => lastEnum = value;
-        private static void TakeTwo(string first, int second) { }
-
-        [SetUp]
-        public void SetUp()
-        {
-            DebugLogConsole.AddCommand<int>("hubtest.takeint", DESCRIPTION, TakeInt);
-            DebugLogConsole.AddCommand<LogType>("hubtest.takeenum", DESCRIPTION, TakeEnum);
-            DebugLogConsole.AddCommand<string, int>("hubtest.taketwo", DESCRIPTION, TakeTwo);
-            DebugLogConsole.AddCommand("hubtestnodot", DESCRIPTION, () => { });
-        }
+        private readonly List<DebugCommand> registered = new();
 
         [TearDown]
         public void TearDown()
         {
-            DebugLogConsole.RemoveCommand("hubtest.takeint");
-            DebugLogConsole.RemoveCommand("hubtest.takeenum");
-            DebugLogConsole.RemoveCommand("hubtest.taketwo");
-            DebugLogConsole.RemoveCommand("hubtestnodot");
+            foreach (var command in registered) DebugCommands.Remove(command);
+            registered.Clear();
         }
 
-        private static ConsoleMethodInfo Find(string command) =>
-            DebugLogConsole.GetAllCommands().First(c => c.command == command);
-
-        [Test]
-        public void CategoryOf_UsesPrefixBeforeFirstDot()
+        private DebugCommand Add(string path, string description = DESCRIPTION)
         {
-            Assert.AreEqual("hubtest", CommandsPage.CategoryOf(Find("hubtest.takeint")));
+            var command = DebugCommands.Add<int>(null, path, description, level => { }, "level");
+            registered.Add(command);
+            return command;
         }
 
+        /// Row chỉ hiện tên lá; đường dẫn nằm ở header, description do panel format thành dòng thứ hai.
         [Test]
-        public void CategoryOf_FallsBackToGeneralWhenNoDot()
+        public void LabelOf_IsLastSegmentOnly()
         {
-            Assert.AreEqual("General", CommandsPage.CategoryOf(Find("hubtestnodot")));
-        }
+            var command = Add("level.goto");
 
-        [Test]
-        public void Group_PutsBothCommandsOfSamePrefixTogether_KeysSorted()
-        {
-            var groups = CommandsPage.Group(DebugLogConsole.GetAllCommands());
+            var label = CommandsPage.LabelOf(command, null, false);
 
-            Assert.IsTrue(groups.ContainsKey("hubtest"));
-            Assert.AreEqual(3, groups["hubtest"].Count, "takeint + takeenum + taketwo");
-            CollectionAssert.IsOrdered(groups.Keys, StringComparer.OrdinalIgnoreCase);
+            Assert.AreEqual("goto", label);
+            Assert.IsFalse(label.Contains(DESCRIPTION), "description không nằm trong label: " + label);
         }
 
         [Test]
-        public void HeaderOf_IsCommandNameOnly_NoSignatureNoDescription()
+        public void LabelOf_FullPath_ForRecentAndSearchRows()
         {
-            var header = CommandsPage.HeaderOf(Find("hubtest.takeint"));
+            var command = Add("level.goto", string.Empty);
 
-            Assert.AreEqual("hubtest.takeint", header);
-            Assert.IsFalse(header.Contains("<b>"), header);
-            Assert.IsFalse(header.Contains(DESCRIPTION), header);
-            Assert.IsFalse(header.Contains("["), header);
+            Assert.AreEqual("level.goto", CommandsPage.LabelOf(command, null, true));
         }
 
-        /// IDC để lại dấu cách ở cuối `parameters[i]` với tham số không phải cuối cùng, nên trim
-        /// ngoặc trước khi trim whitespace sẽ sót dấu ']'.
+        /// Trùng path trong cùng một chỗ thì hai row giống nhau y hệt, phải kèm số tham số.
         [Test]
-        public void ParameterLabelOf_IsBareName_IncludingNonLastParameter()
+        public void LabelOf_DisambiguatesSamePathByParameterCount()
         {
-            var command = Find("hubtest.taketwo");
+            var one = Add("time.skip", string.Empty);
+            var two = DebugCommands.Add<float, float>(null, "time.skip", string.Empty, (sec, speed) => { });
+            registered.Add(two);
+            var siblings = new List<DebugCommand> { one, two };
 
-            Assert.AreEqual("first", CommandsPage.ParameterLabelOf(command, 0));
-            Assert.AreEqual("second", CommandsPage.ParameterLabelOf(command, 1));
-        }
-
-        [Test]
-        public void TryExecute_InvokesMethodWithParsedArgument()
-        {
-            lastInt = 0;
-
-            var ok = CommandsPage.TryExecute(Find("hubtest.takeint"), new[] { "42" }, out var message);
-
-            Assert.IsTrue(ok, message);
-            Assert.AreEqual(42, lastInt);
+            StringAssert.Contains("(1 args)", CommandsPage.LabelOf(one, siblings, false));
+            StringAssert.Contains("(2 args)", CommandsPage.LabelOf(two, siblings, false));
         }
 
         [Test]
-        public void TryExecute_ParsesEnumByName()
+        public void Shorten_CutsLongDescriptionAtWordBoundary()
         {
-            lastEnum = LogType.Log;
+            var description = new string('a', 40) + " " + new string('b', 80);
 
-            var ok = CommandsPage.TryExecute(Find("hubtest.takeenum"), new[] { nameof(LogType.Assert) }, out var message);
+            var shortened = CommandsPage.Shorten(description);
 
-            Assert.IsTrue(ok, message);
-            Assert.AreEqual(LogType.Assert, lastEnum);
+            Assert.Less(shortened.Length, description.Length);
+            StringAssert.EndsWith("…", shortened);
+            Assert.IsFalse(shortened.Contains(new string('b', 80)), "phần dư phải bị cắt");
         }
 
         [Test]
-        public void TryExecute_RejectsInvalidArgumentWithoutInvoking()
+        public void Shorten_LeavesShortDescriptionAlone()
         {
-            lastInt = -1;
-
-            var ok = CommandsPage.TryExecute(Find("hubtest.takeint"), new[] { "not-a-number" }, out var message);
-
-            Assert.IsFalse(ok);
-            Assert.AreEqual(-1, lastInt);
-            StringAssert.Contains("not-a-number", message);
+            Assert.AreEqual(DESCRIPTION, CommandsPage.Shorten(DESCRIPTION));
         }
 
         [Test]
-        public void DefaultValueFor_GivesParsableSeed()
+        public void Contains_MatchesOnlyCommandsUnderPrefixWithSegmentLeft()
         {
-            Assert.IsTrue(DebugLogConsole.ParseArgument(CommandsPage.DefaultValueFor(typeof(int)), typeof(int), out _));
-            Assert.IsTrue(DebugLogConsole.ParseArgument(CommandsPage.DefaultValueFor(typeof(float)), typeof(float), out _));
-            Assert.IsTrue(DebugLogConsole.ParseArgument(CommandsPage.DefaultValueFor(typeof(bool)), typeof(bool), out _));
-            Assert.IsTrue(DebugLogConsole.ParseArgument(CommandsPage.DefaultValueFor(typeof(LogType)), typeof(LogType), out _));
+            var deep = Add("prefs.set.int", string.Empty);
+            var shallow = Add("prefs", string.Empty);
+
+            Assert.IsTrue(CommandsPage.Contains(deep.Segments, new[] { "prefs" }));
+            Assert.IsTrue(CommandsPage.Contains(deep.Segments, new[] { "prefs", "set" }));
+            Assert.IsFalse(CommandsPage.Contains(deep.Segments, new[] { "time" }));
+            Assert.IsFalse(CommandsPage.Contains(shallow.Segments, new[] { "prefs" }),
+                "chính nó không nằm dưới nó");
+        }
+
+        [Test]
+        public void Matches_LooksAtPathAndDescription()
+        {
+            var command = Add("level.goto");
+
+            Assert.IsTrue(CommandsPage.Matches(command, "goto"));
+            Assert.IsTrue(CommandsPage.Matches(command, "LEVEL"));
+            Assert.IsTrue(CommandsPage.Matches(command, "Nhảy"));
+            Assert.IsFalse(CommandsPage.Matches(command, "booster"));
         }
     }
 }
