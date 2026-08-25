@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -25,7 +26,7 @@ namespace Hlight.Debug.Hub
         [SerializeField] private DebugHubEntry entry;
         [SerializeField] private DebugHubPanel panel;
         [SerializeField] private ConsoleController console;
-        [SerializeField] private InputField authenticationInputField;
+        [SerializeField] private TMP_InputField authenticationInputField;
         [SerializeField] private NetworkReachabilityAuthenticationBypass networkReachabilityAuthenticationBypass;
 
         private ProximaFeature proxima;
@@ -188,7 +189,7 @@ namespace Hlight.Debug.Hub
         }
 
         /// Focus ngay trong frame vừa SetActive thì bị InputField.OnEnable xoá -> đợi một frame.
-        private static IEnumerator FocusNextFrame(InputField field)
+        private static IEnumerator FocusNextFrame(TMP_InputField field)
         {
             yield return null;
             field.Select();

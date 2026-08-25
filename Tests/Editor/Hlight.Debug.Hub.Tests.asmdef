@@ -5,7 +5,8 @@
         "Hlight.Debug.Hub",
         "IngameDebugConsole.Runtime",
         "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner"
+        "UnityEditor.TestRunner",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [
         "Editor"

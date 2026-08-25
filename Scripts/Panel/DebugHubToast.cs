@@ -1,5 +1,6 @@
 using System;
 using System.Collections;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -14,7 +15,7 @@ namespace Hlight.Debug.Hub
     {
         private static readonly Color ErrorColor = new Color(1f, 0.42f, 0.42f);
 
-        [SerializeField] private Text label;
+        [SerializeField] private TMP_Text label;
         [SerializeField] private Button button;
         [Tooltip("Tự ẩn sau bao nhiêu giây.")]
         [SerializeField] private float duration = 6f;

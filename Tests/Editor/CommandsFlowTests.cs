@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
 using NUnit.Framework;
+using TMPro;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -81,11 +82,11 @@ namespace Hlight.Debug.Hub.Tests
 
         private static string LabelOf(GameObject row)
         {
-            var text = row.GetComponent<Text>();
+            var text = row.GetComponent<TMP_Text>();
             if (text != null) return text.text;
             var label = row.transform.Find("Label");
-            if (label != null) return label.GetComponent<Text>().text;
-            return row.GetComponentInChildren<Text>(true).text;
+            if (label != null) return label.GetComponent<TMP_Text>().text;
+            return row.GetComponentInChildren<TMP_Text>(true).text;
         }
 
         private void Click(string labelStartsWith)
@@ -194,7 +195,7 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual("flowtest", row.label.text, "tên thư mục không được kèm số");
             Assert.IsNotNull(row.detail, "row nav phải có cột chữ phụ");
             Assert.AreEqual("4", row.detail.text);
-            Assert.AreEqual(TextAnchor.MiddleRight, row.detail.alignment);
+            Assert.AreEqual(TextAlignmentOptions.Right, row.detail.alignment);
         }
 
         /// Switch tắt mà không có núm thì chỉ là một thanh trống, nhìn không ra là switch.
@@ -259,7 +260,7 @@ namespace Hlight.Debug.Hub.Tests
 
             Click("reads");
             Assert.IsTrue(toast.activeSelf);
-            StringAssert.Contains("coins: 120", toast.GetComponentInChildren<Text>(true).text);
+            StringAssert.Contains("coins: 120", toast.GetComponentInChildren<TMP_Text>(true).text);
 
             Click("changes");
             Assert.IsFalse(toast.activeSelf, "command đổi state thì im, dù trong lúc chạy có log");
@@ -277,7 +278,7 @@ namespace Hlight.Debug.Hub.Tests
             Click("boom");
 
             Assert.IsTrue(toast.activeSelf, "lỗi thì luôn phải hiện");
-            var text = toast.GetComponentInChildren<Text>(true).text;
+            var text = toast.GetComponentInChildren<TMP_Text>(true).text;
             StringAssert.Contains("flowtest.boom", text);
             StringAssert.Contains("bùm", text);
         }
@@ -289,8 +290,8 @@ namespace Hlight.Debug.Hub.Tests
             Click("flowtest");
             Click("takeint");
 
-            var input = content.GetComponentsInChildren<InputField>(false).Single();
-            Assert.AreEqual(InputField.ContentType.IntegerNumber, input.contentType);
+            var input = content.GetComponentsInChildren<TMP_InputField>(false).Single();
+            Assert.AreEqual(TMP_InputField.ContentType.IntegerNumber, input.contentType);
 
             input.text = "7";
             Click("Run");
@@ -326,12 +327,12 @@ namespace Hlight.Debug.Hub.Tests
             Click("flowtest");
             Click("mixed");
 
-            content.GetComponentsInChildren<InputField>(false).Single().text = "7";
+            content.GetComponentsInChildren<TMP_InputField>(false).Single().text = "7";
 
             Click("type:");
             Click(nameof(LogType.Exception));
 
-            Assert.AreEqual("7", content.GetComponentsInChildren<InputField>(false).Single().text,
+            Assert.AreEqual("7", content.GetComponentsInChildren<TMP_InputField>(false).Single().text,
                 "typed value must survive the trip to the choice page");
 
             Click("Run");
@@ -346,12 +347,12 @@ namespace Hlight.Debug.Hub.Tests
             panel.Show(CommandsPage.Root());
             Click("flowtest");
             Click("takeint");
-            content.GetComponentsInChildren<InputField>(false).Single().text = "13";
+            content.GetComponentsInChildren<TMP_InputField>(false).Single().text = "13";
             panel.Pop();
 
             Click("takeint");
 
-            Assert.AreEqual("13", content.GetComponentsInChildren<InputField>(false).Single().text);
+            Assert.AreEqual("13", content.GetComponentsInChildren<TMP_InputField>(false).Single().text);
         }
 
         [Test]
@@ -379,14 +380,14 @@ namespace Hlight.Debug.Hub.Tests
             panel.Show(CommandsPage.Root());
             Click("flowtest");
             Click("takeint");
-            var title = panel.transform.Find("Window/Header/Title").GetComponent<Text>();
+            var title = panel.transform.Find("Window/Header/Title").GetComponent<TMP_Text>();
             Assert.AreEqual("flowtest.takeint", title.text);
 
             panel.Close();
             panel.Show(CommandsPage.Root());
 
             Assert.AreEqual("flowtest.takeint", title.text, "mở lại phải ở đúng page cũ");
-            Assert.AreEqual(1, content.GetComponentsInChildren<InputField>(false).Length);
+            Assert.AreEqual(1, content.GetComponentsInChildren<TMP_InputField>(false).Length);
         }
 
         [Test]
@@ -398,7 +399,7 @@ namespace Hlight.Debug.Hub.Tests
 
             panel.ShowFromRoot(CommandsPage.Root());
 
-            Assert.AreEqual("Commands", panel.transform.Find("Window/Header/Title").GetComponent<Text>().text);
+            Assert.AreEqual("Commands", panel.transform.Find("Window/Header/Title").GetComponent<TMP_Text>().text);
         }
 
         [Test]
@@ -407,7 +408,7 @@ namespace Hlight.Debug.Hub.Tests
             panel.Show(CommandsPage.Root());
             Click("Search");
 
-            content.GetComponentsInChildren<InputField>(false).Single().text = "takeint";
+            content.GetComponentsInChildren<TMP_InputField>(false).Single().text = "takeint";
             Click("Tìm");
 
             var labels = Rows().Select(LabelOf).ToList();
@@ -442,7 +443,7 @@ namespace Hlight.Debug.Hub.Tests
             panel.Show(CommandsPage.Root());
             Click("flowtest");
             Click("takeint");
-            Assert.AreEqual(1, content.GetComponentsInChildren<InputField>(false).Length, "should be on the params page");
+            Assert.AreEqual(1, content.GetComponentsInChildren<TMP_InputField>(false).Length, "should be on the params page");
 
             panel.transform.Find("BG").GetComponent<Button>().onClick.Invoke();
 

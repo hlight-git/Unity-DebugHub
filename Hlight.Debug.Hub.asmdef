@@ -6,7 +6,8 @@
         "Unity.InputSystem",
         "Proxima",
         "MaxSdk.Scripts",
-        "GoogleMobileAds"
+        "GoogleMobileAds",
+        "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

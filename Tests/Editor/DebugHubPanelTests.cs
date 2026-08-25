@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using TMPro;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -171,7 +172,7 @@ namespace Hlight.Debug.Hub.Tests
                 if (!child.gameObject.activeSelf) continue;
 
                 var row = (RectTransform)child;
-                var label = child.GetComponentInChildren<Text>(true).rectTransform;
+                var label = child.GetComponentInChildren<TMP_Text>(true).rectTransform;
                 label.GetWorldCorners(corners);
                 var inset = row.InverseTransformPoint(corners[0]).x - row.rect.xMin;
 
@@ -193,10 +194,10 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(1, content.GetComponentsInChildren<Toggle>(false).Length, "bool should be a toggle");
             Assert.AreEqual(1, content.GetComponentsInChildren<Button>(false).Length, "enum should be a choice row (button)");
 
-            var inputs = content.GetComponentsInChildren<InputField>(false);
+            var inputs = content.GetComponentsInChildren<TMP_InputField>(false);
             Assert.AreEqual(2, inputs.Length, "int and Vector3 should both be input fields");
-            Assert.AreEqual(InputField.ContentType.IntegerNumber, inputs[0].contentType);
-            Assert.AreEqual(InputField.ContentType.Standard, inputs[1].contentType);
+            Assert.AreEqual(TMP_InputField.ContentType.IntegerNumber, inputs[0].contentType);
+            Assert.AreEqual(TMP_InputField.ContentType.Standard, inputs[1].contentType);
         }
 
         /// Scene không có EventSystem thì không gõ được password. Prefab phải tự mang một cái,
@@ -225,18 +226,18 @@ namespace Hlight.Debug.Hub.Tests
                 p.AddField("type", typeof(LogType), nameof(LogType.Log), v => captured = v)));
 
             var row = content.GetComponentsInChildren<Button>(false)[0];
-            StringAssert.Contains(nameof(LogType.Log), row.GetComponentInChildren<Text>(true).text);
+            StringAssert.Contains(nameof(LogType.Log), row.GetComponentInChildren<TMP_Text>(true).text);
 
             row.onClick.Invoke();
             var options = content.GetComponentsInChildren<Button>(false);
             Assert.AreEqual(System.Enum.GetNames(typeof(LogType)).Length, options.Length, "choice page must list every enum value");
 
-            var wanted = System.Array.Find(options, o => o.GetComponentInChildren<Text>(true).text.StartsWith(nameof(LogType.Exception)));
+            var wanted = System.Array.Find(options, o => o.GetComponentInChildren<TMP_Text>(true).text.StartsWith(nameof(LogType.Exception)));
             Assert.IsNotNull(wanted, "Exception option missing");
             wanted.onClick.Invoke();
 
             Assert.AreEqual(nameof(LogType.Exception), captured);
-            Assert.AreEqual("Enum", panel.transform.Find("Window/Header/Title").GetComponent<Text>().text,
+            Assert.AreEqual("Enum", panel.transform.Find("Window/Header/Title").GetComponent<TMP_Text>().text,
                 "picking a value must return to the page that owns the field");
         }
 
@@ -256,7 +257,7 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void Show_AfterClose_RestoresTheClosedPage()
         {
-            var title = panel.transform.Find("Window/Header/Title").GetComponent<Text>();
+            var title = panel.transform.Find("Window/Header/Title").GetComponent<TMP_Text>();
             var root = new DebugPage("Root", p => p.AddButton("only-root", () => { }));
 
             panel.Show(root);

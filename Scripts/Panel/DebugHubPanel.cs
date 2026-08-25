@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using IngameDebugConsole;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -22,11 +23,13 @@ namespace Hlight.Debug.Hub
         /// game, nên không dùng chung màu với chúng.
         private static readonly Color ShortcutColor = new Color(0.85f, 0.70f, 0.42f);
         private const string DescriptionColor = "#8A929C";
-        private const int DescriptionSize = 38;
+        /// TMP nhận size theo phần trăm, không như legacy Text — nên description tự co theo cỡ chữ
+        /// của từng template thay vì cứng 38.
+        private const string DescriptionSize = "80%";
 
         [SerializeField] private Button backgroundButton;
         [SerializeField] private Button backButton;
-        [SerializeField] private Text title;
+        [SerializeField] private TMP_Text title;
         [SerializeField] private ScrollRect scrollRect;
         [SerializeField] private RectTransform content;
         [SerializeField] private RectTransform window;
@@ -265,7 +268,7 @@ namespace Hlight.Debug.Hub
             row.knob.anchoredPosition = new Vector2(on ? track.rect.width - offset : offset, 0f);
         }
 
-        public Text AddText(string content)
+        public TMP_Text AddText(string content)
         {
             var row = Spawn(textTemplate, content);
             row.gameObject.SetActive(!string.IsNullOrEmpty(content));
@@ -334,7 +337,7 @@ namespace Hlight.Debug.Hub
             var input = row.input;
             input.contentType = ContentTypeFor(type);
             input.characterLimit = type == typeof(char) ? 1 : 0;
-            if (input.placeholder is Text placeholder) placeholder.text = DebugLogConsole.GetTypeReadableName(type);
+            if (input.placeholder is TMP_Text placeholder) placeholder.text = DebugLogConsole.GetTypeReadableName(type);
             input.SetTextWithoutNotify(current);
 
             var validColor = input.textComponent.color;
@@ -352,14 +355,14 @@ namespace Hlight.Debug.Hub
             }
         }
 
-        private static InputField.ContentType ContentTypeFor(Type type)
+        private static TMP_InputField.ContentType ContentTypeFor(Type type)
         {
             if (type == typeof(int) || type == typeof(uint) || type == typeof(long) || type == typeof(ulong) ||
                 type == typeof(short) || type == typeof(ushort) || type == typeof(byte) || type == typeof(sbyte))
-                return InputField.ContentType.IntegerNumber;
+                return TMP_InputField.ContentType.IntegerNumber;
             if (type == typeof(float) || type == typeof(double) || type == typeof(decimal))
-                return InputField.ContentType.DecimalNumber;
-            return InputField.ContentType.Standard;
+                return TMP_InputField.ContentType.DecimalNumber;
+            return TMP_InputField.ContentType.Standard;
         }
 
         /// Description là dòng thứ hai, nhỏ và xám, nằm trong cùng Text với tên. Panel format thay vì

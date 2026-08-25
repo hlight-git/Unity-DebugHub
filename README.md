@@ -104,6 +104,19 @@ Tách tham số bằng parser của IDC nên quote/ngoặc giống console. Đâ
 hub "level.goto 5"
 ```
 
+### Text: TextMeshPro
+
+Toàn bộ UI của package dùng TextMeshPro (`TMP_Text` / `TMP_InputField`), không còn `UnityEngine.UI.Text` / `InputField`.
+
+Không gán font: để trống thì TMP tự lấy `TMP_Settings.defaultFontAsset` lúc `Awake`. Package không mang font riêng và không tham chiếu asset nào trong `Assets/` — đúng nghĩa dùng font của game, và không thêm gì vào build.
+
+Điều kiện để cách này chạy đúng, kiểm trước khi đổi font default của project:
+
+- Font default phải ở chế độ **Dynamic** và TTF nguồn có dấu tiếng Việt cùng `›` `‹` (description trong hub là tiếng Việt, row nav nào cũng có chevron). Kiểm bằng `TryAddCharacters` trên TTF nguồn, **không** phải `HasCharacter` — cái sau chỉ nói atlas đã bake hay chưa.
+- Font phải bật **Multi Atlas Textures**. Atlas một texture có sức chứa hữu hạn (font của project này: 1024×1024, point size 90, padding 20 → ~105 glyph, và nó đã đầy đúng 105); Dynamic mà atlas đầy thì TMP **âm thầm thay ký tự bằng dấu cách**, không báo lỗi gì ngoài một warning. Bật cờ này thì atlas phụ được sinh lúc runtime nên không vào build, và không phải bake lại nên point size/padding giữ nguyên — mấy material outline/underlay dựa trên padding không bị ảnh hưởng.
+
+Khác biệt markup cần biết khi viết description: TMP nhận `<size=80%>` (phần trăm), legacy Text thì không — nên cỡ chữ description co theo từng template thay vì cứng một số px.
+
 ## Panel
 
 Cả hub là **một panel duy nhất** điều hướng theo stack. Bấm lớp background phía sau = đóng panel (bất kể đang ở page nào); nút `‹` ở header = lùi một tầng.
@@ -172,38 +185,6 @@ Tự thêm page riêng bằng `DebugPage` + các hàm trên của `DebugHubPanel
 
 Dev note ở page Help: thêm vào `DebugHub.Notes`.
 
-## Đổi ở đợt refactor command
-
-- Command của hub có storage riêng (`DebugCommands` / `DebugCommand`), **không** đăng ký vào IngameDebugConsole nữa. IDC còn lại: log window + parser giá trị + đúng một command bridge `hub "<dòng lệnh>"`.
-- Bỏ `[ConsoleMethod]`, `AddCommandInstance`, `AddCommandStatic`: đăng ký bằng delegate, sai tên là lỗi compile.
-- Path tách theo mọi dấu `.` thành cây page; không còn category `General` hay nhóm "Hub's built-in".
-- Thêm: description hiện trong row, dòng kết quả, `DismissMode`, `Confirm`, `Recent`, `Search`, `Args` (default + nhớ giá trị đã nhập), `Owner` (tự rụng khi Destroy), `DebugHub.Visible`, `DebugCommands.Execute`.
-- Command của package dồn vào menu `Built-in` ở cuối page Commands (phân loại theo owner), dòng kết quả chỉ hiện khi command có in log hoặc khi lỗi.
-- Row: `AddPrimary` cho hành động chính (nền accent), `AddAction` đổi thành row tối + tên accent, số lượng command tách sang cột căn phải, switch có núm, header có hairline, row `AddButton` căn trái.
-- `ConsoleController`: các overload chỉ để đặt sẵn một tham số (`get`/`set`/`reg.set`/`reg.type`/`time.skip`) gộp về một command, tham số đó thành giá trị prefill.
-- Đổi path cho tên lá tự nói được nghĩa: `get`/`set`/`ans` → `inspect.get`/`inspect.set`/`inspect.last`, `reg.*` → `inspect.var.*`, `ad.*` → `sdk.*`. Phía game: `ui.toggle` → `view.ui`, `debug.fps` → `view.fps`, `debug.tracking` → `analytics.tracking`, `debug.sdk` → `sdk.zego`, `debug.screenshots` → `level.screenshots`, `economy.setcoin` → `economy.coin` (dạng value, hiện luôn số xu đang có), `economy.addbooster` → `economy.booster`.
-- Proxima `exec` chạy qua `DebugCommands.Execute` thay vì `DebugLogConsole.ExecuteCommand`.
-
-## Đổi so với `com.hlight.ingame-debugger`
-
-- Package/namespace: `com.hlight.debug-hub` / `Hlight.Debug.Hub`, version về `1.0.0`.
-- IngameDebugConsole không còn nhúng, thành submodule ở `ThirdParty/`.
-- **Bỏ chức năng Debug Objects** (`DebugObject`, `RegisterDebugObject`, `UnregisterDebugObject`).
-- UI dựng lại theo page stack; `ADebugOperation` và các `Show*` component không còn.
-- Key PlayerPrefs của auth đổi thành `DebugHub.AuthenticationState` → phải nhập password lại một lần.
-
 ## Test
 
 Cửa sổ Test Runner (EditMode), hoặc menu `Tools/Hlight/Run Debug Hub Tests` để ghi kết quả ra `Temp/debug-hub-tests.txt`.
-
-## TODO của maintainer
-
-Repo remote chưa được tạo. Sau khi tạo, chạy:
-
-```bash
-cd Packages/com.hlight.debug-hub
-git remote add origin <url>
-git push -u origin master
-cd ../..
-git submodule add <url> Packages/com.hlight.debug-hub
-```
