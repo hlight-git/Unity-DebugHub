@@ -92,6 +92,15 @@ namespace Hlight.Debug.Hub
         {
             text = null;
             if (value is Object) return false;                 // reference Unity: tên không phải định danh
+
+            // null reference types round-trip as "null"
+            var nullable = !declared.IsValueType;
+            if (value == null && nullable)
+            {
+                text = "null";
+                return true;
+            }
+
             if (value != null && !CanParse(value.GetType()) && !CanParse(declared)) return false;
             if (ElementTypeOf(declared) != null && typeof(Object).IsAssignableFrom(ElementTypeOf(declared))) return false;
 
@@ -125,7 +134,7 @@ namespace Hlight.Debug.Hub
                 return false;
             }
 
-            if (allowVars && text.StartsWith("$"))
+            if (allowVars && !string.IsNullOrEmpty(text) && text.StartsWith("$"))
             {
                 error = "Biến $ chưa có — Vars làm ở Task 16.";
                 return false;
@@ -153,6 +162,7 @@ namespace Hlight.Debug.Hub
         /// Giá trị khởi tạo parse được, để mở page nhập liệu ra là bấm Run được luôn.
         public static string DefaultValueFor(Type type)
         {
+            if (type == null) return string.Empty;
             if (type == typeof(bool)) return "false";
             if (type.IsEnum)
             {
@@ -160,8 +170,11 @@ namespace Hlight.Debug.Hub
                 return names.Length > 0 ? names[0] : "0";
             }
             if (type == typeof(string) || type == typeof(char)) return string.Empty;
-            if (PartsOf(Activator.CreateInstance(type is { IsValueType: true } ? type : typeof(int))) != null)
+
+            // Check if type is vector-like (has multi-component representation)
+            if (PartsOf(Activator.CreateInstance(type)) != null)
                 return ToText(Activator.CreateInstance(type));
+
             if (type.IsPrimitive || type == typeof(decimal)) return "0";
             return string.Empty;
         }

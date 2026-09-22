@@ -101,6 +101,56 @@ namespace Hlight.Debug.Hub.Tests
             StringAssert.Contains("Integer", error);
         }
 
+        [Test]
+        public void TryToArgument_AndTryParse_RoundTripNull_ForReferenceTypes()
+        {
+            // null GameObject should round-trip as "null"
+            Assert.IsTrue(DebugValues.TryToArgument(null, typeof(GameObject), out var argText));
+            Assert.AreEqual("null", argText);
+
+            Assert.IsTrue(DebugValues.TryParse(argText, typeof(GameObject), out var parsed, out _));
+            Assert.IsNull(parsed);
+        }
+
+        [Test]
+        public void DefaultValueFor_BoolReturnsLiteralFalse()
+        {
+            Assert.AreEqual("false", DebugValues.DefaultValueFor(typeof(bool)));
+        }
+
+        [Test]
+        public void DefaultValueFor_EnumReturnsFirstMemberName()
+        {
+            var defaultEnum = DebugValues.DefaultValueFor(typeof(Flavor));
+            Assert.AreEqual("Sweet", defaultEnum);
+        }
+
+        [Test]
+        public void DefaultValueFor_StringAndCharReturnEmpty()
+        {
+            Assert.AreEqual(string.Empty, DebugValues.DefaultValueFor(typeof(string)));
+            Assert.AreEqual(string.Empty, DebugValues.DefaultValueFor(typeof(char)));
+        }
+
+        [Test]
+        public void DefaultValueFor_NumericPrimitivesReturnZero()
+        {
+            Assert.AreEqual("0", DebugValues.DefaultValueFor(typeof(int)));
+            Assert.AreEqual("0", DebugValues.DefaultValueFor(typeof(float)));
+            Assert.AreEqual("0", DebugValues.DefaultValueFor(typeof(double)));
+            Assert.AreEqual("0", DebugValues.DefaultValueFor(typeof(decimal)));
+        }
+
+        [Test]
+        public void DefaultValueFor_VectorTypesRoundTripThroughParser()
+        {
+            var defaultVec3 = DebugValues.DefaultValueFor(typeof(Vector3));
+            Assert.IsTrue(DebugValues.TryParse(defaultVec3, typeof(Vector3), out var parsed, out var error),
+                $"Vector3 default '{defaultVec3}' failed to parse: {error}");
+            Assert.IsNotNull(parsed);
+            Assert.IsInstanceOf<Vector3>(parsed);
+        }
+
         private static void AssertRoundTrip(object value, Type type)
         {
             var text = DebugValues.ToText(value);
