@@ -42,8 +42,8 @@ namespace Hlight.Debug.Hub
             foreach (var leaf in leaves)
             {
                 var entry = leaf;
-                entry.Node.Label = LabelOf(entry, leaves, false);
-                NodeRenderer.Render(panel, entry.Node, (node, values) => Dispatch(panel, entry, node, values));
+                NodeRenderer.Render(panel, entry.Node, (node, values) => Dispatch(panel, entry, node, values),
+                    LabelOf(entry, leaves, false));
             }
 
             if (folders.Count == 0 && leaves.Count == 0) panel.AddText("No command registered.");
@@ -63,8 +63,11 @@ namespace Hlight.Debug.Hub
             foreach (var match in matches)
             {
                 var entry = match;
-                entry.Node.Label = entry.Path;      // full path: tên lá mất ngữ cảnh ở trang kết quả
-                NodeRenderer.Render(panel, entry.Node, (node, values) => Dispatch(panel, entry, node, values));
+                // Full path qua tham số label của Render, KHÔNG ghi vào entry.Node.Label: node đó
+                // còn sống ở ParamsPage/confirm-page kế tiếp (title = node.Label) — ghi đè ở đây sẽ
+                // rò rỉ full path vào tiêu đề trang sau, mất luôn tên lá.
+                NodeRenderer.Render(panel, entry.Node, (node, values) => Dispatch(panel, entry, node, values),
+                    entry.Path);
             }
         }
 

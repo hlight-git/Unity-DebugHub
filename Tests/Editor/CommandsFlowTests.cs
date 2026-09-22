@@ -427,5 +427,38 @@ namespace Hlight.Debug.Hub.Tests
 
             Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("1 args")));
         }
+
+        /// Regression: BuildFolder/SearchAll từng ghi thẳng vào entry.Node.Label để hiện full path /
+        /// nhãn kèm (N args) trên row — nhưng entry.Node là object sống, ParamsPage.For và trang xác
+        /// nhận của Run đều lấy title từ chính node.Label đó. Ghi đè ở đây thì mở tiếp vào trang sau
+        /// sẽ thấy full path (hoặc "(N args)") rò vào tiêu đề, dù trang đó chỉ cần tên lá.
+        [Test]
+        public void SearchResult_OpensParamsPage_WithLeafTitle_NotFullPath()
+        {
+            Track(DebugHub.Add<int>(null, "search.deep.thing", "d", _ => { }));
+            panel.ShowFromRoot(CommandsPage.Root());
+            panel.Query = "deep";
+
+            TestPanel.ClickRowContaining(panel, "search.deep.thing");
+
+            var title = panel.transform.Find("Window/Header/Title").GetComponent<TMP_Text>();
+            Assert.AreEqual("thing", title.text,
+                "mở từ kết quả search không được để full path rò vào tiêu đề trang sau");
+        }
+
+        [Test]
+        public void DuplicateArityRow_OpensParamsPage_WithoutRowLabelLeakingIntoTitle()
+        {
+            Track(DebugHub.Add(null, "dup.y", "d", () => { }));
+            Track(DebugHub.Add<int>(null, "dup.y", "d", _ => { }));
+            panel.ShowFromRoot(CommandsPage.Root());
+            TestPanel.ClickRowContaining(panel, "dup");
+
+            TestPanel.ClickRowContaining(panel, "1 args");
+
+            var title = panel.transform.Find("Window/Header/Title").GetComponent<TMP_Text>();
+            Assert.AreEqual("y", title.text,
+                "nhãn '(1 args)' chỉ ở trên row, không được rò vào tiêu đề trang params");
+        }
     }
 }
