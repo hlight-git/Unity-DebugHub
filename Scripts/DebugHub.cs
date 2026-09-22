@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using Object = UnityEngine.Object;
 
 namespace Hlight.Debug.Hub
 {
@@ -231,5 +232,119 @@ namespace Hlight.Debug.Hub
                 page.AddToggle("Show entry button", entry.Activating, value => entry.Activating = value);
             });
         }
+
+        #region API
+
+        public static ActionNode Add(Object owner, string path, string description, Action run)
+        {
+            return DebugRegistry.Register(owner, path,
+                new ActionNode { Description = description, Invoke = _ => run(), Dismiss = DismissMode.ClosePanel });
+        }
+
+        public static ActionNode Add<T1>(Object owner, string path, string description, Action<T1> run, string name = null)
+        {
+            return DebugRegistry.Register(owner, path, new ActionNode
+            {
+                Description = description,
+                Parameters = new[] { Parameter(run, 0, typeof(T1), name) },
+                Invoke = args => run((T1)args[0]),
+                Dismiss = DismissMode.ClosePanel,
+            });
+        }
+
+        public static ActionNode Add<T1, T2>(Object owner, string path, string description, Action<T1, T2> run,
+            string name1 = null, string name2 = null)
+        {
+            return DebugRegistry.Register(owner, path, new ActionNode
+            {
+                Description = description,
+                Parameters = new[]
+                {
+                    Parameter(run, 0, typeof(T1), name1),
+                    Parameter(run, 1, typeof(T2), name2),
+                },
+                Invoke = args => run((T1)args[0], (T2)args[1]),
+                Dismiss = DismissMode.ClosePanel,
+            });
+        }
+
+        public static ActionNode Add<T1, T2, T3>(Object owner, string path, string description, Action<T1, T2, T3> run,
+            string name1 = null, string name2 = null, string name3 = null)
+        {
+            return DebugRegistry.Register(owner, path, new ActionNode
+            {
+                Description = description,
+                Parameters = new[]
+                {
+                    Parameter(run, 0, typeof(T1), name1),
+                    Parameter(run, 1, typeof(T2), name2),
+                    Parameter(run, 2, typeof(T3), name3),
+                },
+                Invoke = args => run((T1)args[0], (T2)args[1], (T3)args[2]),
+                Dismiss = DismissMode.ClosePanel,
+            });
+        }
+
+        public static ActionNode Add<T1, T2, T3, T4>(Object owner, string path, string description,
+            Action<T1, T2, T3, T4> run, string name1 = null, string name2 = null, string name3 = null, string name4 = null)
+        {
+            return DebugRegistry.Register(owner, path, new ActionNode
+            {
+                Description = description,
+                Parameters = new[]
+                {
+                    Parameter(run, 0, typeof(T1), name1),
+                    Parameter(run, 1, typeof(T2), name2),
+                    Parameter(run, 2, typeof(T3), name3),
+                    Parameter(run, 3, typeof(T4), name4),
+                },
+                Invoke = args => run((T1)args[0], (T2)args[1], (T3)args[2], (T4)args[3]),
+                Dismiss = DismissMode.ClosePanel,
+            });
+        }
+
+        public static ValueNode AddValue<T>(Object owner, string path, string description,
+            Func<T> get, Action<T> set, string name = null)
+        {
+            return DebugRegistry.Register(owner, path, new ValueNode
+            {
+                Description = description,
+                Declared = typeof(T),
+                Get = () => get(),
+                Set = set == null ? null : v => set((T)v),
+                Dismiss = DismissMode.Stay,
+            });
+        }
+
+        public static FolderNode AddFolder(Object owner, string path, string description,
+            Func<IEnumerable<DebugNode>> children, bool live = false)
+        {
+            return DebugRegistry.Register(owner, path,
+                new FolderNode { Description = description, Children = children, Live = live });
+        }
+
+        public static void Remove(DebugNode node) => DebugRegistry.Remove(node);
+
+        public static bool Execute(string line, out string message) => DebugRegistry.Execute(line, out message);
+
+        public static bool Execute(string line)
+        {
+            var ok = Execute(line, out var message);
+            if (!ok) UnityEngine.Debug.LogWarning(message);
+            return ok;
+        }
+
+        /// Tên tham số lấy từ chính delegate nên chỗ đăng ký không phải gõ lại tên.
+        private static DebugParameter Parameter(Delegate run, int index, Type type, string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                var parameters = run.Method.GetParameters();
+                name = index < parameters.Length ? parameters[index].Name : type.Name;
+            }
+            return new DebugParameter(name, type);
+        }
+
+        #endregion
     }
 }

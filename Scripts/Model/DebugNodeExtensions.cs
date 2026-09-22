@@ -37,5 +37,13 @@ namespace Hlight.Debug.Hub
             node.showsResult = false;
             return node;
         }
+
+        /// Giá trị mặc định của page nhập liệu. Chỉ seed khi chưa có gì — không ghi đè cái người
+        /// dùng vừa gõ, kể cả khi node được đăng ký lại.
+        public static T Defaults<T>(this T node, params string[] args) where T : DebugNode
+        {
+            if (!DebugRegistry.HasArgs(node)) DebugRegistry.StoreArgs(node, args);
+            return node;
+        }
     }
 }
