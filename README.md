@@ -1,6 +1,6 @@
 # Hlight Debug Hub
 
-In-game debug hub: IngameDebugConsole + cheat commands theo cây path + diagnostics, tất cả sau một password gate.
+In-game debug hub: IngameDebugConsole + cheat command theo cây path + hệ inspect bằng reflection, tất cả sau một password gate.
 
 ## Cài đặt
 
@@ -30,60 +30,98 @@ Field `networkReachabilityAuthenticationBypass` trên component `DebugHub` (mả
 
 **Trước khi điền `checkUrls`:** target phải thật sự bị chặn ở tầng mạng (firewall/security group theo IP nguồn) với bất kỳ ai ngoài mạng đó — domain/IP public không tự động có nghĩa là "không ai vào được", vì `HEAD` request coi cả trang redirect-sang-login là thành công. Nếu target không bị chặn đúng cách, bất kỳ ai có internet cũng được coi là đã xác thực, vĩnh viễn (state lưu qua cùng `PlayerPrefs` với password).
 
-## Command
+## Node
 
-Command của hub nằm trong storage riêng (`DebugCommands`), **không** đăng ký vào IngameDebugConsole nữa. IDC ở lại làm log window và parser giá trị (`ParseArgument`, `GetTypeReadableName`, `FetchArgumentsFromCommand`), còn hub cần giữ thêm description, hình thái, state hiện tại và owner — những thứ `ConsoleMethodInfo` không có chỗ chứa.
+Mọi thứ hiện lên panel — cheat của game lẫn đồ nghề của chính hub — đều là một trong bốn loại `DebugNode`. Không còn `DebugCommand`; storage tên `DebugRegistry` (`internal`), đăng ký qua `DebugHub`:
 
-```csharp
-DebugCommands.Add(this, "level.next", "Sang level kế tiếp.", NextLevel);
-DebugCommands.Add<int>(this, "level.goto", "Nhảy tới level bất kỳ.", GoToLevel);
-DebugCommands.Add<BoosterType, int>(this, "economy.booster", "Cộng thêm booster.", AddBooster);
-
-// Row hiện luôn trạng thái hiện tại, bấm là áp ngay.
-DebugCommands.AddToggle(this, "view.ui", "Ẩn/hiện toàn bộ UI game.", () => UiVisible, SetUiVisible);
-DebugCommands.AddValue(this, "time.scale", "Time scale hiện tại.", () => Time.timeScale, SetTimeScale);
-
-// Tập phần tử chỉ biết được lúc mở page (canvas trong scene, entry trong save...).
-DebugCommands.AddPage(this, "ui.canvases", "Ẩn/hiện từng canvas", page => { /* dựng row tại đây */ });
-```
-
-- Tham số đầu là **owner**: owner bị `Destroy` thì command tự rụng, không phải viết `OnDestroy` gỡ tay. `null` = sống suốt phiên.
-- Tên tham số lấy từ chính delegate (`GoToLevel(int level)` -> field tên `level`), truyền thêm string chỉ khi muốn tên khác.
-- Đăng ký bằng delegate nên sai tên method là lỗi compile, khác `AddCommandInstance(nameof(...))` của bản cũ.
-- Path phải để tên lá tự nói được nó làm gì: row chỉ hiện segment cuối, nên `inspect.get` chứ không phải `get`, `view.ui` chứ không phải `ui.hud`.
-- `Add` trả về `DebugCommand`, chỉnh tiếp bằng các hàm nối:
-
-```csharp
-DebugCommands.Add(this, "save.wipe", "Xoá toàn bộ save.", Wipe).Confirms();
-DebugCommands.AddToggle(this, "view.ui", "...", get, set).HidesHub();
-DebugCommands.Add<float, float>(this, "time.skip", "...", FastForward).Defaults("1", "100");
-DebugCommands.Add<string>(this, "prefs.get", "...", GetPref).Stays();
-```
-
-`Stays()` / `HidesHub()` / `Confirms()` / `Defaults(...)` chỉ là setter của `Dismiss` / `Confirm` / `Args`, nối được với nhau.
-
-`Path` **không phải key**: hai command trùng path là hợp lệ (row kèm `(N args)` để phân biệt), gỡ thì gọi `DebugCommands.Remove(command)` với chính object đã đăng ký.
-
-### Hình thái row suy từ tham số
-
-| Command | Row |
-|---|---|
-| 0 tham số | row tối + tên accent, bấm là chạy |
-| 1 tham số **có** `Current` (`AddToggle` / `AddValue`) | row tại chỗ: bool ra switch, enum ra page chọn, còn lại là field áp lúc chốt |
-| còn lại | row `›` mở page nhập liệu + nút `Run` |
-| `AddPage` | row `›` mở page do command tự dựng |
-
-`Current` (đọc state hiện tại) là thứ quyết định, không có field `Kind` nào để khai.
-
-### Sau khi chạy: `DismissMode`
-
-| Mode | Nghĩa | Dùng cho |
+| Loại | Là gì | Field chính |
 |---|---|---|
-| `Stay` | giữ nguyên panel | mặc định của row bật/tắt và row nhập tại chỗ; đặt thêm cho command **đọc/ghi dữ liệu** (`prefs.*`, `inspect.*`) vì còn tra tiếp |
-| `ClosePanel` | đóng panel, entry còn | mặc định của command dạng action và page nhập liệu: đổi state của game xong thì ra nhìn game |
-| `HideHub` | ẩn entry + đóng panel + tắt dòng kết quả | khi muốn xem kết quả thì hub phải biến mất hẳn: ẩn UI game, mở debugger của SDK, chụp ảnh level |
+| `ActionNode` | một việc chạy được | `Parameters[]`, `Invoke` |
+| `ValueNode` | một giá trị đọc được, ghi được nếu `Set != null` | `Declared`, `Get`, `Set`, `Address` |
+| `FolderNode` | có con, liệt kê lúc mở (không giữ sẵn) | `Children`, `Inline`, `Live` |
+| `TextNode` | chữ: mô tả, ghi chú, bảng đã format | `Text`, `Style` |
 
-`HideHub` tắt cả dòng kết quả vì nếu không thì nó dính vào ảnh chụp. Gọi lại bằng trigger (lắc / gõ 4 góc) và panel mở lại **đúng page đang xem**.
+```csharp
+DebugHub.Add(this, "level.next", "Sang level kế tiếp.", NextLevel);                 // ActionNode
+DebugHub.Add<int>(this, "level.goto", "Nhảy tới level bất kỳ.", GoToLevel);          // ActionNode
+DebugHub.AddValue(this, "view.ui", "Ẩn/hiện toàn bộ UI game.", () => UiVisible, SetUi);   // ValueNode, Declared=bool → switch
+DebugHub.AddValue(this, "time.scale", "Time scale hiện tại.", () => Time.timeScale, SetTimeScale); // ValueNode, Declared=float → field
+DebugHub.AddFolder(this, "info.app", "Bấm một dòng để copy.", AppInfoNodes);         // FolderNode
+DebugHub.Remove(node);
+DebugHub.Execute("level.goto 5", out var message);
+```
+
+- Tham số đầu là **owner**: owner bị `Destroy` thì node tự rụng, không phải viết `OnDestroy` gỡ tay. `null` = sống suốt phiên.
+- Tên tham số của `Add<T...>` lấy từ chính delegate (`GoToLevel(int level)` → field tên `level`), truyền thêm string chỉ khi muốn tên khác.
+- Đăng ký bằng delegate nên sai tên method là lỗi compile.
+- Path phải để tên lá tự nói được nó làm gì: row chỉ hiện segment cuối, nên `view.ui` chứ không phải `ui.hud`.
+- `AddToggle`/`AddPage` của bản cũ đã **xoá**: `AddValue<bool>` cho đúng cái switch đó, và không còn đường vòng qua model bằng closure `Action<DebugHubPanel>` — muốn nhiều con thì `AddFolder`.
+
+### Hàm nối
+
+`Add`/`AddValue`/`AddFolder` trả về chính node, chỉnh tiếp bằng extension generic (không mất kiểu cụ thể):
+
+```csharp
+DebugHub.Add(this, "save.wipe", "Xoá toàn bộ save.", Wipe).Confirms();
+DebugHub.AddValue(this, "view.ui", "...", get, set).HidesHub();
+DebugHub.Add<string>(this, "prefs.get", "...", GetPref).Stays();
+DebugHub.Add<float, float>(this, "time.skip", "...", FastForward).Defaults("1", "100");
+```
+
+| Hàm | Làm gì |
+|---|---|
+| `.Stays()` | `Dismiss = Stay` — giữ nguyên panel sau khi chạy |
+| `.HidesHub()` | `Dismiss = HideHub` — ẩn cả entry, cho ảnh chụp sạch |
+| `.Confirms()` | `Confirm = true` — chạy phải qua trang xác nhận (kể cả từ nút repeat) |
+| `.Reports()` | luôn hiện dòng kết quả dù `Dismiss != Stay` |
+| `.Silent()` | không bao giờ hiện dòng kết quả |
+| `.Defaults(params string[])` | seed tham số ban đầu cho `ActionNode`, chỉ khi chưa có giá trị người dùng đã nhập |
+
+Mặc định `Dismiss`: `ActionNode` đăng ký → `ClosePanel`; `ValueNode` đăng ký → `Stay`; node do reflection sinh (Advanced) → `Stay`.
+
+`Path` **không phải key**: hai `ActionNode` trùng path khi khác số tham số là hợp lệ (row kèm `(N args)` để phân biệt). `ValueNode`/`FolderNode` chiếm riêng exact path của mình. Trùng thật thì `Debug.LogError` (không throw — một cheat không có quyền làm sập game), gỡ node thì gọi `DebugHub.Remove(node)` với chính object đã đăng ký.
+
+### Row suy từ node — bảng quyết định của `NodeRenderer`
+
+`NodeRenderer.Render` là nơi **duy nhất** biết node nào ra row nào — trang command, trang folder do game đăng ký, trang member của Advanced và trang Watch đều đi qua đây. Xét từ trên xuống:
+
+| Node | Điều kiện | Row |
+|---|---|---|
+| `ValueNode` | `Get()` ném exception | dòng lỗi, không gọi setter |
+| `ValueNode` | giá trị đơn (`DebugValues.IsInlineValue`), `Set == null` | label trái + giá trị căn phải, **bấm = copy** |
+| `ValueNode` | `Declared == bool`, `Set != null` | switch |
+| `ValueNode` | enum không `[Flags]`, `Set != null` | row chọn giá trị (page chọn) |
+| `ValueNode` | giá trị đơn, `Set != null` | field tại chỗ, chốt bằng `onEndEdit` |
+| `ValueNode` | `Get()` ra null (kể cả fake-null của `UnityEngine.Object`) | row chữ `null`, không mở được |
+| `ValueNode` | giá trị là collection (trừ string) | row nav → member/phần tử của nó |
+| `ValueNode` | còn lại (`GameObject`, `Component`, object/struct khác), kể cả `Set == null` | row nav → member của giá trị hiện tại |
+| `ActionNode` | `Parameters.Length == 0` | row chạy ngay (tên màu accent) |
+| `ActionNode` | có tham số | row nav → page nhập liệu + nút `Run` |
+| `FolderNode` | `Inline == false` | row nav chỉ tên + `›`, không đếm con động |
+| `FolderNode` | `Inline == true` | dòng tiêu đề + con dựng thẳng tại chỗ |
+| `TextNode` | | chữ theo `Style`, bấm = copy |
+
+`FolderNode` không-inline chỉ gọi `Children` khi trang của nó đang mở (kể cả lúc refresh) — dựng/refresh trang cha hoặc search **không** gọi `Children`, vì đó là side effect của code game.
+
+### `Execute` chạy được cả `ValueNode`
+
+| Node tại path | 0 đối số | 1 đối số | khác |
+|---|---|---|---|
+| `ActionNode` | chạy nếu `Parameters.Length == 0` | chạy nếu arity khớp | theo arity |
+| `ValueNode` | log giá trị hiện tại | `TryParse` theo `Declared` rồi `Set` | lỗi |
+| `FolderNode` | lỗi "là thư mục, không chạy được" | lỗi | lỗi |
+
+### Chạy bằng dòng lệnh
+
+```csharp
+DebugHub.Execute("level.goto 5");
+```
+
+Tách tham số bằng parser của IDC nên quote/ngoặc giống console. Đây là đường cho Proxima (`exec` từ xa) và cho ô nhập lệnh của console qua command bridge duy nhất còn đăng ký vào IDC:
+
+```
+hub "level.goto 5"
+```
 
 ### Ẩn nhanh cả hub
 
@@ -92,17 +130,62 @@ DebugHub.Visible = false;   // đóng panel + ẩn entry
 DebugHub.Visible = true;    // hiện entry lại (chỉ ăn khi đã xác thực)
 ```
 
-### Chạy bằng dòng lệnh
+## Panel
 
-```csharp
-DebugCommands.Execute("level.goto 5");
-```
+Cả hub là **một panel duy nhất** điều hướng theo stack. Bấm lớp background phía sau = đóng panel (bất kể đang ở page nào); nút `‹` ở header = lùi một tầng.
 
-Tách tham số bằng parser của IDC nên quote/ngoặc giống console. Đây là đường cho Proxima (`exec` từ xa) và cho ô nhập lệnh của console qua command bridge duy nhất còn đăng ký vào IDC:
+Gốc panel là **chính cây command** — không còn trang menu trung gian, không có **Built-in**, không có **Recent**. Path tách theo mọi dấu `.` thành cây page: `prefs.set.int` nằm ở `Commands › prefs › set › int`. Mọi command bình đẳng, kể cả command do package tự đăng ký (`console.*`, `hub.*`, `prefs.*`, `time.*`, `sdk.*`) — chúng nằm lẫn với cheat của game theo đúng thứ tự chữ cái.
 
 ```
-hub "level.goto 5"
+  ‹  Commands                    Tìm  Adv  ?
+  ───────────────────────────────────────────
+     analytics                            1 ›
+     console                              3 ›
+     economy                              2 ›
+     level                                7 ›
+  ───────────────────────────────────────────
+  > level.goto 5                      ← dòng kết quả, ngoài panel
+
+        [ ↻ level.goto ]   ( ⬤ )      ← nút repeat + entry
 ```
+
+Ba nút header là **chữ** (`Tìm` / `Adv` / `?`), không phải sprite — package không mang icon.
+
+### `Tìm` (search)
+
+Bấm `Tìm` → title nhường chỗ cho ô nhập (nằm trong Header, **ngoài** `content`, vì rebuild destroy sạch `content`). Gõ tới đâu lọc tới đó, query sống khi đổi page. Nút đổi thành `Đóng` khi search đang mở.
+
+- Ở mọi trang command (không tự khai `Search`) → tìm **toàn cục** trong registry theo path + description; kết quả hiện **full path**, render bằng chính node đó nên bật/tắt, chạy ngay được ngay trên dòng kết quả.
+- Trang có list riêng (member, type, instance, watch, var) tự lọc list của nó.
+- Trang nhập tham số và trang xác nhận không có nút `Tìm` (`Searchable = false`).
+- **Không** quét vào trong `FolderNode` động — gọi `Children` để index là gọi side effect của game ở thời điểm không ai yêu cầu.
+
+### `?` (Help)
+
+Push trang Help: `DebugHub.Notes` + toàn văn mọi entry trong registry (path, kiểu và tên từng tham số, description đầy đủ — row trong list cắt description nên đây là chỗ duy nhất đọc được cả câu).
+
+### `…` — thao tác trên một `ValueNode`
+
+Mỗi row của `ValueNode` có đúng một nút `…` bên phải, mở page **Thao tác**:
+
+| Mục | Hiện khi |
+|---|---|
+| `Copy giá trị` | luôn, với giá trị hiển thị được thành text |
+| `Gán giá trị` | `Set != null` **và** giá trị không có editor tại chỗ — bool/enum/số/vector đã sửa ngay trên row rồi |
+| `Watch` | `Address != null`; đã watch rồi thì hiện `Đã watch` |
+| `Lưu vào $…` | `Get()` không null |
+
+Không rải hai–ba nút nhỏ lên mỗi row (bấm nhầm trên bề ngang điện thoại) — một nút mở một page, giống mọi chỗ khác của hub.
+
+### Nút repeat
+
+Command `hub.repeat` (`ValueNode bool`, lưu PlayerPrefs) bật/tắt một nút nổi cạnh entry, nhãn = tên lá của lệnh cuối, bấm là chạy lại.
+
+- Lưu **dòng lệnh** (`path + args`, PlayerPrefs `DebugHub.LastCommand`), không lưu tham chiếu node — chạy lại đúng tham số đã chạy và sống qua lần chạy sau. Reference Unity/collection chứa reference không có biểu diễn độc lập với session: lần chạy đó xoá `LastCommand` và ẩn nút, không giữ nút trỏ vào lệnh cũ.
+- Bật `hub.repeat` mà chưa có lệnh nào (lần đầu, hoặc vừa bị xoá vì lý do trên) → **ẩn nút**, không hiện nút rỗng bấm ra lỗi.
+- Node có `.Confirms()` → nút **mở panel tới trang xác nhận**, không chạy thẳng.
+- Ẩn cùng entry khi `HideHub` (mục đích của `HideHub` là màn hình sạch).
+- Chỉ chạy lại được node **đã đăng ký**; lời gọi qua Advanced (reflection) không vào đây.
 
 ### Text: TextMeshPro
 
@@ -113,78 +196,135 @@ Không gán font: để trống thì TMP tự lấy `TMP_Settings.defaultFontAss
 Điều kiện để cách này chạy đúng, kiểm trước khi đổi font default của project:
 
 - Font default phải ở chế độ **Dynamic** và TTF nguồn có dấu tiếng Việt cùng `›` `‹` (description trong hub là tiếng Việt, row nav nào cũng có chevron). Kiểm bằng `TryAddCharacters` trên TTF nguồn, **không** phải `HasCharacter` — cái sau chỉ nói atlas đã bake hay chưa.
-- Font phải bật **Multi Atlas Textures**. Atlas một texture có sức chứa hữu hạn (font của project này: 1024×1024, point size 90, padding 20 → ~105 glyph, và nó đã đầy đúng 105); Dynamic mà atlas đầy thì TMP **âm thầm thay ký tự bằng dấu cách**, không báo lỗi gì ngoài một warning. Bật cờ này thì atlas phụ được sinh lúc runtime nên không vào build, và không phải bake lại nên point size/padding giữ nguyên — mấy material outline/underlay dựa trên padding không bị ảnh hưởng.
+- Font phải bật **Multi Atlas Textures**. Atlas một texture có sức chứa hữu hạn; Dynamic mà atlas đầy thì TMP **âm thầm thay ký tự bằng dấu cách**, không báo lỗi gì ngoài một warning. Bật cờ này thì atlas phụ sinh lúc runtime nên không vào build.
 
-Khác biệt markup cần biết khi viết description: TMP nhận `<size=80%>` (phần trăm), legacy Text thì không — nên cỡ chữ description co theo từng template thay vì cứng một số px.
-
-## Panel
-
-Cả hub là **một panel duy nhất** điều hướng theo stack. Bấm lớp background phía sau = đóng panel (bất kể đang ở page nào); nút `‹` ở header = lùi một tầng.
-
-Path của command tách theo **mọi** dấu `.` thành cây page, không còn khái niệm "category" đặc biệt: `prefs.set.int` nằm ở `Commands › prefs › set › int`, command không có dấu `.` nằm ngay tầng đầu.
-
-```
-Debug Hub            Commands              Built-in              time
-  Commands      ->     Recent      2   ->    inspect     7   ->    scale       1
-  Help                 Search               prefs       4       Time scale hiện tại
-  [x] Console          analytics   1        sdk         2         skip          ›
-  [ ] Auto enable      economy     2        time        2       Tua nhanh sec giây
-  [ ] Proxima          level       7
-  [ ] Show entry       view        2
-                       sdk         1
-                       Built-in   15   <- đồ có sẵn của package, dồn xuống cuối
-                     ─────────────────────────────────────────────────────────
-                     > time.skip 1 100           <- dòng kết quả, bấm mở console
-```
-
-Command do package tự đăng ký (`prefs`, `time`, `inspect`, `sdk.max/admob`) nằm trong menu **Built-in** ở cuối, không chen vào giữa cheat của game — phân loại theo owner (owner thuộc assembly của hub) nên chỗ đăng ký không phải khai gì. Recent và Search vẫn dò cả hai nửa.
-
-Mọi template chừa lề **36** so với mép row (ô input tính từ mép ô, không tính padding chữ bên trong nó), danh sách chừa 14 trên/dưới — thêm template mới thì giữ đúng mốc đó, có test canh.
-
-Row hiện tên lá + description xám ở dòng dưới (dài quá thì cắt `…`, toàn văn ở page Help); row cao theo nội dung nên description hai dòng không bị cắt chữ. Trùng path trong cùng một chỗ thì kèm số lượng tham số để phân biệt.
-
-Đường tắt ở gốc page Commands: **Recent** (5 command chạy gần nhất, lưu PlayerPrefs nên sống qua lần chạy sau) và **Search** (tìm theo path hoặc description, kết quả hiện đường dẫn đầy đủ).
-
-Page nhập liệu: mỗi param một field theo đúng kiểu — bool ra toggle, số chỉ nhập được số, enum ra page chọn giá trị, còn lại là text với placeholder là tên kiểu. Giá trị prefill từ state hiện tại (hoặc `Args`), và giữ lại cái vừa nhập cho lần sau. Mọi giá trị validate bằng `DebugLogConsole.ParseArgument` (sai thì chữ đỏ, bấm Run báo lỗi và không chạy).
-
-Enum dùng page chọn giá trị chứ không dùng `UI.Dropdown`: dropdown sinh canvas lồng + blocker bên trong `Mask` của scroll view nên list bị mờ và không bấm được. Cách này cũng giống `PickerEnumFieldGUI` của `Assets/Plugins/DebugPanel`.
-
-Window cao đúng bằng nội dung, chặn trên bởi `maxWindowHeight` (mặc định 1500, quá thì scroll).
+Khác biệt markup cần biết khi viết description: TMP nhận `<size=80%>` (phần trăm), legacy Text thì không.
 
 ### Dòng kết quả
 
-Chạy command xong, log mà nó in ra trong lúc chạy (bắt qua `Application.logMessageReceived`) hiện ở dòng nổi dưới đáy màn hình — **ngoài** panel, vì command mặc định đóng panel sau khi chạy. Dài quá thì cắt: bấm vào dòng đó để mở console log window xem toàn văn kèm stack trace.
+Chạy command xong, log mà nó in ra trong lúc chạy (bắt qua `Application.logMessageReceived`) hiện ở dòng nổi dưới đáy màn hình — **ngoài** panel. Dài quá thì cắt: bấm vào dòng đó để mở console log window xem toàn văn kèm stack trace.
 
 Nghĩa là cheat chỉ cần `Debug.Log` như bình thường là tự nhiên có kết quả hiện lên, không phải khai thêm gì.
 
-Nhưng **không phải command nào cũng hiện**: chỉ command có `Dismiss = Stay` (đang đọc dữ liệu, panel ở lại) mới hiện, và chỉ khi thật sự in ra gì. Command đổi state của game thì im — `level.goto` tự nó không log, nhưng luồng load level log đồng bộ trong lúc invoke, nếu chỉ xét "có log hay không" thì nó vẫn hiện một dòng vô nghĩa giữa màn hình. Ghi đè bằng `.Reports()` (luôn hiện) hoặc `.Silent()` (không bao giờ hiện).
-
-Lỗi thì luôn hiện, chữ đỏ; log lỗi do chính command in ra cũng đỏ dù command vẫn coi là chạy xong.
+Nhưng **không phải node nào cũng hiện**: chỉ node có `ShowsResult == true` (mặc định suy từ `Dismiss == Stay`) mới hiện, và chỉ khi thật sự in ra gì. Ghi đè bằng `.Reports()` (luôn hiện) hoặc `.Silent()` (không bao giờ hiện). Lỗi thì luôn hiện, chữ đỏ.
 
 ### Đóng rồi mở lại
 
-`Close()` giữ nguyên stack nên mở lại là về đúng page đang xem lúc đóng — nhất là với `DismissMode.HideHub` (ẩn hub để nhìn game rồi gọi lại tiếp tục việc đang làm). Muốn về gốc thật thì gọi `panel.ShowFromRoot(page)`.
+`Close()` giữ nguyên stack nên mở lại là về đúng page đang xem lúc đóng — nhất là với `DismissMode.HideHub`. Muốn về gốc thật thì gọi `panel.ShowFromRoot(page)`.
 
-### Ngôn ngữ hình ảnh
+Window cao đúng bằng nội dung, chặn trên bởi `maxWindowHeight` (mặc định 1500, quá thì scroll). Lề chừa **36** so với mép row, danh sách chừa **14** trên/dưới.
 
-| Row | Nghĩa | API |
+## Vốn từ trình bày
+
+Một chỗ dựng row chung cho cả package — trang info không tự chế lại màu, monospace, `PadRight` nữa:
+
+```csharp
+Node.Value(label, get, set = null, description = null)   // ValueNode
+Node.Action(label, run, description = null)               // ActionNode
+Node.Folder(label, children, description = null, live: false)   // FolderNode
+Node.Section(title, children)               // FolderNode { Inline = true } — dựng ngay trong trang cha
+Node.Text(text, TextStyle style = Normal)   // Normal | Note | Good | Warn | Bad | Table
+Node.Table(headers, rows)                   // → TextNode(Style.Table)
+```
+
+Palette (`Hlight.Debug.Hub.Palette`): `GOOD #5FD068`, `WARN #E8B04B`, `BAD #E5484D`, `DIM #8A929C`.
+
+### `Node.Table`
+
+Căn cột bằng monospace + `PadRight` — không bằng `<pos=NN%>` (`<pos>` lùi được về sau, ô dài đè chữ lên nhau). Độ rộng mỗi cột = ô dài nhất trong cột; có ngân sách ký tự tối đa cho cả hàng, vượt thì cắt cột rộng nhất và thêm `…`. `TextStyle.Table` tắt word wrap trên row đó, nên hàng quá rộng bị cắt chứ không xuống dòng làm lệch cột. Là hàm thuần string, test bằng assert.
+
+### Ví dụ: `level.info`
+
+```csharp
+DebugHub.AddFolder(this, "level.info", "Bàn đang chơi: quả theo màu, cụm/tầng, số để dò với doc.",
+    () => new DebugNode[]
+    {
+        Node.Text(StatusLine(info, board), broken ? TextStyle.Bad : TextStyle.Good),
+        Node.Text(Headline(info, board)),
+        Node.Section("Màu",  new[] { Node.Table(ColorHeaders, ColorRows(info, board)) }),
+        Node.Section("Tầng", new[] { Node.Table(LayerHeaders, LayerRows(board)) }),
+        Node.Section("Spec", SpecNodes(info, board)),     // Node.Value × 6..9
+        Node.Text(GroupNote, TextStyle.Note),
+    });
+```
+
+Giá trị hai cột (`Spec`) dùng `Node.Value` thay vì bảng — vừa thẳng cột vừa bấm-copy được từng dòng.
+
+## Advanced
+
+Mặt thứ hai của hub, mở bằng nút `Adv` ở header — **đồ nghề của chính hub**, cứng trong code package, khác với Commands (mọi node game/package đăng ký qua `DebugHub.Add*`). Đây là hệ inspect bằng reflection, thay thế hoàn toàn `inspect.*` gõ tay và `Executor.cs` cũ.
+
+```
+  ‹  Advanced                        Tìm   ?
+  ───────────────────────────────────────────
+     Watch                                4 ›
+     Types                                  ›
+     Instances                              ›
+     Vars                                 2 ›
+     Execute                                ›
+```
+
+### Address — trạng thái điều hướng duy nhất
+
+Trang inspect không giữ tham chiếu object nào cả, chỉ giữ **một chuỗi địa chỉ** và resolve lại mỗi lần dựng. Drill vào member = nối thêm `.tên`.
+
+```
+address = root ( "." member | "[" args "]" | "." Method(args) )*
+
+root = TypeName        static context; TypeFinder dò mọi assembly đã nạp
+     | $var            giá trị hoặc type đã lưu trong Vars
+     | #TypeName[i]    instance thứ i đang sống trong scene (mặc định [0])
+     | @command.path   một ValueNode đã đăng ký — watch được cả cheat của game
+```
+
+Ví dụ: `@economy.coin`, `Harvest.GameplayCheats.SomeStaticField`, `#Camera[0]` (root không có dấu `.` — xem trần đã biết bên dưới về root `#TypeName[i]` với type có namespace).
+
+Giới hạn có chủ ý:
+
+- **Không parse ngoặc lồng** — bắc cầu qua `$var` (chạy Execute, lưu kết quả, rồi drill vào biến).
+- **`#TypeName[i]` không ổn định qua các phiên** — thứ tự `FindObjectsByType` không có bảo đảm, watch vào instance có thể trỏ sang object khác sau khi load lại scene.
+- **Reflect.Elements cắt ở 100 phần tử** + một dòng "còn N…" — collection lớn hoặc `IEnumerable` tự sinh vô hạn không được giết panel.
+- Method **mặc định ẩn** trong danh sách member (toggle riêng để bật), và `[Obsolete]`/backing field bị lọc bỏ.
+
+### Watch vs Vars
+
+Hai khái niệm cố ý tách bạch:
+
+| | Watch | Vars |
 |---|---|---|
-| row tối + `›` (+ số căn phải) | mở page khác | `AddNavigation(label, page, description, detail)` |
-| row tối + **tên màu accent** | chạy ngay | `AddAction(label, onClick, description)` |
-| row **nền accent** | hành động chính của page (Run) — mỗi page một cái | `AddPrimary(label, onClick)` |
-| row tối + switch (có núm) | bật/tắt trạng thái | `AddToggle(label, value, onChanged, description)` |
-| label + input | nhập giá trị | `AddField(label, type, current, onChanged, onSubmit, description)` |
-| row tối trung tính | không ngụ ý gì | `AddButton(label, onClick, description)` |
-| row tên màu vàng đất | điều hướng của chính hub, không phải nội dung do game đăng ký: Recent, Search, Built-in | `AddShortcut(label, page, detail)` |
+| Là gì | một **address sống**, resolve lại mỗi lần | một **ảnh chụp** — giá trị hoặc type tại thời điểm lưu |
+| Đọc lại | 4 lần/giây (trang `Live`, bỏ nhịp khi đang gõ), giá trị đổi theo game | không tự đổi — đúng object/giá trị đã bind |
+| Lưu ở đâu | PlayerPrefs (`DebugHub.Watches`), sống qua lần chạy sau | chỉ RAM, xoá lúc domain reload |
+| Dùng để | theo dõi một giá trị đổi theo thời gian thực | truyền đúng **reference** (`$var`) vào tham số/địa chỉ mà text không biểu diễn được, hoặc tham số generic |
 
-Chỉ **một** row nền accent mỗi page: cả page toàn row nền accent thì thành tường màu và description trên nền đó đọc không nổi, nên command chạy ngay dùng row tối với tên màu accent. `description` là tham số, panel tự format thành dòng thứ hai (nhỏ, xám) — chỗ gọi không ghép markup.
+**Watch từ chối address chứa bước gọi method** trước khi resolve (xét từng step đã parse, không chỉ tìm dấu ngoặc trong chuỗi — literal của indexer có thể chứa ngoặc) — nếu không, một watch vào `Factory.Spawn()` sẽ gọi nó 4 lần/giây. Luật áp dụng lúc thêm, lúc đọc lại từ PlayerPrefs, và trước mỗi lần resolve để refresh; address có method đã lưu từ trước hiện lỗi kèm nút `Gỡ`, không được thực thi.
 
-Back có nút `‹` ở header (tự ẩn ở page gốc, lùi một tầng). Bấm ra vùng tối ngoài panel đóng panel, không lùi từng tầng (mở lại về đúng page đó).
+Ba đường thêm Watch: nút `…` trên một row giá trị (kể cả scalar không có trang riêng), nút `+ Watch trang này` ở cuối trang member/phần tử, và ô `Watch địa chỉ này` ở trang Execute.
 
-Tự thêm page riêng bằng `DebugPage` + các hàm trên của `DebugHubPanel`; muốn cắm page đó vào cây Commands thì đăng ký bằng `DebugCommands.AddPage`.
+### Types / Instances / Execute
 
-Dev note ở page Help: thêm vào `DebugHub.Notes`.
+- **Types** — trống cho tới khi gõ ≥ 2 ký tự vào ô `Tìm`; hiện các type có tên chứa chuỗi đó, bấm vào mở static member.
+- **Instances** — gõ tên type, hiện instance đang sống (kể cả inactive), mỗi dòng là một address `#Type[i]`, mở vào xem/sửa được field. *(Xem bug root `#TypeName[i]` ở mục Trần đã biết — hiện chỉ mở được instance của type không có namespace.)*
+- **Execute** — ô address + ô value + `Get` / `Set` + `Watch địa chỉ này` + `Lưu vào $…`. Đường thoát cho thứ mà duyệt bằng tay không tới được: method generic (`Find<$T>(...)`), overload (`Ten{0}(...)`), biểu thức cần ngoặc lồng (chia bước qua `$var`).
+
+## Trần đã biết
+
+- **IL2CPP managed code stripping** — Advanced/`Reflect`/`Address` chạy bằng reflection; trên build IL2CPP, member không ai gọi tĩnh sẽ bị strip và inspect báo "không tìm thấy" dù code có thật. Hub là đồ dev (`RenameFolderOnBuild` đổi tên folder `Resources` khi build PRODUCTION) nên package **không** mang `link.xml` chống stripping — đây là quyết định có chủ ý, không phải thiếu sót.
+- **Gọi method tuỳ ý qua Execute có thể làm hỏng state game.** Đó là bản chất công cụ, không phải lỗi.
+- **`#TypeName[i]` không ổn định qua phiên** (mục Advanced ở trên).
+- **Bug đã biết: root `#TypeName[i]` cắt sai tại dấu `.` đầu tiên khi `TypeName` có namespace.** `Address.CutAfterRootToken` (dùng chung cho root `$` và `#`) dừng ở dấu `.` đầu tiên bất kể ký tự đó thuộc tên type hay không, nên `#UnityEngine.Camera[0]` bị cắt còn `#UnityEngine` rồi báo "'UnityEngine' không phải một UnityEngine.Object type." — `Reflect`/`Instances`/`Watch` không mở được instance của bất kỳ type có namespace nào (tức gần như mọi type thật trong game) bằng địa chỉ dạng này. Không có test nào phủ root `#…` với type có dấu `.`. Ảnh hưởng cả trang **Instances** (mở instance ra lỗi ngay) lẫn Watch tạo từ đó. Chưa sửa — xem báo cáo Task 22 để biết chi tiết tái hiện.
+- **Types/Instances không phân biệt được type trùng tên ngắn.** `TypeFinder.Find` tra theo `Dictionary<string,List<Type>>` theo cả short name lẫn full name; gõ short name khớp ≥ 2 type (ví dụ `Camera` khớp cả `UnityEngine.Camera` và một type test nội bộ khác) thì trả `null` thay vì cho chọn — phải gõ full name mới chắc ăn.
+- **Search không quét trong `FolderNode` động.**
+- **Tên Unity object không phải định danh** — text lookup (`GameObject.Find`/`GetComponent`) không bảo đảm round-trip; dùng `$var` để giữ đúng reference trong session. Nút repeat không lưu được reference/collection chứa reference.
+- **Không parse ngoặc lồng** trong address.
+- **Bảng monospace là xấp xỉ** — font khác nhau thì số ký tự vừa một dòng khác nhau.
 
 ## Test
 
-Cửa sổ Test Runner (EditMode), hoặc menu `Tools/Hlight/Run Debug Hub Tests` để ghi kết quả ra `Temp/debug-hub-tests.txt`.
+Chạy bằng CLI (không có menu item nào chạy test trong Editor):
+
+```bash
+unity cmd --project-path . run_tests --mode EditMode --filter "Hlight.Debug.Hub.Tests" --filter_type assembly
+```
+
+`AgentTestRunner` chỉ hỗ trợ `[SetUp]` / `[Test]` / `[TearDown]` — không hỗ trợ `[OneTimeSetUp]`, `[TestCase]` hay các attribute NUnit khác.
