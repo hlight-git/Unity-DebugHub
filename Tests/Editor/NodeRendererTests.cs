@@ -48,7 +48,7 @@ namespace Hlight.Debug.Hub.Tests
             Render(Node.Value<object>("thing", () => null, v => clicked = true));
 
             Assert.AreEqual(1, TestPanel.Rows(panel).Count);
-            StringAssert.Contains("null", TestPanel.Rows(panel)[0].label.text);
+            StringAssert.Contains("null", TestPanel.Rows(panel)[0].detail.text);
             Assert.IsFalse(clicked);
         }
 
@@ -60,7 +60,7 @@ namespace Hlight.Debug.Hub.Tests
 
             Render(Node.Value<GameObject>("go", () => go, null));
 
-            StringAssert.Contains("null", TestPanel.Rows(panel)[0].label.text);
+            StringAssert.Contains("null", TestPanel.Rows(panel)[0].detail.text);
         }
 
         [Test]

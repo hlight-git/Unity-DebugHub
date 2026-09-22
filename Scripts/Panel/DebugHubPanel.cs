@@ -37,9 +37,14 @@ namespace Hlight.Debug.Hub
         [SerializeField] private float maxWindowHeight = 1500f;
         [Tooltip("Dòng kết quả nổi ở đáy màn hình. Nằm ngoài panel nên vẫn thấy sau khi panel đóng.")]
         [SerializeField] private DebugHubToast toast;
-        // ponytail: chưa wire trong prefab, chỉ để Update() có ref mà chặn nhịp Live lúc đang gõ
-        // tìm kiếm — Task 7 gán ref thật + dựng UI tìm kiếm.
+
+        [Header("Header")]
         [SerializeField] private TMP_InputField searchInput;
+        [SerializeField] private Button searchButton;
+        [SerializeField] private Button advancedButton;
+        [SerializeField] private Button helpButton;
+
+        private string query = string.Empty;
 
         [Header("Row templates (inactive children of content)")]
         [SerializeField] private DebugHubRow buttonTemplate;
@@ -63,11 +68,49 @@ namespace Hlight.Debug.Hub
         /// Awake có chạy hay không.
         internal int StackDepth => stack.Count;
 
+        /// Từ khoá đang lọc. Ô nhập nằm trong Header, **ngoài** content — đó là lý do kỹ thuật khiến
+        /// search phải ở tiêu đề: Rebuild() destroy sạch content, nên ô nhập đặt trong list sẽ tự giết
+        /// chính nó ngay khi gõ chữ đầu tiên.
+        public string Query
+        {
+            get => query;
+            set
+            {
+                if (query == value) return;
+                query = value ?? string.Empty;
+                Rebuild();
+            }
+        }
+
+        public void OpenSearch()
+        {
+            searchInput.gameObject.SetActive(true);
+            title.gameObject.SetActive(false);
+            searchInput.SetTextWithoutNotify(query);
+            searchInput.Select();
+            searchInput.ActivateInputField();
+        }
+
+        public void CloseSearch()
+        {
+            searchInput.gameObject.SetActive(false);
+            title.gameObject.SetActive(true);
+            Query = string.Empty;
+        }
+
         private void Awake()
         {
             backgroundButton.onClick.AddListener(Close);
             if (backButton) backButton.onClick.AddListener(Pop);
             if (toast) toast.Clicked += () => ResultClicked?.Invoke();
+
+            searchButton.onClick.AddListener(() =>
+            {
+                if (searchInput.gameObject.activeSelf) CloseSearch();
+                else OpenSearch();
+            });
+            searchInput.onValueChanged.AddListener(value => Query = value);
+            helpButton.onClick.AddListener(() => Push(HelpPage.Build()));
         }
 
         private void Update()
@@ -162,7 +205,15 @@ namespace Hlight.Debug.Hub
             var page = stack.Peek();
             title.text = page.Title;
             if (backButton) backButton.gameObject.SetActive(stack.Count > 1);
-            page.Build?.Invoke(this);
+            if (searchButton) searchButton.gameObject.SetActive(page.Searchable);
+
+            // page.Searchable phải được xét ở đây, không chỉ để ẩn cái nút: query sống qua các lần
+            // Rebuild, nên một trang nhập tham số mở ra trong lúc còn query sẽ bị thay bằng kết quả
+            // search và không bao giờ dựng được.
+            if (string.IsNullOrEmpty(query) || !page.Searchable) page.Build?.Invoke(this);
+            else if (page.Search != null) page.Search(this, query);
+            else CommandsPage.SearchAll(this, query);   // mặc định: tìm toàn registry
+
             FitWindowToContent();
             // scroll về đầu chuyển sang Show/Push/Pop — Refresh() tự khôi phục vị trí cũ.
         }
@@ -310,10 +361,7 @@ namespace Hlight.Debug.Hub
         {
             // buttonTemplate chứ không phải navTemplate: row này **không** đi đâu cả, mà navTemplate có
             // chevron nên nhìn như mở được. Nó cũng là template mang nút … (§3).
-            var row = Spawn(buttonTemplate, $"{label}:  <b>{value}</b>", description);
-            // buttonTemplate chưa wire cột `detail` trong prefab (chỉ navTemplate có) — ghép giá trị
-            // vào label như AddChoice() đang làm, để cột phải chờ Task khác wire UI mà giá trị vẫn
-            // hiện ra ngay bây giờ.
+            var row = Spawn(buttonTemplate, label, description);
             if (row.detail) row.detail.text = value;
             row.button.onClick.AddListener(() =>
             {

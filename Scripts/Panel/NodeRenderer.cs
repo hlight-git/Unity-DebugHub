@@ -13,18 +13,24 @@ namespace Hlight.Debug.Hub
     /// Xét từ trên xuống theo đúng thứ tự bảng §3 của spec.
     public static class NodeRenderer
     {
-        public static void Render(DebugHubPanel panel, DebugNode node, Action<DebugNode, string[]> run)
+        /// <paramref name="label"/> ghi đè chữ hiện trên row (mặc định <see cref="DebugNode.Label"/> —
+        /// chỉ segment cuối). CommandsPage.SearchAll dùng để hiện full path thay vì tên lá, không thì
+        /// kết quả search mất hết ngữ cảnh (nhiều node trùng tên lá ở path khác nhau).
+        public static void Render(DebugHubPanel panel, DebugNode node, Action<DebugNode, string[]> run,
+            string label = null)
         {
+            label ??= node.Label;
             switch (node)
             {
                 case TextNode text: RenderText(panel, text); return;
-                case FolderNode folder: RenderFolder(panel, folder, run); return;
-                case ActionNode action: RenderAction(panel, action, run); return;
-                case ValueNode value: RenderValue(panel, value, run); return;
+                case FolderNode folder: RenderFolder(panel, folder, run, label); return;
+                case ActionNode action: RenderAction(panel, action, run, label); return;
+                case ValueNode value: RenderValue(panel, value, run, label); return;
             }
         }
 
-        private static void RenderValue(DebugHubPanel panel, ValueNode node, Action<DebugNode, string[]> run)
+        private static void RenderValue(DebugHubPanel panel, ValueNode node, Action<DebugNode, string[]> run,
+            string label)
         {
             object current;
             try
@@ -35,7 +41,7 @@ namespace Hlight.Debug.Hub
             {
                 // Getter của Unity ném khá thường (component đã chết, property obsolete).
                 // Một row lỗi tốt hơn là cả trang không dựng được.
-                panel.AddText($"{node.Label}: <color={Palette.BAD}>{exception.Message}</color>");
+                panel.AddText($"{label}: <color={Palette.BAD}>{exception.Message}</color>");
                 return;
             }
 
@@ -43,7 +49,7 @@ namespace Hlight.Debug.Hub
             {
                 // Vẫn dựng row có nút … : một field object đang null chính là chỗ hay cần `Gán`
                 // nhất, và địa chỉ của nó watch được như thường.
-                panel.AddCopyRow(node.Label, "null", node.Description);
+                panel.AddCopyRow(label, "null", node.Description);
                 panel.AttachActions(node, null, run);
                 return;
             }
@@ -53,11 +59,11 @@ namespace Hlight.Debug.Hub
                 if (node.Set == null)
                 {
                     var text = DebugValues.ToText(current);
-                    panel.AddCopyRow(node.Label, text, node.Description);
+                    panel.AddCopyRow(label, text, node.Description);
                 }
                 else
                 {
-                    panel.AddField(node.Label, node.Declared, DebugValues.ToText(current), null,
+                    panel.AddField(label, node.Declared, DebugValues.ToText(current), null,
                         value => run(node, new[] { value }), node.Description);
                 }
                 panel.AttachActions(node, current, run);
@@ -65,31 +71,33 @@ namespace Hlight.Debug.Hub
             }
 
             // Có parser (GameObject/Component/List) nhưng vẫn phải mở ra xem được.
-            panel.AddNavigation(node.Label, MembersPage(node), node.Description, Summary(current));
+            panel.AddNavigation(label, MembersPage(node), node.Description, Summary(current));
             panel.AttachActions(node, current, run);
         }
 
-        private static void RenderAction(DebugHubPanel panel, ActionNode node, Action<DebugNode, string[]> run)
+        private static void RenderAction(DebugHubPanel panel, ActionNode node, Action<DebugNode, string[]> run,
+            string label)
         {
             if (node.Parameters.Length == 0)
             {
-                panel.AddAction(node.Label, () => run(node, Array.Empty<string>()), node.Description);
+                panel.AddAction(label, () => run(node, Array.Empty<string>()), node.Description);
                 return;
             }
-            panel.AddNavigation(node.Label, ParamsPage.For(node, run), node.Description);
+            panel.AddNavigation(label, ParamsPage.For(node, run), node.Description);
         }
 
-        private static void RenderFolder(DebugHubPanel panel, FolderNode node, Action<DebugNode, string[]> run)
+        private static void RenderFolder(DebugHubPanel panel, FolderNode node, Action<DebugNode, string[]> run,
+            string label)
         {
             if (!node.Inline)
             {
                 // Không gọi Children ở đây: đếm con của một folder động = gọi side effect của game
                 // ở thời điểm không ai yêu cầu.
-                panel.AddNavigation(node.Label, FolderPage(node, run), node.Description);
+                panel.AddNavigation(label, FolderPage(node, run), node.Description);
                 return;
             }
 
-            panel.AddText($"<b>{node.Label}</b>");
+            panel.AddText($"<b>{label}</b>");
             foreach (var child in node.Children()) Render(panel, child, run);
         }
 

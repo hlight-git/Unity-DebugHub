@@ -68,7 +68,23 @@ namespace Hlight.Debug.Hub
 
             foreach (var leaf in leaves) AddLeaf(panel, leaf, leaves, false);
 
-            if (folders.Count == 0 && leaves.Count == 0) panel.AddText("No command registered.");
+            // ponytail: DebugRegistry (model mới, đăng ký qua DebugHub.Add/AddValue/AddFolder) chưa có
+            // cây thư mục theo dấu '.' như DebugCommand ở trên — chỉ liệt phẳng entry nằm dưới prefix
+            // này, hiện nguyên full path để khỏi mất ngữ cảnh. Task 9 viết lại CommandsPage trên hẳn
+            // registry mới sẽ thay bằng cây thật.
+            var registryLeaves = 0;
+            if (!builtIn)
+            {
+                foreach (var entry in DebugRegistry.All)
+                {
+                    var segments = entry.Path.Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
+                    if (!Contains(segments, prefix)) continue;
+                    registryLeaves++;
+                    NodeRenderer.Render(panel, entry.Node, (node, values) => Run(panel, node, values), entry.Path);
+                }
+            }
+
+            if (folders.Count == 0 && leaves.Count == 0 && registryLeaves == 0) panel.AddText("No command registered.");
 
             // Cuối cùng, sau cả leaf: đồ có sẵn của package không được chen vào giữa cheat của game.
             if (prefix.Length == 0 && !builtIn && builtInCount > 0)
@@ -216,6 +232,31 @@ namespace Hlight.Debug.Hub
             return $"{DebugCommands.Signature(command, values)}\n{message}";
         }
 
+        /// Chạy một node của DebugRegistry (model mới). Tối giản so với Run(DebugCommand) ở trên —
+        /// không Confirm/Recent, đó là việc của Task 9 khi viết lại hẳn CommandsPage trên registry mới.
+        private static void Run(DebugHubPanel panel, DebugNode node, string[] values)
+        {
+            var ok = DebugRegistry.Run(node, values, out var message);
+
+            if (!ok) panel.ShowResult($"{node.Label}: {message}", true);
+            else if (node.ShowsResult && !string.IsNullOrEmpty(message)) panel.ShowResult(message, false);
+            else panel.HideResult();
+
+            if (!ok) return;
+
+            switch (node.Dismiss)
+            {
+                case DismissMode.ClosePanel:
+                    panel.Close();
+                    break;
+
+                case DismissMode.HideHub:
+                    DebugHub.Visible = false;
+                    panel.Close();
+                    break;
+            }
+        }
+
         #region Recent, Search
 
         private static DebugPage RecentPage()
@@ -268,6 +309,30 @@ namespace Hlight.Debug.Hub
             if (command.Path.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0) return true;
             return !string.IsNullOrEmpty(command.Description) &&
                    command.Description.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        /// Fallback search của DebugHubPanel.Rebuild() khi page không tự khai Search riêng: tìm trên
+        /// toàn DebugRegistry (model mới), hiện full path để không mất ngữ cảnh. Chỉ so path/mô tả —
+        /// không mở bất kỳ FolderNode nào nên folder động không bị gọi Children() ngoài ý muốn.
+        public static void SearchAll(DebugHubPanel panel, string query)
+        {
+            var any = false;
+            foreach (var entry in DebugRegistry.All)
+            {
+                if (!MatchesEntry(entry, query)) continue;
+                any = true;
+                NodeRenderer.Render(panel, entry.Node, (node, values) => Run(panel, node, values), entry.Path);
+            }
+            if (!any) panel.AddText("Không có gì khớp.");
+        }
+
+        internal static bool MatchesEntry(DebugRegistry.Entry entry, string query)
+        {
+            if (string.IsNullOrEmpty(query)) return true;
+            if (entry.Path.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) return true;
+            var description = entry.Node.Description;
+            return !string.IsNullOrEmpty(description) &&
+                   description.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         #endregion
