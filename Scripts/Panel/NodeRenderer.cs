@@ -119,6 +119,12 @@ namespace Hlight.Debug.Hub
         /// đổi dữ liệu.
         private static MemberFilter filter = MemberFilter.Default;
 
+        /// Static giữ nguyên giữa các lần Play khi bật "Enter Play Mode without domain reload":
+        /// không reset thì phiên chạy sau mở trang member ra vẫn còn "Cả member kế thừa"/"Cả method"
+        /// đã bật từ lần chạy trước, không đúng mặc định của trang.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics() => filter = MemberFilter.Default;
+
         private static DebugPage MembersPage(ValueNode node)
         {
             return new DebugPage(node.Label, panel =>
@@ -180,8 +186,10 @@ namespace Hlight.Debug.Hub
 
         /// Chạy một node do reflection sinh: không ghi LastCommand (không có path để chạy lại).
         /// Cùng luật với CommandsPage.Dispatch: sửa một field thành công mà không log gì thì im,
-        /// không bật một toast rỗng.
-        private static void RunInspect(DebugHubPanel panel, DebugNode node, string[] values)
+        /// không bật một toast rỗng. Internal (không private): AdvancedPage dùng lại đúng chính sách
+        /// này ở Watch/Types/Instances thay vì tự lặp lambda `DebugRegistry.Run(n, values, out _)`
+        /// nuốt lỗi.
+        internal static void RunInspect(DebugHubPanel panel, DebugNode node, string[] values)
         {
             var ok = DebugRegistry.Run(node, values, out var message);
             if (!ok || (node.ShowsResult && !string.IsNullOrEmpty(message))) panel.ShowResult(message, !ok);

@@ -27,6 +27,10 @@ namespace Hlight.Debug.Hub.Tests
         public readonly int Frozen = 3;
         public string Name { get; set; } = "a";
         public int Computed => Number * 2;
+
+        /// Setter luôn ném — fixture cho "Run/Set thất bại phải hiện lỗi rõ ràng, không được nuốt"
+        /// (xem AdvancedPageTests.WatchPage_FailingWrite_...).
+        public int Explosive { get => 0; set => throw new System.Exception("bùm"); }
         public Inner Box = new Inner();
         public Leg TheLeg;
         public Pair ThePair;

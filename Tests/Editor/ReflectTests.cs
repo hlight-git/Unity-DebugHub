@@ -98,6 +98,32 @@ namespace Hlight.Debug.Hub.Tests
             Assert.Throws<System.Exception>(() => gone.Get());
         }
 
+        /// Bug đã sửa: ActionFor không gán Key nên DebugRegistry.ArgsFor luôn seed mới và StoreArgs
+        /// là no-op cho method reflection — ParamsPage bị rebuild (đi vào page chọn giá trị của một
+        /// tham số enum rồi back ra) là mất trắng cái vừa chọn. Key ổn định qua các lần rebuild là
+        /// đủ: node được lấy lại từ MỘT lần gọi Reflect.Members MỚI (mô phỏng panel dựng lại trang)
+        /// vẫn phải thấy đúng args đã lưu ở lần trước.
+        [Test]
+        public void ActionFor_KeyIsStable_SoStoredArgsSurviveARebuild()
+        {
+            const string root = "Hlight.Debug.Hub.Tests.AddressFixture.Instance";
+            Address.TryResolve(root, out var cursor, out _);
+            var first = (ActionNode)Reflect.Members(cursor, root, MemberFilter.Methods)
+                .First(n => n.Label == "Doubled");
+
+            DebugRegistry.StoreArgs(first, new[] { "21" });
+
+            // "Rebuild": cursor mới, và một lần liệt kê Reflect.Members mới — node là một instance
+            // C# khác hẳn `first`, đúng như ParamsPage bị dựng lại từ đầu mỗi lần điều hướng.
+            Address.TryResolve(root, out var cursor2, out _);
+            var second = (ActionNode)Reflect.Members(cursor2, root, MemberFilter.Methods)
+                .First(n => n.Label == "Doubled");
+
+            Assert.AreNotSame(first, second);
+            Assert.AreEqual(first.Key, second.Key);
+            Assert.AreEqual(new[] { "21" }, DebugRegistry.ArgsFor(second));
+        }
+
         [Test]
         public void Elements_ListsAListWithIndexAddresses()
         {

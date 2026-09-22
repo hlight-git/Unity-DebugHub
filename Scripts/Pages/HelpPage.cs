@@ -18,7 +18,9 @@ namespace Hlight.Debug.Hub
                 builder.Append("\n  + ").Append(note);
             }
 
-            // Toàn văn description ở đây: row trong list cắt ngắn cho vừa hai dòng.
+            // Toàn văn description ở đây — CommandsPage không còn cắt ngắn description nữa (xem
+            // ponytail comment ở CommandsPage.LabelOf), nhưng trang này vẫn là chỗ đọc hết mọi
+            // command trong một khối text, không phải dò từng row.
             builder.Append("\n\n<b>Available commands:</b>");
             var entries = new List<DebugRegistry.Entry>(DebugRegistry.All);
             entries.Sort((left, right) => string.Compare(left.Path, right.Path, StringComparison.OrdinalIgnoreCase));

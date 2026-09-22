@@ -141,6 +141,37 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual("0", DebugValues.DefaultValueFor(typeof(decimal)));
         }
 
+        /// Bug đã sửa: PartsOf(Activator.CreateInstance(type)) dựng một instance thật để hỏi "có
+        /// nhiều thành phần không" — với GameObject cái đó rò một GameObject rỗng vào scene, với
+        /// Transform/Component/interface/abstract type thì ném exception ngay (không constructor
+        /// không tham số công khai). VectorParts.ContainsKey(type) trả lời đúng câu hỏi mà không
+        /// cần dựng gì cả.
+        [Test]
+        public void DefaultValueFor_ComponentTypeWithNoParameterlessCtor_DoesNotThrow_AndDoesNotLeakAGameObject()
+        {
+            var before = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None).Length;
+
+            string result = null;
+            Assert.DoesNotThrow(() => result = DebugValues.DefaultValueFor(typeof(Transform)));
+            Assert.AreEqual(string.Empty, result, "Transform là reference type — mặc định là chuỗi rỗng, không phải instance dựng ra");
+
+            var after = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None).Length;
+            Assert.AreEqual(before, after, "không được để lại GameObject rác trong scene");
+        }
+
+        [Test]
+        public void DefaultValueFor_GameObjectType_DoesNotThrow_AndDoesNotLeakAGameObject()
+        {
+            var before = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None).Length;
+
+            string result = null;
+            Assert.DoesNotThrow(() => result = DebugValues.DefaultValueFor(typeof(GameObject)));
+            Assert.AreEqual(string.Empty, result);
+
+            var after = UnityEngine.Object.FindObjectsByType<GameObject>(FindObjectsSortMode.None).Length;
+            Assert.AreEqual(before, after, "không được để lại GameObject rác trong scene");
+        }
+
         [Test]
         public void DefaultValueFor_VectorTypesRoundTripThroughParser()
         {

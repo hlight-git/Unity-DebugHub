@@ -9,55 +9,6 @@ namespace Hlight.Debug.Hub
     {
         private const BindingFlags ALL = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 
-        public static object GetValueOfFieldOrPropertyRecursive(this Type type, object source, string memberName, out Type memberInfoType, BindingFlags bindingFlags = ALL)
-        {
-            FieldInfo fieldInfo = type.GetFieldRecursive(memberName, bindingFlags);
-            if (fieldInfo != null)
-            {
-                memberInfoType = fieldInfo.FieldType;
-                return fieldInfo.GetValue(source);
-            }
-
-            PropertyInfo propertyInfo = type.GetPropertyRecursive(memberName, bindingFlags);
-            if (propertyInfo != null)
-            {
-                memberInfoType = propertyInfo.PropertyType;
-                return propertyInfo.GetValue(source);
-            }
-
-            memberInfoType = null;
-            return null;
-        }
-
-        /// Kiểu của field/property, null nếu không có member nào tên đó.
-        public static Type GetMemberType(this Type type, string memberName, BindingFlags bindingFlags = ALL)
-        {
-            FieldInfo fieldInfo = type.GetFieldRecursive(memberName, bindingFlags);
-            if (fieldInfo != null) return fieldInfo.FieldType;
-            return type.GetPropertyRecursive(memberName, bindingFlags)?.PropertyType;
-        }
-
-        /// Ghi giá trị vào field/property. Truyền source null cho member static.
-        /// Ném lỗi khi không tìm thấy member hoặc property không có setter — im lặng bỏ qua thì
-        /// người dùng tưởng lệnh đã chạy.
-        public static void SetMemberValue(this Type type, object source, string memberName, object value, BindingFlags bindingFlags = ALL)
-        {
-            FieldInfo fieldInfo = type.GetFieldRecursive(memberName, bindingFlags);
-            if (fieldInfo != null)
-            {
-                fieldInfo.SetValue(source, value);
-                return;
-            }
-
-            PropertyInfo propertyInfo = type.GetPropertyRecursive(memberName, bindingFlags);
-            if (propertyInfo == null)
-                throw new Exception($"Not found field (or property) \"{memberName}\" in `{type.Name}`.");
-            if (!propertyInfo.CanWrite)
-                throw new Exception($"Property \"{memberName}\" in `{type.Name}` is read-only.");
-
-            propertyInfo.SetValue(source, value);
-        }
-
         /// Method/indexer virtual bị override thì base type và derived type đều "declare" một
         /// MethodInfo riêng cho cùng một slot — GetBaseDefinition() trỏ về cùng khai báo gốc, dùng
         /// để lọc bản ở base type ra, tránh báo "nhiều overload" giả cho một method chỉ bị override.

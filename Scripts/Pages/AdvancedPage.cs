@@ -10,6 +10,11 @@ namespace Hlight.Debug.Hub
     {
         private static string typed = string.Empty;
 
+        /// Static giữ nguyên giữa các lần Play khi bật "Enter Play Mode without domain reload":
+        /// không reset thì trang Execute mở phiên chạy sau vẫn còn address đã gõ ở phiên trước.
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics() => typed = string.Empty;
+
         public static DebugPage Root()
         {
             return new DebugPage("Advanced", panel =>
@@ -44,14 +49,26 @@ namespace Hlight.Debug.Hub
                         continue;
                     }
 
+                    // Lỗi phải nổi lên (cùng luật với Reflect.ValueFor): Get nuốt lỗi thì một resolve
+                    // thất bại hiện thành "null" — không phân biệt được với giá trị thật sự null; Set
+                    // nuốt lỗi thì người dùng tưởng đã ghi xong.
                     var node = new ValueNode
                     {
                         Label = Leaf(address),
                         Description = address,
                         Declared = cursor.Declared,
                         Address = address,
-                        Get = () => Address.TryResolve(address, out var fresh, out _) ? fresh.Value : null,
-                        Set = cursor.CanWrite ? value => Address.TryWrite(address, value, out _) : null,
+                        Get = () =>
+                        {
+                            if (!Address.TryResolve(address, out var fresh, out var error)) throw new System.Exception(error);
+                            return fresh.Value;
+                        },
+                        Set = cursor.CanWrite
+                            ? value =>
+                            {
+                                if (!Address.TryWrite(address, value, out var error)) throw new System.Exception(error);
+                            }
+                            : null,
                         Dismiss = DismissMode.Stay,
                     };
                     (DebugValues.IsInlineValue(cursor.Declared) ? scalars : objects).Add((address, node));
@@ -68,7 +85,7 @@ namespace Hlight.Debug.Hub
             panel.AddText($"<b>{title}</b>");
             foreach (var item in items)
             {
-                NodeRenderer.Render(panel, item.Node, (node, values) => DebugRegistry.Run(node, values, out _));
+                NodeRenderer.Render(panel, item.Node, (node, values) => NodeRenderer.RunInspect(panel, node, values));
                 var address = item.Address;
                 panel.AddButton("Gỡ", () => { Watches.Remove(address); panel.Refresh(); });
             }
@@ -96,7 +113,7 @@ namespace Hlight.Debug.Hub
             {
                 var cursor = new Cursor(type, null, null);
                 foreach (var node in Reflect.Members(cursor, type.FullName, MemberFilter.Default))
-                    NodeRenderer.Render(panel, node, (n, values) => DebugRegistry.Run(n, values, out _));
+                    NodeRenderer.Render(panel, node, (n, values) => NodeRenderer.RunInspect(panel, n, values));
             });
         }
 
@@ -135,7 +152,7 @@ namespace Hlight.Debug.Hub
                     return;
                 }
                 foreach (var node in Reflect.Members(cursor, address, MemberFilter.Default))
-                    NodeRenderer.Render(panel, node, (n, values) => DebugRegistry.Run(n, values, out _));
+                    NodeRenderer.Render(panel, node, (n, values) => NodeRenderer.RunInspect(panel, n, values));
                 panel.AddButton(Watches.Contains(address) ? "Đã watch" : "+ Watch trang này", () =>
                 {
                     if (!Watches.TryAdd(address, out var message)) panel.ShowResult(message, true);
@@ -171,7 +188,10 @@ namespace Hlight.Debug.Hub
                 // thiếu nó thì dán/gõ xong rồi bấm Get ngay không qua onValueChanged vẫn đọc `typed` rỗng.
                 panel.AddField("Address", typeof(string), typed, value => typed = value, value => typed = value);
                 var pending = string.Empty;
-                panel.AddField("Giá trị (cho Set)", typeof(string), string.Empty, value => pending = value);
+                // onSubmit trùng onChanged, cùng lý do với Address ở trên: thiếu nó thì dán/gõ xong
+                // bấm Set ngay không qua onEndEdit vẫn đọc `pending` rỗng.
+                panel.AddField("Giá trị (cho Set)", typeof(string), string.Empty, value => pending = value,
+                    value => pending = value);
 
                 panel.AddPrimary("Get", () =>
                 {

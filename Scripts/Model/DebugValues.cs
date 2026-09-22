@@ -187,8 +187,12 @@ namespace Hlight.Debug.Hub
             }
             if (type == typeof(string) || type == typeof(char)) return string.Empty;
 
-            // Check if type is vector-like (has multi-component representation)
-            if (PartsOf(Activator.CreateInstance(type)) != null)
+            // VectorParts là bảng đủ để trả lời "có nhiều thành phần không" — tra bằng KEY, không
+            // cần dựng instance thật để hỏi. Trước đây gọi Activator.CreateInstance(type) trước khi
+            // biết type có an toàn để dựng không: với GameObject, cái này thật sự tạo và bỏ rơi một
+            // GameObject rỗng vào scene đang chạy; với Transform/Component/interface/abstract type
+            // thì ném exception ngay (không có constructor không tham số công khai).
+            if (VectorParts.ContainsKey(type))
                 return ToText(Activator.CreateInstance(type));
 
             if (type.IsPrimitive || type == typeof(decimal)) return "0";

@@ -43,7 +43,7 @@ namespace Hlight.Debug.Hub
             {
                 var entry = leaf;
                 NodeRenderer.Render(panel, entry.Node, (node, values) => Dispatch(panel, entry, node, values),
-                    LabelOf(entry, leaves, false));
+                    LabelOf(entry, leaves));
             }
 
             if (folders.Count == 0 && leaves.Count == 0) panel.AddText("No command registered.");
@@ -157,18 +157,18 @@ namespace Hlight.Debug.Hub
 
         #region Label
 
-        /// Tên hiện trên row: mặc định là segment cuối (hay full path ở trang Search, nơi tên lá mất
-        /// ngữ cảnh). Overload trùng path trong cùng một thư mục thì thêm số tham số, không thì hai
-        /// row giống nhau y hệt. Description do panel format.
+        /// Tên hiện trên row: segment cuối (full path ở trang Search đi qua tham số label của
+        /// NodeRenderer.Render trực tiếp bằng entry.Path — xem SearchAll, không qua đây). Overload
+        /// trùng path trong cùng một thư mục thì thêm số tham số, không thì hai row giống nhau y hệt.
+        /// Description do panel format.
         ///
         /// ponytail: bản cũ còn cắt bớt description dài (Shorten) trước khi đưa vào row — giữ lại hàm
         /// đó bên dưới cho test, nhưng không gọi ở đây nữa: NodeRenderer.Render không nhận description
         /// riêng cho row, mà node.Description còn bị ParamsPage/ActionsPage đọc lại nguyên văn ở trang
         /// sau — cắt ở đây là cắt luôn cả trang đó. Row dài thì tự wrap (GrowRowsToLabel lo phần cao).
-        internal static string LabelOf(DebugRegistry.Entry entry, IReadOnlyList<DebugRegistry.Entry> siblings,
-            bool fullPath)
+        internal static string LabelOf(DebugRegistry.Entry entry, IReadOnlyList<DebugRegistry.Entry> siblings)
         {
-            var name = fullPath ? entry.Path : LastSegment(entry);
+            var name = LastSegment(entry);
             return Duplicated(entry, siblings) ? $"{name}  ({ArgCount(entry)} args)" : name;
         }
 

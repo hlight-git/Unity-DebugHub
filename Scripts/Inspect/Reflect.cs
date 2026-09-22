@@ -56,7 +56,7 @@ namespace Hlight.Debug.Hub
                     foreach (var method in level.GetMethods(ALL))
                     {
                         if (Skip(method, filter) || method.IsSpecialName) continue;
-                        yield return ActionFor(cursor, method);
+                        yield return ActionFor(cursor, address, method);
                     }
                 }
                 if ((filter & MemberFilter.Inherited) == 0) yield break;
@@ -144,7 +144,7 @@ namespace Hlight.Debug.Hub
             return node;
         }
 
-        private static ActionNode ActionFor(Cursor parent, MethodInfo method)
+        private static ActionNode ActionFor(Cursor parent, string address, MethodInfo method)
         {
             var parameters = method.GetParameters();
             var descriptors = new DebugParameter[parameters.Length];
@@ -152,11 +152,18 @@ namespace Hlight.Debug.Hub
                 descriptors[i] = new DebugParameter(parameters[i].Name, parameters[i].ParameterType);
 
             var source = parent.Value;
+            // Key ổn định qua các lần rebuild: ParamsPage giữ giá trị đã nhập ở DebugRegistry.ArgsByKey
+            // theo Key này (không phải trong closure), nên thiếu nó thì chọn xong một tham số, back
+            // ra rồi vào lại là mất — xem doc comment của DebugNode.Key. Ưu tiên address (định danh
+            // đúng instance/static root đang đứng); không có address (con của FolderNode do game
+            // dựng) thì lùi về FullName của type, đủ ổn định cho case đó.
+            var owner = address ?? (parent.Value?.GetType() ?? parent.Declared)?.FullName;
             return new ActionNode
             {
                 Label = method.Name,
                 Description = DebugLogConsoleName(method.ReturnType),
                 Parameters = descriptors,
+                Key = $"reflect:{owner}.{method.Name}#{parameters.Length}",
                 Dismiss = DismissMode.Stay,
                 Invoke = args =>
                 {
@@ -180,7 +187,15 @@ namespace Hlight.Debug.Hub
             };
             // node.Address, không phải childAddress đã capture — cùng lý do với ValueFor: đổi
             // Address sau khi dựng node phải đổi luôn chỗ Set trỏ tới.
-            node.Set = snapshot is IList && childAddress != null ? v => Address.TryWrite(node.Address, v, out _) : null;
+            //
+            // Lỗi phải nổi lên (cùng luật với ValueFor ở trên): nuốt lỗi ở đây thì Set âm thầm
+            // không ghi gì, người dùng tưởng đã ghi xong.
+            node.Set = snapshot is IList && childAddress != null
+                ? v =>
+                {
+                    if (!Address.TryWrite(node.Address, v, out var error)) throw new Exception(error);
+                }
+                : null;
             return node;
         }
 

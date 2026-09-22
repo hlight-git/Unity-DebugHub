@@ -91,6 +91,23 @@ namespace Hlight.Debug.Hub
         public static bool TryWrite(string address, object value, out string error)
         {
             if (!TryResolve(address, out var cursor, out error)) return false;
+            return TryWrite(address, cursor, value, out error);
+        }
+
+        /// TrySet parse theo `cursor.Declared` (đòi resolve trước để biết kiểu) rồi mới ghi — dùng
+        /// lại đúng cursor đó cho việc ghi thay vì để TryWrite(string, …) resolve lại lần hai: getter
+        /// nằm trên đường đi (property, indexer, method step) có side effect thì double-resolve là
+        /// chạy nó hai lần.
+        public static bool TrySet(string address, string text, out string error)
+        {
+            if (!TryResolve(address, out var cursor, out error)) return false;
+            return DebugValues.TryParse(text, cursor.Declared, out var value, out error, allowVars: true) &&
+                   TryWrite(address, cursor, value, out error);
+        }
+
+        private static bool TryWrite(string address, Cursor cursor, object value, out string error)
+        {
+            error = null;
             if (!cursor.CanWrite)
             {
                 error = $"'{address}' không ghi được (readonly, chỉ có getter, hoặc struct cha không ghi lại được).";
@@ -107,13 +124,6 @@ namespace Hlight.Debug.Hub
                 error = (exception.InnerException ?? exception).Message;
                 return false;
             }
-        }
-
-        public static bool TrySet(string address, string text, out string error)
-        {
-            if (!TryResolve(address, out var cursor, out error)) return false;
-            return DebugValues.TryParse(text, cursor.Declared, out var value, out error, allowVars: true) &&
-                   TryWrite(address, value, out error);
         }
 
         #region Tách chuỗi
@@ -299,7 +309,15 @@ namespace Hlight.Debug.Hub
             var bracket = body.IndexOf('[');
             if (bracket >= 0)
             {
-                int.TryParse(body.Substring(bracket + 1).TrimEnd(']'), out order);
+                var index = body.Substring(bracket + 1).TrimEnd(']');
+                // TryParse trước đây bị bỏ qua kết quả: "#Camera[abc]" âm thầm resolve instance 0
+                // thay vì báo lỗi. Giữ nguyên order = 0 chỉ khi text thật sự là "0" — chữ rác phải
+                // báo lỗi đọc được, không phải lặng lẽ lấy nhầm instance khác.
+                if (!int.TryParse(index, out order))
+                {
+                    error = $"'{index}' không phải một số nguyên.";
+                    return false;
+                }
                 body = body.Substring(0, bracket);
             }
 
@@ -311,7 +329,9 @@ namespace Hlight.Debug.Hub
             }
 
             var found = Object.FindObjectsByType(type, FindObjectsInactive.Include, FindObjectsSortMode.None);
-            if (order >= found.Length)
+            // order < 0 gộp chung vào cùng nhánh bounds-check: trước đây "#Camera[-1]" lọt qua đây
+            // rồi ném IndexOutOfRangeException ở found[order] thay vì lỗi đọc được.
+            if (order < 0 || order >= found.Length)
             {
                 error = $"Chỉ có {found.Length} instance của {body} đang sống.";
                 return false;
@@ -401,6 +421,15 @@ namespace Hlight.Debug.Hub
             if (arguments.Count == 0)
             {
                 error = "indexer không có tham số nào";
+                return false;
+            }
+
+            // Indexer luôn là member instance (C# không có static indexer) — root static (`Type[0]`
+            // ngay bước đầu, chưa qua member nào ra một instance) thì source null, và source.GetType()
+            // dưới đây ném NRE thay vì lỗi đọc được. cùng luật với needsWriteBack vài dòng dưới.
+            if (source == null)
+            {
+                error = "không có instance để đọc indexer (đang đứng ở một type, không phải object).";
                 return false;
             }
 

@@ -40,18 +40,10 @@ namespace Hlight.Debug.Hub.Tests
         {
             var entry = Add("level.goto");
 
-            var label = CommandsPage.LabelOf(entry, null, false);
+            var label = CommandsPage.LabelOf(entry, null);
 
             Assert.AreEqual("goto", label);
             Assert.IsFalse(label.Contains(DESCRIPTION), "description không nằm trong label: " + label);
-        }
-
-        [Test]
-        public void LabelOf_FullPath_ForSearchRows()
-        {
-            var entry = Add("level.goto", string.Empty);
-
-            Assert.AreEqual("level.goto", CommandsPage.LabelOf(entry, null, true));
         }
 
         /// Trùng path trong cùng một thư mục thì hai row giống nhau y hệt, phải kèm số tham số.
@@ -64,8 +56,8 @@ namespace Hlight.Debug.Hub.Tests
             var two = EntryFor(twoNode);
             var siblings = new List<DebugRegistry.Entry> { one, two };
 
-            StringAssert.Contains("(1 args)", CommandsPage.LabelOf(one, siblings, false));
-            StringAssert.Contains("(2 args)", CommandsPage.LabelOf(two, siblings, false));
+            StringAssert.Contains("(1 args)", CommandsPage.LabelOf(one, siblings));
+            StringAssert.Contains("(2 args)", CommandsPage.LabelOf(two, siblings));
         }
 
         [Test]

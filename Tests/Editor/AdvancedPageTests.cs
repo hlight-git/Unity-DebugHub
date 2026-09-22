@@ -1,5 +1,7 @@
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace Hlight.Debug.Hub.Tests
 {
@@ -62,6 +64,26 @@ namespace Hlight.Debug.Hub.Tests
             panel.ShowFromRoot(AdvancedPage.WatchPage());
 
             Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Gỡ")));
+        }
+
+        /// Bug đã sửa: Section (dùng cho row Watch) chạy node qua
+        /// `(n, v) => DebugRegistry.Run(n, v, out _)`, nuốt luôn kết quả — Set ném lỗi thì panel
+        /// vẫn im re như đã ghi thành công. Giờ đi qua NodeRenderer.RunInspect nên lỗi phải nổi lên
+        /// panel.LastResult, đúng chính sách chính NodeRenderer.RenderValue/ValueFor đã ghi trong
+        /// doc comment.
+        [Test]
+        public void WatchPage_FailingWrite_ShowsVisibleError_InsteadOfSilentSuccess()
+        {
+            Assert.IsTrue(Watches.TryAdd($"{ROOT}.Explosive", out var addError), addError);
+
+            panel.ShowFromRoot(AdvancedPage.WatchPage());
+            var row = TestPanel.Rows(panel).First(r => r.label.text.StartsWith("Explosive"));
+            Assert.IsNotNull(row.input, "Explosive là int — phải là ô nhập tại chỗ");
+
+            LogAssert.Expect(LogType.Exception, "Exception: bùm");
+            row.input.onEndEdit.Invoke("9");
+
+            StringAssert.Contains("bùm", panel.LastResult);
         }
 
         [Test]
