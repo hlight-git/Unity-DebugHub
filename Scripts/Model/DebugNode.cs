@@ -3,6 +3,33 @@ using System.Collections.Generic;
 
 namespace Hlight.Debug.Hub
 {
+    /// Làm gì với hub sau khi command chạy xong.
+    public enum DismissMode
+    {
+        /// Giữ nguyên panel — cho row bật/tắt liên tiếp.
+        Stay,
+
+        /// Đóng panel, entry vẫn còn.
+        ClosePanel,
+
+        /// Ẩn cả entry để nhìn game không bị hub che. Gọi lại bằng trigger (lắc/gõ góc); panel mở lại
+        /// đúng page đang xem vì DebugHubPanel.Close() giữ stack.
+        HideHub,
+    }
+
+    /// Một tham số của command.
+    public sealed class DebugParameter
+    {
+        public readonly string Name;
+        public readonly Type Type;
+
+        public DebugParameter(string name, Type type)
+        {
+            Name = name;
+            Type = type;
+        }
+    }
+
     /// Kiểu chữ của TextNode. Table = monospace + tắt wrap, để cột không lệch.
     public enum TextStyle { Normal, Note, Good, Warn, Bad, Table }
 

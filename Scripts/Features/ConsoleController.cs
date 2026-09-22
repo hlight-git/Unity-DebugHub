@@ -60,9 +60,8 @@ namespace Hlight.Debug.Hub
         {
             // Command duy nhất còn đăng ký vào IDC: cầu để ô nhập lệnh của console vẫn chạy được
             // command của hub sau khi hub thôi dùng registry của IDC. VD: hub "level.goto 5".
-            // Thử registry mới trước, rớt về registry cũ cho inspect.* (chưa migrate tới Task 21).
             DebugLogConsole.AddCommand<string>("hub", "Chạy một command của Debug Hub, VD: hub \"level.goto 5\".",
-                line => { if (!DebugHub.Execute(line, out _)) DebugCommands.Execute(line); });
+                line => DebugHub.Execute(line, out _));
 
             // Đọc/ghi dữ liệu thì Stays(): kết quả hiện ở dòng kết quả, người ta còn tra tiếp chứ
             // không phải chạy một lần rồi ra nhìn game.
@@ -84,26 +83,26 @@ namespace Hlight.Debug.Hub
 
             // "inspect" thay cho get/set/reg trần ở gốc: cây page chỉ hiện tên lá nên một row tên
             // "get" không nói được nó đọc cái gì. Description phải một câu, ví dụ query để ở dev note.
-            DebugCommands.Add<string, string, string>(this, "inspect.get",
+            DebugHub.Add<string, string, string>(this, "inspect.get",
                     "Đọc giá trị của một object hoặc một lời gọi phương thức theo query.", Get)
                 .Defaults(DEFAULT_ASSEMBLY, string.Empty, string.Empty).Stays();
-            DebugCommands.Add<string, string, string, string>(this, "inspect.set",
+            DebugHub.Add<string, string, string, string>(this, "inspect.set",
                     "Ghi giá trị vào một object, query giống inspect.get.", Set)
                 .Defaults(DEFAULT_ASSEMBLY, string.Empty, string.Empty, string.Empty).Stays();
-            DebugCommands.Add(this, "inspect.last", "Log lại giá trị của lần đọc gần nhất.", GetAns)
+            DebugHub.Add(this, "inspect.last", "Log lại giá trị của lần đọc gần nhất.", GetAns)
                 .Stays();
 
             DebugHub.Notes.Add("query của inspect: inspect.get Assembly-CSharp Class Instance.indexer[0].Method<$r1>(string, $r2)[0.1]");
 
             // Biến của debugger: đặt tên cho một giá trị/type rồi dùng lại trong query bằng $tên.
-            DebugCommands.Add<string>(this, "inspect.var.get", "Log giá trị đang gán cho một biến.", RegistryGet)
+            DebugHub.Add<string>(this, "inspect.var.get", "Log giá trị đang gán cho một biến.", RegistryGet)
                 .Stays();
-            DebugCommands.Add<string>(this, "inspect.var.save", "Gán giá trị của lần đọc gần nhất cho một biến.", RegistrySetAns)
+            DebugHub.Add<string>(this, "inspect.var.save", "Gán giá trị của lần đọc gần nhất cho một biến.", RegistrySetAns)
                 .Stays();
-            DebugCommands.Add<string, string, string, string>(this, "inspect.var.set",
+            DebugHub.Add<string, string, string, string>(this, "inspect.var.set",
                     "Parse stringValue theo type rồi gán cho một biến.", RegistrySet)
                 .Defaults(string.Empty, DEFAULT_ASSEMBLY, string.Empty, string.Empty).Stays();
-            DebugCommands.Add<string, string, string>(this, "inspect.var.type", "Gán một type cho một biến.", RegistrySetType)
+            DebugHub.Add<string, string, string>(this, "inspect.var.type", "Gán một type cho một biến.", RegistrySetType)
                 .Defaults(string.Empty, DEFAULT_ASSEMBLY, string.Empty).Stays();
 
             // Debugger của SDK là UI riêng: hub còn hiện thì che mất, phải bấm được vào nó.
