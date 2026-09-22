@@ -579,6 +579,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   resourcePath: IDC Variant
   repeat: {fileID: 9003806060876922360}
+  entry: {fileID: 933996018740646936}
 --- !u!1 &1221932446719915195
 GameObject:
   m_ObjectHideFlags: 0

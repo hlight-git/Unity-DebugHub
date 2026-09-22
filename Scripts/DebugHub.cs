@@ -136,7 +136,7 @@ namespace Hlight.Debug.Hub
             // Đẩy vào console TRƯỚC khi Awake() của nó chạy (DebugHub có DefaultExecutionOrder(-100)
             // nên luôn chạy trước): console.proxima cần sẵn để đăng ký command "console.proxima".
             console.proxima = proxima;
-            entry.Clicked += OpenRootPage;
+            entry.Clicked += OpenCommandTree;
             // Kết quả dài bị cắt ở dòng nổi; toàn văn kèm stack trace nằm ở log window.
             panel.ResultClicked += () => console.Enabled = true;
             authenticationInputField.onEndEdit.AddListener(OnAuthenticationInputFieldSubmitted);
@@ -223,29 +223,12 @@ namespace Hlight.Debug.Hub
             Visible = true;
         }
 
-        private void OpenRootPage()
+        /// Gốc panel là cây command thẳng — không còn trang menu trung gian "Debug Hub". Các row cũ
+        /// của trang đó đều đã có chỗ riêng: Help ở nút "?" header, Console/Auto/Proxima là command
+        /// console.*, "Show entry button" là command hub.entry (ConsoleController.Awake()).
+        private void OpenCommandTree()
         {
-            panel.Show(RootPage());
-        }
-
-        private DebugPage RootPage()
-        {
-            return new DebugPage("Debug Hub", page =>
-            {
-                page.AddNavigation("Commands", CommandsPage.Root());
-                page.AddNavigation("Help", HelpPage.Build());
-                page.AddToggle("Console", console.Enabled, value => console.Enabled = value);
-                page.AddToggle("Auto enable console", console.AutoEnable, value => console.AutoEnable = value);
-                if (proxima.Supported) page.AddToggle("Proxima", proxima.Enabled, value => proxima.Enabled = value);
-                // Không qua Visible: toggle này nằm ngay trên root page đang mở, Visible có side
-                // effect đóng panel/ẩn dòng kết quả — không phải điều người dùng muốn khi chỉ bấm
-                // một toggle. Refresh() thẳng để nút repeat theo kịp mà khỏi đóng panel.
-                page.AddToggle("Show entry button", entry.Activating, value =>
-                {
-                    entry.Activating = value;
-                    repeat.Refresh();
-                });
-            });
+            panel.Show(CommandsPage.Root());
         }
 
         #region API

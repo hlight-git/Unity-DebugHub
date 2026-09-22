@@ -313,6 +313,25 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual("Commands", panel.transform.Find("Window/Header/Title").GetComponent<TMP_Text>().text);
         }
 
+        /// Spec (2026-09-22-debug-hub-redesign-design.md:20) "Bỏ root page cũ — gốc panel chính là
+        /// cây command": bấm entry phải mở thẳng CommandsPage.Root(), không qua trang menu trung
+        /// gian "Debug Hub" (Commands/Help/Console/Proxima/Show entry button) nữa.
+        [Test]
+        public void EntryClick_OpensCommandTreeDirectly()
+        {
+            var hub = instance.GetComponentInChildren<DebugHub>(true);
+            var openCommandTree = typeof(DebugHub).GetMethod("OpenCommandTree", BindingFlags.NonPublic | BindingFlags.Instance);
+            Assert.IsNotNull(openCommandTree, "entry.Clicked handler (OpenCommandTree) missing");
+
+            openCommandTree.Invoke(hub, null);
+
+            Assert.IsTrue(panel.IsOpen);
+            Assert.AreEqual("Commands", panel.transform.Find("Window/Header/Title").GetComponent<TMP_Text>().text,
+                "entry phải mở thẳng cây command, không qua trang menu trung gian");
+            Assert.IsNull(typeof(DebugHub).GetMethod("RootPage", BindingFlags.NonPublic | BindingFlags.Instance),
+                "trang menu 'Debug Hub' cũ phải bị xoá hẳn, không chỉ ngừng gọi tới");
+        }
+
         [Test]
         public void Background_ClosesPanel_RegardlessOfStackDepth()
         {

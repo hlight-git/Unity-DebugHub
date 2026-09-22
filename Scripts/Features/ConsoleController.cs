@@ -12,6 +12,7 @@ namespace Hlight.Debug.Hub
         private const string AUTO_ENABLE_KEY = "AutoEnableDebugConsole";
         [SerializeField] private string resourcePath;
         [SerializeField] private RepeatButton repeat;
+        [SerializeField] private DebugHubEntry entry;
 
         private Canvas inGameDebugConsoleCanvas;
         object ans;
@@ -120,6 +121,14 @@ namespace Hlight.Debug.Hub
 
             DebugHub.AddValue(this, "hub.repeat", "Nút chạy lại lệnh cuối.", () => repeat.Enabled, v => repeat.Enabled = v);
             DebugHub.Add(this, "hub.hide", "Ẩn hub để nhìn game — gọi lại bằng lắc / gõ 4 góc.", () => { }).HidesHub();
+
+            // Root page cũ có toggle "Show entry button" — không qua Visible vì đó có side effect
+            // đóng panel, chỉ set thẳng entry rồi Refresh() để nút repeat theo kịp.
+            DebugHub.AddValue(this, "hub.entry", "Hiện/ẩn nút bấm mở hub.", () => entry.Activating, value =>
+            {
+                entry.Activating = value;
+                repeat.Refresh();
+            });
         }
 
         #region Commands
