@@ -20,21 +20,44 @@ namespace Hlight.Debug.Hub
 
             // Toàn văn description ở đây: row trong list cắt ngắn cho vừa hai dòng.
             builder.Append("\n\n<b>Available commands:</b>");
-            var commands = new List<DebugCommand>(DebugCommands.All);
-            commands.Sort((left, right) => string.Compare(left.Path, right.Path, StringComparison.OrdinalIgnoreCase));
+            var entries = new List<DebugRegistry.Entry>(DebugRegistry.All);
+            entries.Sort((left, right) => string.Compare(left.Path, right.Path, StringComparison.OrdinalIgnoreCase));
 
-            foreach (var command in commands)
+            foreach (var entry in entries)
             {
-                builder.Append("\n  - ").Append(command.Path);
-                foreach (var parameter in command.Parameters)
-                {
-                    builder.Append(" [").Append(DebugLogConsole.GetTypeReadableName(parameter.Type)).Append(' ')
-                        .Append(parameter.Name).Append(']');
-                }
-                if (!string.IsNullOrEmpty(command.Description))
-                    builder.Append("  <color=#7A828C>").Append(command.Description).Append("</color>");
+                builder.Append("\n  - ").Append(entry.Path);
+                AppendShape(builder, entry.Node);
+                if (!string.IsNullOrEmpty(entry.Node.Description))
+                    builder.Append("  <color=#7A828C>").Append(entry.Node.Description).Append("</color>");
             }
             return builder.ToString();
+        }
+
+        /// Loại node quyết định gì hiện sau path: ActionNode liệt kê kiểu tham số như trước,
+        /// ValueNode in giá trị hiện tại, FolderNode chỉ báo có thể mở tiếp.
+        private static void AppendShape(StringBuilder builder, DebugNode node)
+        {
+            switch (node)
+            {
+                case ActionNode action:
+                    foreach (var parameter in action.Parameters)
+                    {
+                        builder.Append(" [").Append(DebugLogConsole.GetTypeReadableName(parameter.Type)).Append(' ')
+                            .Append(parameter.Name).Append(']');
+                    }
+                    return;
+
+                case ValueNode value:
+                    // Getter của Unity ném khá thường (component đã chết) — một dòng lỗi tốt hơn
+                    // cả trang Help vỡ ngang chừng, xem NodeRenderer.RenderValue.
+                    try { builder.Append(" = ").Append(DebugValues.ToText(value.Get())); }
+                    catch (Exception exception) { builder.Append(" = <color=#E5484D>").Append(exception.Message).Append("</color>"); }
+                    return;
+
+                case FolderNode:
+                    builder.Append(" ›");
+                    return;
+            }
         }
     }
 }
