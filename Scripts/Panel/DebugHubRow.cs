@@ -19,5 +19,11 @@ namespace Hlight.Debug.Hub
         /// Núm của switch: panel dịch sang phải khi bật. Không có núm thì trạng thái tắt chỉ là một
         /// thanh trống, nhìn không ra là switch.
         public RectTransform knob;
+
+        /// Template sinh ra row này — pool trả nó về đúng ngăn của nó.
+        [HideInInspector] public DebugHubRow Template;
+
+        /// Nút `…` mở page Thao tác. Chỉ row của ValueNode bật nó.
+        public Button more;
     }
 }

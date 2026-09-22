@@ -8,20 +8,13 @@ namespace Hlight.Debug.Hub.Tests
 {
     public class DebugHubPanelTests
     {
-        private const string PREFAB_PATH = "Packages/com.hlight.debug-hub/Prefabs/DebugHub.prefab";
-
-        private GameObject instance;
         private DebugHubPanel panel;
         private Transform content;
 
         [SetUp]
         public void SetUp()
         {
-            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PREFAB_PATH);
-            Assert.IsNotNull(prefab, "DebugHub prefab not found");
-            instance = Object.Instantiate(prefab);
-            panel = instance.GetComponentInChildren<DebugHubPanel>(true);
-            Assert.IsNotNull(panel, "DebugHubPanel component missing on prefab");
+            panel = TestPanel.Build();
             content = panel.transform.Find("Window/Scroll View/Viewport/Content");
             Assert.IsNotNull(content, "Content transform not found at expected path");
         }
@@ -29,7 +22,7 @@ namespace Hlight.Debug.Hub.Tests
         [TearDown]
         public void TearDown()
         {
-            Object.DestroyImmediate(instance);
+            TestPanel.Destroy(panel);
         }
 
         /// Row đầu tiên đang bật — template nằm trong Content nhưng luôn inactive.
@@ -205,6 +198,7 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void Prefab_ShipsWithInactiveEventSystem_WiredToHandler()
         {
+            var instance = panel.transform.root.gameObject;
             var eventSystem = instance.transform.Find("EventSystem");
             Assert.IsNotNull(eventSystem, "prefab must carry its own EventSystem");
             Assert.IsFalse(eventSystem.gameObject.activeSelf, "embedded EventSystem must start inactive");
@@ -284,6 +278,55 @@ namespace Hlight.Debug.Hub.Tests
             var wrapped = FirstRow().rect.height;
 
             Assert.Greater(wrapped, single + 1f, $"row có description phải cao hơn: {single} -> {wrapped}");
+        }
+
+        [Test]
+        public void PooledRow_ReturnsToTemplateHeight_AfterATallPage()
+        {
+            var tall = new DebugPage("tall", page => page.AddButton(new string('x', 400), () => { }));
+            var shortPage = new DebugPage("short", page => page.AddButton("x", () => { }));
+
+            panel.ShowFromRoot(tall);
+            var grown = TestPanel.Rows(panel)[0].GetComponent<RectTransform>().sizeDelta.y;
+
+            panel.ShowFromRoot(shortPage);
+            var reused = TestPanel.Rows(panel)[0].GetComponent<RectTransform>().sizeDelta.y;
+
+            Assert.Less(reused, grown, "row tái dùng vẫn giữ chiều cao đã nở của page trước");
+        }
+
+        [Test]
+        public void PooledRow_DropsListenersOfThePreviousPage()
+        {
+            var clicks = 0;
+            panel.ShowFromRoot(new DebugPage("a", page => page.AddButton("a", () => clicks++)));
+            panel.ShowFromRoot(new DebugPage("b", page => page.AddButton("b", () => { })));
+
+            TestPanel.Rows(panel)[0].button.onClick.Invoke();
+
+            Assert.AreEqual(0, clicks, "row tái dùng vẫn gọi listener của page cũ");
+        }
+
+        [Test]
+        public void Refresh_KeepsScrollPosition_WhileShowResetsIt()
+        {
+            panel.ShowFromRoot(new DebugPage("long", page =>
+            {
+                for (var i = 0; i < 40; i++) page.AddButton($"row {i}", () => { });
+            }));
+            TestPanel.ScrollOf(panel).verticalNormalizedPosition = 0.25f;
+
+            panel.Refresh();
+            Assert.AreEqual(0.25f, TestPanel.ScrollOf(panel).verticalNormalizedPosition, 0.001f);
+
+            // Page "again" cũng phải đủ dài để tràn scroll — page ngắn vừa khít viewport thì
+            // ScrollRect không còn chỗ để phân biệt "đỉnh" khỏi trạng thái nghỉ, verticalNormalizedPosition
+            // đọc ra 0 dù panel đã set 1 (giới hạn của chính ScrollRect, không phải của Refresh/Show).
+            panel.ShowFromRoot(new DebugPage("again", page =>
+            {
+                for (var i = 0; i < 40; i++) page.AddButton($"again {i}", () => { });
+            }));
+            Assert.AreEqual(1f, TestPanel.ScrollOf(panel).verticalNormalizedPosition, 0.001f);
         }
     }
 }

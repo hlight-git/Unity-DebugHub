@@ -37,6 +37,9 @@ namespace Hlight.Debug.Hub
         [SerializeField] private float maxWindowHeight = 1500f;
         [Tooltip("Dòng kết quả nổi ở đáy màn hình. Nằm ngoài panel nên vẫn thấy sau khi panel đóng.")]
         [SerializeField] private DebugHubToast toast;
+        // ponytail: chưa wire trong prefab, chỉ để Update() có ref mà chặn nhịp Live lúc đang gõ
+        // tìm kiếm — Task 7 gán ref thật + dựng UI tìm kiếm.
+        [SerializeField] private TMP_InputField searchInput;
 
         [Header("Row templates (inactive children of content)")]
         [SerializeField] private DebugHubRow buttonTemplate;
@@ -48,6 +51,8 @@ namespace Hlight.Debug.Hub
 
         private readonly Stack<DebugPage> stack = new();
         private readonly List<DebugHubRow> spawnedRows = new();
+        private readonly Dictionary<DebugHubRow, Stack<DebugHubRow>> pool = new();
+        private float nextRefresh;
 
         public bool IsOpen => gameObject.activeSelf;
 
@@ -65,6 +70,23 @@ namespace Hlight.Debug.Hub
             if (toast) toast.Clicked += () => ResultClicked?.Invoke();
         }
 
+        private void Update()
+        {
+            if (!IsOpen || stack.Count == 0 || !stack.Peek().Live) return;
+            if (Time.unscaledTime < nextRefresh) return;
+            nextRefresh = Time.unscaledTime + 0.25f;
+
+            // Chỉ bỏ nhịp khi người dùng đang **gõ**. currentSelectedGameObject != null là sai:
+            // Button/Toggle cũng giữ selection sau khi bấm nên panel sẽ đứng hình vĩnh viễn.
+            foreach (var row in spawnedRows)
+            {
+                if (row && row.input && row.input.isFocused) return;
+            }
+            if (searchInput && searchInput.isFocused) return;
+
+            Refresh();
+        }
+
         /// Mở panel. Đóng panel không xoá stack nên lần mở sau về đúng page đang xem lúc đóng;
         /// <paramref name="root"/> chỉ dùng khi chưa có gì trong stack.
         public void Show(DebugPage root)
@@ -72,6 +94,7 @@ namespace Hlight.Debug.Hub
             if (stack.Count == 0) stack.Push(root);
             gameObject.SetActive(true);
             Rebuild();
+            if (scrollRect) scrollRect.verticalNormalizedPosition = 1f;
         }
 
         /// Về page gốc, bỏ đường đã đi. Không đặt tên Reset: MonoBehaviour.Reset là magic method của
@@ -97,6 +120,7 @@ namespace Hlight.Debug.Hub
         {
             stack.Push(page);
             Rebuild();
+            if (scrollRect) scrollRect.verticalNormalizedPosition = 1f;
         }
 
         public void Pop()
@@ -109,6 +133,7 @@ namespace Hlight.Debug.Hub
                 return;
             }
             Rebuild();
+            if (scrollRect) scrollRect.verticalNormalizedPosition = 1f;
         }
 
         /// Bấm ra ngoài panel: đóng hẳn bất kể đang ở page nào, khác với Pop() (lùi từng bước qua nút back).
@@ -121,6 +146,16 @@ namespace Hlight.Debug.Hub
             gameObject.SetActive(false);
         }
 
+        /// Dựng lại trang hiện tại mà **giữ** vị trí scroll. Trang Live gọi cái này 4 lần/giây;
+        /// Show/Push/Pop mới là điều hướng và mới được kéo scroll về đầu.
+        public void Refresh()
+        {
+            if (stack.Count == 0) return;
+            var scroll = scrollRect ? scrollRect.verticalNormalizedPosition : 1f;
+            Rebuild();
+            if (scrollRect) scrollRect.verticalNormalizedPosition = scroll;
+        }
+
         private void Rebuild()
         {
             Clear();
@@ -129,7 +164,7 @@ namespace Hlight.Debug.Hub
             if (backButton) backButton.gameObject.SetActive(stack.Count > 1);
             page.Build?.Invoke(this);
             FitWindowToContent();
-            if (scrollRect) scrollRect.verticalNormalizedPosition = 1f;
+            // scroll về đầu chuyển sang Show/Push/Pop — Refresh() tự khôi phục vị trí cũ.
         }
 
         /// Window cao đúng bằng nội dung, chặn trên bởi maxWindowHeight (quá thì scroll).
@@ -182,25 +217,19 @@ namespace Hlight.Debug.Hub
             }
         }
 
+        /// Trả row về pool thay vì Destroy. Bắt buộc vì trang Live dựng lại 4 lần/giây (~80 row/giây),
+        /// và nó xoá luôn cái vá Destroy-deferred-vs-DestroyImmediate.
         private void Clear()
         {
             foreach (var row in spawnedRows)
             {
                 if (!row) continue;
-
-                // Tắt trước khi destroy: trong Play Mode, Destroy() bị hoãn tới cuối frame nên row
-                // của page cũ vẫn được layout group tính vào chiều cao -> panel chỉ nở, không co lại.
                 row.gameObject.SetActive(false);
-                DestroyRow(row.gameObject);
+                row.transform.SetParent(content, false);
+                if (!pool.TryGetValue(row.Template, out var stack)) pool[row.Template] = stack = new Stack<DebugHubRow>();
+                stack.Push(row);
             }
             spawnedRows.Clear();
-        }
-
-        private static void DestroyRow(GameObject row)
-        {
-            // Ở EditMode (test) thì Destroy() bị hoãn tới cuối frame và không bao giờ tới.
-            if (Application.isPlaying) Destroy(row);
-            else DestroyImmediate(row);
         }
 
         #region Elements
@@ -369,7 +398,19 @@ namespace Hlight.Debug.Hub
         /// để chỗ gọi tự ghép markup: màu và size phụ thuộc template, chỗ gọi không cần biết.
         private DebugHubRow Spawn(DebugHubRow template, string label, string description = null)
         {
-            var row = Instantiate(template, content);
+            DebugHubRow row;
+            if (pool.TryGetValue(template, out var stack) && stack.Count > 0)
+            {
+                row = stack.Pop();
+                Reset(row, template);
+            }
+            else
+            {
+                row = Instantiate(template, content);
+                row.Template = template;
+            }
+
+            row.transform.SetAsLastSibling();
             row.gameObject.SetActive(true);
             if (row.label)
             {
@@ -379,6 +420,36 @@ namespace Hlight.Debug.Hub
             }
             spawnedRows.Add(row);
             return row;
+        }
+
+        /// Row cũ mang theo mọi thứ lần dựng trước đã sửa. Thiếu một dòng ở đây là một bug
+        /// "thỉnh thoảng row cao bất thường / bấm ra hành động của page khác".
+        private static void Reset(DebugHubRow row, DebugHubRow template)
+        {
+            var rect = (RectTransform)row.transform;
+            var source = (RectTransform)template.transform;
+            rect.sizeDelta = source.sizeDelta;
+
+            if (row.label)
+            {
+                row.label.color = template.label.color;
+                row.label.enableWordWrapping = template.label.enableWordWrapping;
+                if (row.label.TryGetComponent<LayoutElement>(out var element) &&
+                    template.label.TryGetComponent<LayoutElement>(out var sourceElement))
+                    element.preferredHeight = sourceElement.preferredHeight;
+            }
+            if (row.detail) row.detail.text = string.Empty;
+            if (row.button) row.button.onClick.RemoveAllListeners();
+            if (row.toggle) row.toggle.onValueChanged.RemoveAllListeners();
+            if (row.input)
+            {
+                row.input.onValueChanged.RemoveAllListeners();
+                row.input.onEndEdit.RemoveAllListeners();
+                row.input.contentType = template.input.contentType;
+                row.input.characterLimit = template.input.characterLimit;
+                row.input.textComponent.color = template.input.textComponent.color;
+            }
+            if (row.more) row.more.gameObject.SetActive(false);
         }
 
         #endregion
