@@ -304,6 +304,36 @@ namespace Hlight.Debug.Hub
             return row.label;
         }
 
+        /// Row chỉ đọc: nhãn trái, giá trị căn phải, bấm là copy. Copy thành hành vi mặc định của
+        /// mọi dòng giá trị chứ không phải thứ mỗi trang info tự viết lại.
+        public void AddCopyRow(string label, string value, string description = null)
+        {
+            // buttonTemplate chứ không phải navTemplate: row này **không** đi đâu cả, mà navTemplate có
+            // chevron nên nhìn như mở được. Nó cũng là template mang nút … (§3).
+            var row = Spawn(buttonTemplate, $"{label}:  <b>{value}</b>", description);
+            // buttonTemplate chưa wire cột `detail` trong prefab (chỉ navTemplate có) — ghép giá trị
+            // vào label như AddChoice() đang làm, để cột phải chờ Task khác wire UI mà giá trị vẫn
+            // hiện ra ngay bây giờ.
+            if (row.detail) row.detail.text = value;
+            row.button.onClick.AddListener(() =>
+            {
+                GUIUtility.systemCopyBuffer = value;
+                ShowResult($"đã copy {label}", false);
+            });
+        }
+
+        /// Gắn nút `…` (page Thao tác) cho row vừa dựng. `run` đi kèm vì page Thao tác có thao tác
+        /// `Gán` — nó phải đi qua đúng luồng chạy của node (Confirm, Dismiss, dòng kết quả), không
+        /// được gọi thẳng node.Set.
+        public void AttachActions(ValueNode node, object current, Action<DebugNode, string[]> run)
+        {
+            var row = spawnedRows[spawnedRows.Count - 1];
+            if (!row.more) return;
+            row.more.gameObject.SetActive(true);
+            row.more.onClick.RemoveAllListeners();
+            row.more.onClick.AddListener(() => Push(ActionsPage.For(node, current, run)));
+        }
+
         /// Chọn một giá trị trong danh sách: row hiện giá trị hiện tại, bấm vào thì mở page liệt kê
         /// lựa chọn, chọn xong tự back. Dùng page thay cho UI.Dropdown vì dropdown sinh canvas lồng
         /// bên trong Mask của scroll view nên list bị mờ và không bấm được.
