@@ -75,7 +75,9 @@ namespace Hlight.Debug.Hub.Tests
                 button.Enabled = true;
                 Assert.IsFalse(button.gameObject.activeSelf);
             }
-            finally { Object.DestroyImmediate(button.gameObject); }
+            // Root chứ không phải riêng button: BuildRepeatButton() dựng cả prefab DebugHub, chỉ xoá
+            // button thì phần còn lại (DebugHub, Entry, Panel, Console...) rò rỉ vào scene test dùng chung.
+            finally { Object.DestroyImmediate(button.transform.root.gameObject); }
         }
     }
 }

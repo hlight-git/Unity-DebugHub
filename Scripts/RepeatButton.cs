@@ -29,7 +29,10 @@ namespace Hlight.Debug.Hub
             var line = DebugRegistry.LastCommand;
 
             // Bật mà chưa có lệnh nào thì ẩn hẳn: một nút rỗng bấm ra lỗi thì tệ hơn là không có nút.
-            gameObject.SetActive(Enabled && !string.IsNullOrEmpty(line));
+            // Và luôn tôn trọng Visible: LastCommandChanged bắn bất kể hub đang ẩn hay hiện (console
+            // log độc lập với Visible), không check thì một lệnh chạy qua console trong lúc hub đang
+            // ẩn có chủ đích (chụp ảnh sạch màn hình) sẽ tự bật nút lên đè lên đúng cái vừa ẩn.
+            gameObject.SetActive(DebugHub.Visible && Enabled && !string.IsNullOrEmpty(line));
             if (!gameObject.activeSelf) return;
 
             var path = line.Split(' ')[0];

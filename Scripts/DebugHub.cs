@@ -237,7 +237,14 @@ namespace Hlight.Debug.Hub
                 page.AddToggle("Console", console.Enabled, value => console.Enabled = value);
                 page.AddToggle("Auto enable console", console.AutoEnable, value => console.AutoEnable = value);
                 if (proxima.Supported) page.AddToggle("Proxima", proxima.Enabled, value => proxima.Enabled = value);
-                page.AddToggle("Show entry button", entry.Activating, value => entry.Activating = value);
+                // Không qua Visible: toggle này nằm ngay trên root page đang mở, Visible có side
+                // effect đóng panel/ẩn dòng kết quả — không phải điều người dùng muốn khi chỉ bấm
+                // một toggle. Refresh() thẳng để nút repeat theo kịp mà khỏi đóng panel.
+                page.AddToggle("Show entry button", entry.Activating, value =>
+                {
+                    entry.Activating = value;
+                    repeat.Refresh();
+                });
             });
         }
 
