@@ -115,10 +115,74 @@ namespace Hlight.Debug.Hub
             }, live: node.Live);
         }
 
-        /// Tạm: Task 18 thay bằng Reflect.Members trên chính node.Address.
+        /// Bộ lọc member là state của trang, không phải của node: đổi nó là đổi cách nhìn, không phải
+        /// đổi dữ liệu.
+        private static MemberFilter filter = MemberFilter.Default;
+
         private static DebugPage MembersPage(ValueNode node)
         {
-            return new DebugPage(node.Label, panel => panel.AddText("Mở object cần Advanced — Task 18."));
+            return new DebugPage(node.Label, panel =>
+            {
+                object current;
+                try { current = node.Get(); }
+                catch (Exception exception) { panel.AddText($"<color={Palette.BAD}>{exception.Message}</color>"); return; }
+
+                if (IsNull(current)) { panel.AddText("null"); return; }
+
+                var cursor = new Cursor(node.Declared, current, node.Set);
+                var children = Reflect.IsCollection(current)
+                    ? Reflect.Elements(cursor, node.Address)
+                    : Reflect.Members(cursor, node.Address, filter);
+
+                if (!Reflect.IsCollection(current))
+                {
+                    panel.AddToggle("Cả member kế thừa", (filter & MemberFilter.Inherited) != 0,
+                        on => { filter = on ? filter | MemberFilter.Inherited : filter & ~MemberFilter.Inherited; panel.Refresh(); });
+                    panel.AddToggle("Cả method", (filter & MemberFilter.Methods) != 0,
+                        on => { filter = on ? filter | MemberFilter.Methods : filter & ~MemberFilter.Methods; panel.Refresh(); });
+                }
+
+                foreach (var child in children) Render(panel, child, (n, values) => RunInspect(panel, n, values));
+
+                if (node.Address != null)
+                {
+                    panel.AddButton(Watches.Contains(node.Address) ? "Đã watch trang này" : "+ Watch trang này", () =>
+                    {
+                        if (!Watches.TryAdd(node.Address, out var error)) panel.ShowResult(error, true);
+                        panel.Refresh();
+                    });
+                }
+            },
+            // Search ở trang member lọc **danh sách này**, không phải tìm command toàn cục.
+            search: (panel, query) =>
+            {
+                object current;
+                try { current = node.Get(); }
+                catch (Exception exception) { panel.AddText($"<color={Palette.BAD}>{exception.Message}</color>"); return; }
+                if (IsNull(current)) { panel.AddText("null"); return; }
+
+                var cursor = new Cursor(node.Declared, current, node.Set);
+                var children = Reflect.IsCollection(current)
+                    ? Reflect.Elements(cursor, node.Address)
+                    : Reflect.Members(cursor, node.Address, filter);
+
+                var any = false;
+                foreach (var child in children)
+                {
+                    if (child.Label == null ||
+                        child.Label.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    any = true;
+                    Render(panel, child, (n, values) => RunInspect(panel, n, values));
+                }
+                if (!any) panel.AddText("Không có member nào khớp.");
+            });
+        }
+
+        /// Chạy một node do reflection sinh: không ghi LastCommand (không có path để chạy lại).
+        private static void RunInspect(DebugHubPanel panel, DebugNode node, string[] values)
+        {
+            var ok = DebugRegistry.Run(node, values, out var message);
+            panel.ShowResult(message, !ok);
         }
 
         /// Chữ phụ căn phải: đủ để biết bên trong có gì mà không phải mở ra.
