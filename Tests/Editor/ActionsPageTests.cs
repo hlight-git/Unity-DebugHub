@@ -51,13 +51,49 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
-        public void WatchAndSaveVar_AreNotHereYet()
+        public void NodeWithAddress_OffersWatch_AndSaysWhenItIsAlreadyWatched()
         {
-            // Task 19 thêm hai mục này sau khi Watches và Vars tồn tại. Test đổi ở đó.
             var node = Node.Value("n", () => 1, v => { });
+            node.Address = "Hlight.Debug.Hub.Tests.AddressFixture.Instance.Number";
+            try
+            {
+                panel.ShowFromRoot(ActionsPage.For(node, 1, (n, v) => { }));
+                Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Watch")));
+
+                TestPanel.ClickRowContaining(panel, "Watch");
+                panel.ShowFromRoot(ActionsPage.For(node, 1, (n, v) => { }));
+                Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Đã watch")));
+            }
+            finally { Watches.Remove(node.Address); }
+        }
+
+        [Test]
+        public void NodeWithoutAddress_DoesNotOfferWatch()
+        {
+            var node = Node.Value("n", () => 1, v => { });
+
             panel.ShowFromRoot(ActionsPage.For(node, 1, (n, v) => { }));
 
             Assert.IsFalse(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Watch")));
+        }
+
+        [Test]
+        public void SaveVar_BindsTheLiveObject_NotItsName()
+        {
+            var go = new GameObject("probe");
+            try
+            {
+                var node = Node.Value<GameObject>("go", () => go, null);
+                panel.ShowFromRoot(ActionsPage.For(node, go, (n, v) => { }));
+                TestPanel.ClickRowContaining(panel, "Lưu vào");
+                // page nhập tên biến
+                TestPanel.Rows(panel)[0].input.text = "g";
+                TestPanel.ClickRowContaining(panel, "Lưu");
+
+                Assert.IsTrue(Vars.TryGet("g", out var bound));
+                Assert.AreSame(go, bound);
+            }
+            finally { Vars.Remove("g"); Object.DestroyImmediate(go); }
         }
     }
 }
