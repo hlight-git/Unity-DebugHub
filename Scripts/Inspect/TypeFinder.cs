@@ -43,6 +43,7 @@ namespace Hlight.Debug.Hub
                 if (pair.Key.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) < 0) continue;
                 foreach (var type in pair.Value)
                 {
+                    if (found.Count >= limit) break;
                     if (!found.Contains(type)) found.Add(type);
                 }
             }
