@@ -1,4 +1,3 @@
-using System;
 using System.Collections;
 using IngameDebugConsole;
 using UnityEngine;
@@ -8,14 +7,12 @@ namespace Hlight.Debug.Hub
 {
     public class ConsoleController : MonoBehaviour
     {
-        public const string DEFAULT_ASSEMBLY = "Assembly-CSharp";
         private const string AUTO_ENABLE_KEY = "AutoEnableDebugConsole";
         [SerializeField] private string resourcePath;
         [SerializeField] private RepeatButton repeat;
         [SerializeField] private DebugHubEntry entry;
 
         private Canvas inGameDebugConsoleCanvas;
-        object ans;
 
         /// Đẩy vào từ DebugHub.Awake() (chạy trước nhờ DefaultExecutionOrder(-100)): Proxima dùng
         /// chung password với xác thực hub nên DebugHub vẫn là nơi khởi tạo, console chỉ đăng ký command.
@@ -82,29 +79,7 @@ namespace Hlight.Debug.Hub
             DebugHub.Add<float, float>(this, "time.skip", "Tua nhanh sec giây với time scale speed.", FastForward)
                 .Defaults("1", "100");
 
-            // "inspect" thay cho get/set/reg trần ở gốc: cây page chỉ hiện tên lá nên một row tên
-            // "get" không nói được nó đọc cái gì. Description phải một câu, ví dụ query để ở dev note.
-            DebugHub.Add<string, string, string>(this, "inspect.get",
-                    "Đọc giá trị của một object hoặc một lời gọi phương thức theo query.", Get)
-                .Defaults(DEFAULT_ASSEMBLY, string.Empty, string.Empty).Stays();
-            DebugHub.Add<string, string, string, string>(this, "inspect.set",
-                    "Ghi giá trị vào một object, query giống inspect.get.", Set)
-                .Defaults(DEFAULT_ASSEMBLY, string.Empty, string.Empty, string.Empty).Stays();
-            DebugHub.Add(this, "inspect.last", "Log lại giá trị của lần đọc gần nhất.", GetAns)
-                .Stays();
-
-            DebugHub.Notes.Add("query của inspect: inspect.get Assembly-CSharp Class Instance.indexer[0].Method<$r1>(string, $r2)[0.1]");
-
-            // Biến của debugger: đặt tên cho một giá trị/type rồi dùng lại trong query bằng $tên.
-            DebugHub.Add<string>(this, "inspect.var.get", "Log giá trị đang gán cho một biến.", RegistryGet)
-                .Stays();
-            DebugHub.Add<string>(this, "inspect.var.save", "Gán giá trị của lần đọc gần nhất cho một biến.", RegistrySetAns)
-                .Stays();
-            DebugHub.Add<string, string, string, string>(this, "inspect.var.set",
-                    "Parse stringValue theo type rồi gán cho một biến.", RegistrySet)
-                .Defaults(string.Empty, DEFAULT_ASSEMBLY, string.Empty, string.Empty).Stays();
-            DebugHub.Add<string, string, string>(this, "inspect.var.type", "Gán một type cho một biến.", RegistrySetType)
-                .Defaults(string.Empty, DEFAULT_ASSEMBLY, string.Empty).Stays();
+            DebugHub.Notes.Add("Inspect nằm ở nút Adv: Types/Instances để mở object, … trên một dòng để Watch hoặc lưu $var.");
 
             // Debugger của SDK là UI riêng: hub còn hiện thì che mất, phải bấm được vào nó.
 #if MAX_SDK
@@ -197,53 +172,6 @@ namespace Hlight.Debug.Hub
                 yield return new WaitForSeconds(sec);
                 callback?.Invoke();
             }
-        }
-
-        public void Get(string assemblyName, string typeName, string query)
-        {
-            ans = ExecuteAndGet(assemblyName, typeName, query);
-            UnityEngine.Debug.Log("Result: " + ans);
-        }
-
-        public object ExecuteAndGet(string assemblyName, string typeName, string query)
-        {
-            return Executor.Get(AppDomain.CurrentDomain.Load(assemblyName), typeName, query);
-        }
-        
-        public void Set(string assemblyName, string typeName, string query, string value)
-        {
-            var assembly = AppDomain.CurrentDomain.Load(assemblyName);
-            Executor.Set(assembly, typeName, query, value);
-            UnityEngine.Debug.Log(string.Join('.', typeName, query) + ": " + Executor.Get(assembly, typeName, query));
-        }
-
-        void GetAns()
-        {
-            UnityEngine.Debug.Log("Ans: " + ans);
-        }
-
-        void RegistryGet(string key)
-        {
-            UnityEngine.Debug.Log(Executor.GetRegisteredObject(key));
-        }
-
-        void RegistrySetAns(string key)
-        {
-            Executor.Bind(key, ans);
-        }
-
-        void RegistrySet(string key, string assemblyName, string typeName, string stringValue)
-        {
-            object parsedObj = Executor.ParseObject(stringValue, AppDomain.CurrentDomain.Load(assemblyName).GetType(typeName));
-            Executor.Bind(key, parsedObj);
-            UnityEngine.Debug.Log($"Registered: \"{key}\" - \"{parsedObj}\" (type: {parsedObj?.GetType()})");
-        }
-
-        void RegistrySetType(string key, string assemblyName, string typeName)
-        {
-            Type type = Executor.GetType(AppDomain.CurrentDomain.Load(assemblyName), typeName);
-            Executor.Bind(key, type);
-            UnityEngine.Debug.Log($"Registered: \"{key}\" - \"{type}\" (type: {type?.GetType()})");
         }
 
         #endregion

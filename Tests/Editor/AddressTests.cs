@@ -53,6 +53,40 @@ namespace Hlight.Debug.Hub.Tests
         }
     }
 
+    /// Task 21 xoá Executor.cs nhưng ReflectionExtensions.cs (GetFieldRecursive/GetPropertyRecursive/
+    /// AddMethodsRecursive) không đổi và Address vẫn dùng chung — 3 fixture dưới giữ lại đúng những
+    /// trường hợp cũ ExecutorTests phủ mà AddressFixture ở trên không chạm tới: field private, method
+    /// bị override, và static member kế thừa từ interface cha.
+    public class AddressOverrideBase
+    {
+        public virtual int Multiply(int x) => x;
+    }
+
+    public class AddressOverrideTarget : AddressOverrideBase
+    {
+        public static AddressOverrideTarget Instance = new AddressOverrideTarget();
+        private int hidden = 5;
+        public override int Multiply(int x) => x * 3;
+    }
+
+    /// Đúng hình dạng của Zego.IGlobalService&lt;T&gt;: static member khai ở interface cha, interface con
+    /// chỉ kế thừa. Interface không có BaseType nên nếu chỉ đi bằng BaseType thì address
+    /// "IAddressService" + "Global.X" sẽ báo không tìm thấy member.
+    public interface IAddressGlobal<out T> where T : class
+    {
+        public static T Global { get; set; }
+    }
+
+    public interface IAddressService : IAddressGlobal<IAddressService>
+    {
+        int Number { get; }
+    }
+
+    public class AddressServiceImpl : IAddressService
+    {
+        public int Number => 42;
+    }
+
     public class AddressTests
     {
         private const string ROOT = "Hlight.Debug.Hub.Tests.AddressFixture.Instance";
@@ -204,6 +238,43 @@ namespace Hlight.Debug.Hub.Tests
 
             Assert.IsFalse(Address.TryResolve($"{ROOT}.Box.Value", out _, out var error));
             StringAssert.Contains("null", error);
+        }
+
+        [Test]
+        public void Resolve_ReadsAPrivateFieldByName()
+        {
+            const string root = "Hlight.Debug.Hub.Tests.AddressOverrideTarget.Instance";
+
+            Assert.IsTrue(Address.TryResolve($"{root}.hidden", out var cursor, out var error), error);
+            Assert.AreEqual(5, cursor.Value);
+        }
+
+        /// Multiply là virtual trên AddressOverrideBase, override trên AddressOverrideTarget: base và
+        /// derived đều "declare" một MethodInfo riêng cho cùng slot — nếu AddMethodsRecursive không lọc
+        /// override ra thì đây thành "2 overload" giả, bắt buộc phải disambiguate bằng {index} dù chỉ
+        /// có một method thật để gọi.
+        [Test]
+        public void Resolve_CallsAnOverriddenMethod_WithoutAmbiguousOverloadError()
+        {
+            const string root = "Hlight.Debug.Hub.Tests.AddressOverrideTarget.Instance";
+
+            Assert.IsTrue(Address.TryResolve($"{root}.Multiply(7)", out var cursor, out var error), error);
+            Assert.AreEqual(21, cursor.Value);
+        }
+
+        /// Query kiểu "Zego.IAdService" + "Global.IsRewardedVideoReady": Global là static property của
+        /// interface **cha**, và interface không có BaseType để đi lên.
+        [Test]
+        public void Resolve_ReadsAStaticMemberInheritedFromABaseInterface()
+        {
+            IAddressGlobal<IAddressService>.Global = new AddressServiceImpl();
+            try
+            {
+                Assert.IsTrue(Address.TryResolve("Hlight.Debug.Hub.Tests.IAddressService.Global.Number",
+                    out var cursor, out var error), error);
+                Assert.AreEqual(42, cursor.Value);
+            }
+            finally { IAddressGlobal<IAddressService>.Global = null; }
         }
     }
 }
