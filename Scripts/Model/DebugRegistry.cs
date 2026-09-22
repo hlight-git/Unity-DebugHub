@@ -137,6 +137,46 @@ namespace Hlight.Debug.Hub
 
         internal static bool HasArgs(DebugNode node) => node.Key != null && argsByKey.ContainsKey(node.Key);
 
+        #region Địa chỉ
+
+        /// ValueNode đăng ký ở đúng path này — root `@path` của address.
+        internal static bool TryFindValue(string path, out ValueNode node)
+        {
+            var lookup = path.ToLowerInvariant();
+            foreach (var entry in All)
+            {
+                if (entry.Lookup == lookup && entry.Node is ValueNode value) { node = value; return true; }
+            }
+            node = null;
+            return false;
+        }
+
+        /// Prefix dài nhất của `text` khớp path một ValueNode. `@economy.coin.Amount` →
+        /// path "economy.coin", rest "Amount". Path command chứa dấu '.' nên không tách mù được.
+        internal static bool LongestValuePath(string text, out string path, out string rest)
+        {
+            var cut = text.IndexOfAny(new[] { '[', '(' });
+            var head = cut < 0 ? text : text.Substring(0, cut);
+
+            while (head.Length > 0)
+            {
+                if (TryFindValue(head, out _))
+                {
+                    path = head;
+                    rest = text.Substring(head.Length).TrimStart('.');
+                    return true;
+                }
+                var dot = head.LastIndexOf('.');
+                if (dot < 0) break;
+                head = head.Substring(0, dot);
+            }
+            path = null;
+            rest = null;
+            return false;
+        }
+
+        #endregion
+
         #region Chạy
 
         /// Chạy một node với giá trị dạng string theo đúng thứ tự tham số. Thành công thì
