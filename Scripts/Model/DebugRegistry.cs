@@ -109,7 +109,15 @@ namespace Hlight.Debug.Hub
             };
         }
 
-        internal static void Remove(DebugNode node) => entries.RemoveAll(entry => entry.Node == node);
+        internal static void Remove(DebugNode node)
+        {
+            entries.RemoveAll(entry => entry.Node == node);
+            // Bỏ luôn args đã lưu: node bị gỡ tay (DebugHub.Remove, hoặc TearDown của test) coi như
+            // xong hẳn — không để lại default rác cho một node KHÁC lỡ đăng ký cùng path sau này.
+            // Khác với path "owner chết", path đó không qua đây (chỉ lọc entry chết trong Register/All)
+            // nên chuyện "giữ giá trị đã gõ qua reload scene" ở Defaults() không bị ảnh hưởng.
+            if (node.Key != null) argsByKey.Remove(node.Key);
+        }
 
         internal static string[] ArgsFor(DebugNode node)
         {

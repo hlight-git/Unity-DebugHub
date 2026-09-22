@@ -160,6 +160,21 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(new[] { "9" }, DebugRegistry.ArgsFor(node));
         }
 
+        /// Bug đã sửa: Remove() từng chỉ gỡ khỏi `entries` mà quên dọn `argsByKey`, nên args của một
+        /// node đã gỡ tay rò rỉ sang node KHÁC đăng ký lại đúng path sau đó — lộ ra dưới dạng chạy lại
+        /// [SetUp]/[TearDown] hai lần trong cùng một domain (đúng thứ tự TearDown của chính test này).
+        [Test]
+        public void Remove_ClearsStoredArgs_SoANewRegistrationAtThatPathStartsFresh()
+        {
+            var first = DebugHub.Add<int>(null, "time.repeat", "d", TakeLevel);
+            DebugRegistry.StoreArgs(first, new[] { "9" });
+
+            DebugHub.Remove(first);
+
+            var second = Track(DebugHub.Add<int>(null, "time.repeat", "d", TakeLevel).Defaults("7"));
+            Assert.AreEqual(new[] { "7" }, DebugRegistry.ArgsFor(second));
+        }
+
         private static int CountOf(string path)
         {
             var count = 0;
