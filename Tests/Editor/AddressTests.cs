@@ -1,6 +1,20 @@
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using Hlight.Debug.Hub.Tests.Instances;
+using Object = UnityEngine.Object;
+
+namespace Hlight.Debug.Hub.Tests.Instances
+{
+    /// Fixture cho root `#Type[i]`: phải là UnityEngine.Object thật (TryInstance đòi
+    /// `typeof(Object).IsAssignableFrom`), và sống trong sub-namespace riêng để FullName có dấu
+    /// '.' — đúng hình dạng gây bug (UnityEngine.Camera, Harvest.UI.MouseCursor, ...) và tên ngắn
+    /// "AddressInstanceFixture" không đụng type nào khác trong project (không mơ hồ).
+    public class AddressInstanceFixture : MonoBehaviour
+    {
+        public int Value = 7;
+    }
+}
 
 namespace Hlight.Debug.Hub.Tests
 {
@@ -275,6 +289,76 @@ namespace Hlight.Debug.Hub.Tests
                 Assert.AreEqual(42, cursor.Value);
             }
             finally { IAddressGlobal<IAddressService>.Global = null; }
+        }
+
+        [Test]
+        public void Resolve_InstanceRoot_UnqualifiedShortName_WithIndex()
+        {
+            var go = new GameObject("probe", typeof(AddressInstanceFixture));
+            try
+            {
+                Assert.IsTrue(Address.TryResolve("#AddressInstanceFixture[0]", out var cursor, out var error), error);
+                Assert.AreEqual(go.GetComponent<AddressInstanceFixture>(), cursor.Value);
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void Resolve_InstanceRoot_UnqualifiedShortName_NoIndexDefaultsToFirst()
+        {
+            var go = new GameObject("probe", typeof(AddressInstanceFixture));
+            try
+            {
+                Assert.IsTrue(Address.TryResolve("#AddressInstanceFixture", out var cursor, out var error), error);
+                Assert.AreEqual(go.GetComponent<AddressInstanceFixture>(), cursor.Value);
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        /// Bug Task 22: `#Namespace.Type[i]` bị cắt root ở dấu '.' đầu tiên của namespace
+        /// (`CutAfterRootToken` cũ), nên `#UnityEngine.Camera[0]` báo lỗi ngay ở "UnityEngine".
+        [Test]
+        public void Resolve_InstanceRoot_NamespacedType_WithIndex()
+        {
+            var go = new GameObject("probe", typeof(AddressInstanceFixture));
+            try
+            {
+                Assert.IsTrue(
+                    Address.TryResolve("#Hlight.Debug.Hub.Tests.Instances.AddressInstanceFixture[0]",
+                        out var cursor, out var error), error);
+                Assert.AreEqual(go.GetComponent<AddressInstanceFixture>(), cursor.Value);
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void Resolve_InstanceRoot_NamespacedType_NoIndex()
+        {
+            var go = new GameObject("probe", typeof(AddressInstanceFixture));
+            try
+            {
+                Assert.IsTrue(
+                    Address.TryResolve("#Hlight.Debug.Hub.Tests.Instances.AddressInstanceFixture",
+                        out var cursor, out var error), error);
+                Assert.AreEqual(go.GetComponent<AddressInstanceFixture>(), cursor.Value);
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        /// `#Namespace.Type[i]` phải dừng root đúng ở `]` rồi mới cho bước member tiếp theo đi —
+        /// khác trần trước đây coi hết phần sau dấu '.' đầu tiên của namespace là step.
+        [Test]
+        public void Resolve_InstanceRoot_NamespacedTypeWithIndex_ThenMemberStep()
+        {
+            var go = new GameObject("probe", typeof(AddressInstanceFixture));
+            try
+            {
+                Assert.IsTrue(
+                    Address.TryResolve("#Hlight.Debug.Hub.Tests.Instances.AddressInstanceFixture[0].Value",
+                        out var cursor, out var error), error);
+                Assert.AreEqual(7, cursor.Value);
+            }
+            finally { Object.DestroyImmediate(go); }
         }
     }
 }

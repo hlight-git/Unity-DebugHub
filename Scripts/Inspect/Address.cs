@@ -135,11 +135,15 @@ namespace Hlight.Debug.Hub
             address = address.Trim();
             string rest;
 
-            if (address[0] == '$' || address[0] == '#')
+            if (address[0] == '$')
             {
-                var cut = CutAfterRootToken(address);
+                var cut = CutAfterDollarToken(address);
                 root = address.Substring(0, cut);
                 rest = cut < address.Length ? address.Substring(cut).TrimStart('.') : string.Empty;
+            }
+            else if (address[0] == '#')
+            {
+                if (!TrySplitInstanceRoot(address, out root, out rest, out error)) return false;
             }
             else if (address[0] == '@')
             {
@@ -182,14 +186,47 @@ namespace Hlight.Debug.Hub
             return cut < 0 ? address : address.Substring(0, cut);
         }
 
-        private static int CutAfterRootToken(string address)
+        /// $var không bao giờ có dấu '.' trong tên — dừng ở '.' (member step) hoặc '[' (indexer
+        /// step) đầu tiên là đủ, khác hẳn '#' bên dưới vì tên type có thể chứa '.' (namespace).
+        private static int CutAfterDollarToken(string address)
         {
             for (var i = 1; i < address.Length; i++)
             {
-                if (address[i] == '.') return i;
-                if (address[i] == '[' && address[0] != '#') return i;
+                if (address[i] == '.' || address[i] == '[') return i;
             }
             return address.Length;
+        }
+
+        /// Root `#TypeName[i]`: TypeName có thể có dấu '.' (namespace) nên không cắt ở '.' đầu tiên
+        /// được — dùng lại đúng pattern `HeadOf` + `TypeFinder.LongestPrefix` mà nhánh type thường
+        /// (else ở dưới) đã dùng để tìm prefix dài nhất khớp một type thật. Sau đó nếu `[i]` nằm
+        /// ngay sau tên type thì nuốt luôn vào root — đây là index chọn instance, khác bước
+        /// indexer thường ở `TryIndexer` phía sau.
+        private static bool TrySplitInstanceRoot(string address, out string root, out string rest, out string error)
+        {
+            root = null;
+            rest = string.Empty;
+            error = null;
+
+            var body = address.Substring(1);
+            var head = HeadOf(body);
+            if (TypeFinder.LongestPrefix(head, out var headRest) == null)
+            {
+                error = $"Không tìm thấy type nào ở đầu '{address}'.";
+                return false;
+            }
+
+            var typeNameLength = head.Length - (headRest.Length == 0 ? 0 : headRest.Length + 1);
+            var cut = 1 + typeNameLength; // +1 cho ký tự '#'
+            if (cut < address.Length && address[cut] == '[')
+            {
+                var close = address.IndexOf(']', cut);
+                cut = close >= 0 ? close + 1 : address.Length;
+            }
+
+            root = address.Substring(0, cut);
+            rest = cut < address.Length ? address.Substring(cut).TrimStart('.') : string.Empty;
+            return true;
         }
 
         private static bool IsMethod(string step) => step.Contains('(');
