@@ -50,7 +50,7 @@ namespace Hlight.Debug.Hub
         [Proxima.ProximaCommand("Custom", "exec")]
         public static void ExecuteCommandInDebugConsole(string command)
         {
-            DebugCommands.Execute(command);
+            DebugHub.Execute(command);
         }
 #else
         public bool Supported => false;
