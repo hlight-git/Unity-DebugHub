@@ -64,6 +64,9 @@ namespace Hlight.Debug.Hub
         /// Bấm vào dòng kết quả. DebugHub nối vào đây để mở console log window (toàn văn ở đó).
         public event Action ResultClicked;
 
+        /// Nội dung dòng kết quả lần cuối. Test đọc cái này thay vì bới vào toast.
+        public string LastResult { get; private set; }
+
         /// Số tầng đang mở. Test dùng để biết một cú bấm đã pop hay chưa thay vì giả định
         /// Awake có chạy hay không.
         internal int StackDepth => stack.Count;
@@ -111,6 +114,7 @@ namespace Hlight.Debug.Hub
             });
             searchInput.onValueChanged.AddListener(value => Query = value);
             helpButton.onClick.AddListener(() => Push(HelpPage.Build()));
+            advancedButton.onClick.AddListener(() => Push(AdvancedPage.Root()));
         }
 
         private void Update()
@@ -151,11 +155,13 @@ namespace Hlight.Debug.Hub
         /// Hiện kết quả (hoặc lỗi) của command vừa chạy.
         public void ShowResult(string text, bool error)
         {
+            LastResult = text;
             if (toast) toast.Show(text, error);
         }
 
         public void HideResult()
         {
+            LastResult = string.Empty;
             if (toast) toast.Hide();
         }
 
@@ -206,6 +212,7 @@ namespace Hlight.Debug.Hub
             title.text = page.Title;
             if (backButton) backButton.gameObject.SetActive(stack.Count > 1);
             if (searchButton) searchButton.gameObject.SetActive(page.Searchable);
+            if (advancedButton) advancedButton.gameObject.SetActive(page.Title != "Advanced");
 
             // page.Searchable phải được xét ở đây, không chỉ để ẩn cái nút: query sống qua các lần
             // Rebuild, nên một trang nhập tham số mở ra trong lúc còn query sẽ bị thay bằng kết quả
