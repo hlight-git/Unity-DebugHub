@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -97,6 +98,26 @@ namespace Hlight.Debug.Hub.Tests
 
             Assert.AreEqual(0, calls, "dựng row cha mà đã gọi delegate của game");
         }
+
+        /// Task 18 follow-up: sửa một field trên Members page thành công mà không log gì thì phải
+        /// im re, không bật một toast rỗng (RunInspect phải theo đúng luật của CommandsPage.Dispatch).
+        [Test]
+        public void SilentSuccessfulEdit_OnAMembersPage_DoesNotPopAToast()
+        {
+            var holder = new Holder();
+            Render(Node.Value<Holder>("h", () => holder, null));
+            TestPanel.ClickRowContaining(panel, "h");
+
+            var row = TestPanel.Rows(panel).First(r => r.label.text.StartsWith("Number"));
+            Assert.IsNotNull(row.input, "Number phải là ô nhập tại chỗ");
+            row.input.onEndEdit.Invoke("9");
+
+            Assert.AreEqual(9, holder.Number, "giá trị vẫn phải ghi được");
+            Assert.IsFalse(TestPanel.ToastOf(panel).activeSelf,
+                "sửa field thành công không log gì thì không được bật toast rỗng");
+        }
+
+        private class Holder { public int Number = 1; }
 
         private void Render(DebugNode node)
         {

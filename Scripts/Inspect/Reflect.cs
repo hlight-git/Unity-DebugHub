@@ -170,17 +170,18 @@ namespace Hlight.Debug.Hub
         {
             var childAddress = address == null ? null : Address.Index(address, index);
             var snapshot = parent.Value;
-            return new ValueNode
+            var node = new ValueNode
             {
                 Label = label,
                 Declared = value?.GetType() ?? typeof(object),
                 Address = childAddress,
                 Dismiss = DismissMode.Stay,
                 Get = () => value,
-                Set = snapshot is IList list && childAddress != null
-                    ? v => Address.TryWrite(childAddress, v, out _)
-                    : null,
             };
+            // node.Address, không phải childAddress đã capture — cùng lý do với ValueFor: đổi
+            // Address sau khi dựng node phải đổi luôn chỗ Set trỏ tới.
+            node.Set = snapshot is IList && childAddress != null ? v => Address.TryWrite(node.Address, v, out _) : null;
+            return node;
         }
 
         private static bool Skip(MemberInfo member, MemberFilter filter)

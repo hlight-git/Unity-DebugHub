@@ -179,10 +179,13 @@ namespace Hlight.Debug.Hub
         }
 
         /// Chạy một node do reflection sinh: không ghi LastCommand (không có path để chạy lại).
+        /// Cùng luật với CommandsPage.Dispatch: sửa một field thành công mà không log gì thì im,
+        /// không bật một toast rỗng.
         private static void RunInspect(DebugHubPanel panel, DebugNode node, string[] values)
         {
             var ok = DebugRegistry.Run(node, values, out var message);
-            panel.ShowResult(message, !ok);
+            if (!ok || (node.ShowsResult && !string.IsNullOrEmpty(message))) panel.ShowResult(message, !ok);
+            else panel.HideResult();
         }
 
         /// Chữ phụ căn phải: đủ để biết bên trong có gì mà không phải mở ra.

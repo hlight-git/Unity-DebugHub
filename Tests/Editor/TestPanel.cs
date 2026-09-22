@@ -63,6 +63,8 @@ namespace Hlight.Debug.Hub.Tests
 
         public static Button SearchButtonOf(DebugHubPanel panel) => (Button)Field("searchButton").GetValue(panel);
 
+        public static GameObject ToastOf(DebugHubPanel panel) => ((DebugHubToast)Field("toast").GetValue(panel)).gameObject;
+
         public static RepeatButton BuildRepeatButton()
         {
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PREFAB_PATH);
