@@ -8,50 +8,61 @@ namespace Hlight.Debug.Hub.Tests
     {
         private const string DESCRIPTION = "Nhảy tới level";
 
-        private readonly List<DebugCommand> registered = new();
+        private readonly List<DebugNode> registered = new();
 
         [TearDown]
         public void TearDown()
         {
-            foreach (var command in registered) DebugCommands.Remove(command);
+            foreach (var node in registered) DebugHub.Remove(node);
             registered.Clear();
         }
 
-        private DebugCommand Add(string path, string description = DESCRIPTION)
+        private DebugRegistry.Entry Add(string path, string description = DESCRIPTION)
         {
-            var command = DebugCommands.Add<int>(null, path, description, level => { }, "level");
-            registered.Add(command);
-            return command;
+            var node = DebugHub.Add<int>(null, path, description, level => { }, "level");
+            registered.Add(node);
+            return EntryFor(node);
+        }
+
+        private static DebugRegistry.Entry EntryFor(DebugNode node)
+        {
+            foreach (var entry in DebugRegistry.All)
+            {
+                if (entry.Node == node) return entry;
+            }
+            Assert.Fail("node vừa đăng ký không thấy trong DebugRegistry.All");
+            return null;
         }
 
         /// Row chỉ hiện tên lá; đường dẫn nằm ở header, description do panel format thành dòng thứ hai.
         [Test]
         public void LabelOf_IsLastSegmentOnly()
         {
-            var command = Add("level.goto");
+            var entry = Add("level.goto");
 
-            var label = CommandsPage.LabelOf(command, null, false);
+            var label = CommandsPage.LabelOf(entry, null, false);
 
             Assert.AreEqual("goto", label);
             Assert.IsFalse(label.Contains(DESCRIPTION), "description không nằm trong label: " + label);
         }
 
         [Test]
-        public void LabelOf_FullPath_ForRecentAndSearchRows()
+        public void LabelOf_FullPath_ForSearchRows()
         {
-            var command = Add("level.goto", string.Empty);
+            var entry = Add("level.goto", string.Empty);
 
-            Assert.AreEqual("level.goto", CommandsPage.LabelOf(command, null, true));
+            Assert.AreEqual("level.goto", CommandsPage.LabelOf(entry, null, true));
         }
 
-        /// Trùng path trong cùng một chỗ thì hai row giống nhau y hệt, phải kèm số tham số.
+        /// Trùng path trong cùng một thư mục thì hai row giống nhau y hệt, phải kèm số tham số.
         [Test]
         public void LabelOf_DisambiguatesSamePathByParameterCount()
         {
             var one = Add("time.skip", string.Empty);
-            var two = DebugCommands.Add<float, float>(null, "time.skip", string.Empty, (sec, speed) => { });
-            registered.Add(two);
-            var siblings = new List<DebugCommand> { one, two };
+            var twoNode = DebugHub.Add<float, float>(null, "time.skip", string.Empty, (sec, speed) => { });
+            registered.Add(twoNode);
+            var two = EntryFor(twoNode);
+            var siblings = new List<DebugRegistry.Entry> { one, two };
 
             StringAssert.Contains("(1 args)", CommandsPage.LabelOf(one, siblings, false));
             StringAssert.Contains("(2 args)", CommandsPage.LabelOf(two, siblings, false));
@@ -76,27 +87,28 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
-        public void Contains_MatchesOnlyCommandsUnderPrefixWithSegmentLeft()
+        public void Contains_MatchesOnlyNodesUnderPrefixWithSegmentLeft()
         {
             var deep = Add("prefs.set.int", string.Empty);
             var shallow = Add("prefs", string.Empty);
 
-            Assert.IsTrue(CommandsPage.Contains(deep.Segments, new[] { "prefs" }));
-            Assert.IsTrue(CommandsPage.Contains(deep.Segments, new[] { "prefs", "set" }));
-            Assert.IsFalse(CommandsPage.Contains(deep.Segments, new[] { "time" }));
-            Assert.IsFalse(CommandsPage.Contains(shallow.Segments, new[] { "prefs" }),
+            var deepSegments = deep.Path.Split('.');
+            Assert.IsTrue(CommandsPage.Contains(deepSegments, new[] { "prefs" }));
+            Assert.IsTrue(CommandsPage.Contains(deepSegments, new[] { "prefs", "set" }));
+            Assert.IsFalse(CommandsPage.Contains(deepSegments, new[] { "time" }));
+            Assert.IsFalse(CommandsPage.Contains(shallow.Path.Split('.'), new[] { "prefs" }),
                 "chính nó không nằm dưới nó");
         }
 
         [Test]
         public void Matches_LooksAtPathAndDescription()
         {
-            var command = Add("level.goto");
+            var entry = Add("level.goto");
 
-            Assert.IsTrue(CommandsPage.Matches(command, "goto"));
-            Assert.IsTrue(CommandsPage.Matches(command, "LEVEL"));
-            Assert.IsTrue(CommandsPage.Matches(command, "Nhảy"));
-            Assert.IsFalse(CommandsPage.Matches(command, "booster"));
+            Assert.IsTrue(CommandsPage.Matches(entry, "goto"));
+            Assert.IsTrue(CommandsPage.Matches(entry, "LEVEL"));
+            Assert.IsTrue(CommandsPage.Matches(entry, "Nhảy"));
+            Assert.IsFalse(CommandsPage.Matches(entry, "booster"));
         }
     }
 }

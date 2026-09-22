@@ -5,17 +5,19 @@ using NUnit.Framework;
 using TMPro;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 using UnityEngine.UI;
 
 namespace Hlight.Debug.Hub.Tests
 {
-    /// Đi đúng luồng người dùng: mở Commands -> vào thư mục -> chọn command -> nhập param -> Run,
-    /// bật/tắt row tại chỗ, xác nhận, tìm kiếm, và mở lại panel đúng page cũ.
+    /// Đi đúng luồng người dùng: mở Commands -> vào thư mục -> chọn node -> nhập param -> Run,
+    /// bật/tắt row tại chỗ, xác nhận, và mở lại panel đúng page cũ. Search theo từ khoá nằm ở
+    /// SearchTests (header search, không còn row "Search" riêng ở gốc như bản cũ).
     /// Chạy được ở EditMode nên không cần click tay trong Play Mode.
     public class CommandsFlowTests
     {
         private const string PREFAB_PATH = "Packages/com.hlight.debug-hub/Prefabs/DebugHub.prefab";
-        private const string RECENT_KEY = "DebugHub.RecentCommands";
+        private const string LAST_KEY = "DebugHub.LastCommand";
         private const float ROW_HEIGHT = 120f;
 
         private static int lastInt;
@@ -33,27 +35,32 @@ namespace Hlight.Debug.Hub.Tests
             lastMixedType = type;
         }
 
-        private readonly List<DebugCommand> registered = new();
+        private readonly List<DebugNode> registered = new();
         private GameObject instance;
         private DebugHubPanel panel;
         private Transform content;
-        private string recentBackup;
+        private string lastCommandBackup;
+
+        private T Track<T>(T node) where T : DebugNode
+        {
+            registered.Add(node);
+            return node;
+        }
 
         [SetUp]
         public void SetUp()
         {
-            recentBackup = PlayerPrefs.GetString(RECENT_KEY, string.Empty);
-            PlayerPrefs.DeleteKey(RECENT_KEY);
+            lastCommandBackup = PlayerPrefs.GetString(LAST_KEY, string.Empty);
+            PlayerPrefs.DeleteKey(LAST_KEY);
 
             lastInt = 0;
             noArgCalled = false;
             toggled = false;
 
-            registered.Add(DebugCommands.Add<int>(null, "flowtest.takeint", "Nhận một số", TakeInt));
-            registered.Add(DebugCommands.Add(null, "flowtest.noarg", "Chạy ngay", NoArg));
-            registered.Add(DebugCommands.Add<int, LogType>(null, "flowtest.mixed", "Số và enum", TakeMixed));
-            registered.Add(DebugCommands.AddToggle(null, "flowtest.flag", "Bật/tắt cờ",
-                () => toggled, value => toggled = value));
+            Track(DebugHub.Add<int>(null, "flowtest.takeint", "Nhận một số", TakeInt));
+            Track(DebugHub.Add(null, "flowtest.noarg", "Chạy ngay", NoArg));
+            Track(DebugHub.Add<int, LogType>(null, "flowtest.mixed", "Số và enum", TakeMixed));
+            Track(DebugHub.AddValue(null, "flowtest.flag", "Bật/tắt cờ", () => toggled, value => toggled = value));
 
             var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PREFAB_PATH);
             instance = Object.Instantiate(prefab);
@@ -64,105 +71,10 @@ namespace Hlight.Debug.Hub.Tests
         [TearDown]
         public void TearDown()
         {
-            foreach (var command in registered) DebugCommands.Remove(command);
+            foreach (var node in registered) DebugHub.Remove(node);
             registered.Clear();
-            PlayerPrefs.SetString(RECENT_KEY, recentBackup);
+            PlayerPrefs.SetString(LAST_KEY, lastCommandBackup);
             Object.DestroyImmediate(instance);
-        }
-
-        private List<GameObject> Rows()
-        {
-            var rows = new List<GameObject>();
-            foreach (Transform child in content)
-            {
-                if (child.gameObject.activeSelf) rows.Add(child.gameObject);
-            }
-            return rows;
-        }
-
-        private static string LabelOf(GameObject row)
-        {
-            var text = row.GetComponent<TMP_Text>();
-            if (text != null) return text.text;
-            var label = row.transform.Find("Label");
-            if (label != null) return label.GetComponent<TMP_Text>().text;
-            return row.GetComponentInChildren<TMP_Text>(true).text;
-        }
-
-        private void Click(string labelStartsWith)
-        {
-            var row = Rows().FirstOrDefault(r => LabelOf(r).StartsWith(labelStartsWith));
-            Assert.IsNotNull(row, $"no row starting with '{labelStartsWith}'. Rows: {string.Join(" | ", Rows().Select(LabelOf))}");
-            var button = row.GetComponent<Button>();
-            Assert.IsNotNull(button, $"row '{labelStartsWith}' has no button");
-            button.onClick.Invoke();
-        }
-
-        private DebugHubRow Row(string labelStartsWith)
-        {
-            var row = Rows().FirstOrDefault(r => LabelOf(r).StartsWith(labelStartsWith));
-            Assert.IsNotNull(row, $"no row starting with '{labelStartsWith}'. Rows: {string.Join(" | ", Rows().Select(LabelOf))}");
-            return row.GetComponent<DebugHubRow>();
-        }
-
-        private Toggle ToggleRow(string labelStartsWith)
-        {
-            var row = Rows().FirstOrDefault(r => LabelOf(r).StartsWith(labelStartsWith));
-            Assert.IsNotNull(row, $"no row starting with '{labelStartsWith}'. Rows: {string.Join(" | ", Rows().Select(LabelOf))}");
-            var toggle = row.GetComponent<Toggle>();
-            Assert.IsNotNull(toggle, $"row '{labelStartsWith}' is not a switch");
-            return toggle;
-        }
-
-        [Test]
-        public void CommandsRoot_ListsFoldersAndSearch()
-        {
-            panel.Show(CommandsPage.Root());
-
-            var labels = Rows().Select(LabelOf).ToList();
-            Assert.IsTrue(labels.Any(label => label.StartsWith("flowtest")),
-                "thư mục flowtest thiếu. Rows: " + string.Join(" | ", labels));
-            Assert.IsTrue(labels.Any(label => label.StartsWith("Search")), "root phải có row Search");
-        }
-
-        /// Recent / Search / Built-in là điều hướng của chính hub, không phải thư mục command của game
-        /// — phải khác màu để không đọc lẫn vào danh sách.
-        [Test]
-        public void HubShortcutRows_UseTheirOwnColor()
-        {
-            registered.Add(DebugCommands.Add(panel, "builtintest.thing", "Đồ có sẵn", NoArg));
-            DebugCommands.TryRun(registered[0], new[] { "1" }, out _);   // để Recent có gì đó
-
-            panel.Show(CommandsPage.Root());
-
-            var folder = Row("flowtest").label.color;
-            foreach (var shortcut in new[] { "Recent", "Search", "Built-in" })
-            {
-                Assert.AreNotEqual(folder, Row(shortcut).label.color, $"row {shortcut} phải khác màu thư mục");
-            }
-            Assert.AreEqual(Row("Recent").label.color, Row("Built-in").label.color, "ba row này cùng một màu");
-        }
-
-        /// Command của package (owner nằm trong assembly của hub) bị dồn vào một menu riêng ở cuối,
-        /// không chen vào giữa cheat của game.
-        [Test]
-        public void BuiltInCommands_LiveInTheirOwnMenuAtTheBottom()
-        {
-            // panel là component của package nên command lấy nó làm owner được coi là built-in.
-            registered.Add(DebugCommands.Add(panel, "builtintest.thing", "Đồ có sẵn", NoArg));
-
-            panel.Show(CommandsPage.Root());
-            var labels = Rows().Select(LabelOf).ToList();
-
-            Assert.AreEqual("Built-in", labels[labels.Count - 1], "menu built-in phải nằm cuối cùng");
-            Assert.IsFalse(labels.Any(label => label.StartsWith("builtintest")),
-                "cây của game không được chứa command built-in. Rows: " + string.Join(" | ", labels));
-
-            Click("Built-in");
-            Assert.IsTrue(Rows().Select(LabelOf).Any(label => label.StartsWith("builtintest")),
-                "vào menu built-in thì phải thấy nó");
-            Assert.IsFalse(Rows().Select(LabelOf).Any(label => label.StartsWith("flowtest")),
-                "và không thấy cheat của game ở trong đó");
         }
 
         /// Row hiện tên lá + description, không hiện cả đường dẫn và không hiện chữ ký tham số.
@@ -170,15 +82,15 @@ namespace Hlight.Debug.Hub.Tests
         public void CommandRows_ShowLeafNameAndDescription()
         {
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
+            TestPanel.ClickRowContaining(panel, "flowtest");
 
-            var labels = Rows().Select(LabelOf).ToList();
+            var labels = TestPanel.LabelsOf(panel);
             foreach (var label in labels)
             {
                 Assert.IsFalse(label.Contains("["), "row không được mang chữ ký tham số: " + label);
                 Assert.IsFalse(label.StartsWith("flowtest."), "row chỉ hiện tên lá: " + label);
             }
-            Assert.IsTrue(labels.Any(label => label.StartsWith("takeint\n") && label.Contains("Nhận một số")),
+            Assert.IsTrue(labels.Exists(label => label.StartsWith("takeint\n") && label.Contains("Nhận một số")),
                 "row phải có description ở dòng thứ hai. Rows: " + string.Join(" | ", labels));
         }
 
@@ -189,8 +101,7 @@ namespace Hlight.Debug.Hub.Tests
         {
             panel.Show(CommandsPage.Root());
 
-            var row = Rows().First(r => LabelOf(r).StartsWith("flowtest"))
-                .GetComponent<DebugHubRow>();
+            var row = TestPanel.Rows(panel).First(r => r.label.text.StartsWith("flowtest"));
 
             Assert.AreEqual("flowtest", row.label.text, "tên thư mục không được kèm số");
             Assert.IsNotNull(row.detail, "row nav phải có cột chữ phụ");
@@ -203,9 +114,9 @@ namespace Hlight.Debug.Hub.Tests
         public void ToggleRow_KnobMovesWithState()
         {
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
+            TestPanel.ClickRowContaining(panel, "flowtest");
 
-            var row = Rows().First(r => LabelOf(r).StartsWith("flag")).GetComponent<DebugHubRow>();
+            var row = TestPanel.Rows(panel).First(r => r.label.text.StartsWith("flag"));
             Assert.IsNotNull(row.knob, "switch phải có núm");
             var off = row.knob.anchoredPosition.x;
 
@@ -214,13 +125,13 @@ namespace Hlight.Debug.Hub.Tests
             Assert.Greater(row.knob.anchoredPosition.x, off + 1f, "núm phải chạy sang phải khi bật");
         }
 
-        /// Chạy xong thì đóng panel để nhìn game (DismissMode mặc định của command dạng action).
+        /// Chạy xong thì đóng panel để nhìn game (DismissMode mặc định của node dạng action).
         [Test]
         public void CommandWithoutParams_RunsOnClick_AndClosesPanel()
         {
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
-            Click("noarg");
+            TestPanel.ClickRowContaining(panel, "flowtest");
+            TestPanel.ClickRowContaining(panel, "noarg");
 
             Assert.IsTrue(noArgCalled);
             Assert.IsFalse(panel.IsOpen, "action mặc định đóng panel sau khi chạy");
@@ -231,38 +142,38 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void HideHubCommand_ClosesPanel_WithoutHubInstance()
         {
-            registered.Add(DebugCommands.Add(null, "flowtest.hide", "Ẩn hub", NoArg).HidesHub());
+            Track(DebugHub.Add(null, "flowtest.hide", "Ẩn hub", NoArg).HidesHub());
 
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
-            Click("hide");
+            TestPanel.ClickRowContaining(panel, "flowtest");
+            TestPanel.ClickRowContaining(panel, "hide");
 
             Assert.IsTrue(noArgCalled);
             Assert.IsFalse(panel.IsOpen);
         }
 
-        /// Dòng kết quả chỉ dành cho command đọc dữ liệu (Dismiss = Stay) và có in ra gì. Command đổi
+        /// Dòng kết quả chỉ dành cho node đọc dữ liệu (Dismiss = Stay) và có in ra gì. Node đổi
         /// state của game thì im, kể cả khi luồng bên trong nó có log — đó là ca của level.*.
         [Test]
         public void Result_ShowsOnlyForReadingCommandsThatLogged()
         {
             var toast = instance.transform.Find("Toast").gameObject;
-            registered.Add(DebugCommands.Add(null, "flowtest.quiet", "Không in gì", NoArg).Stays());
-            registered.Add(DebugCommands.Add(null, "flowtest.reads", "Đọc dữ liệu",
+            Track(DebugHub.Add(null, "flowtest.quiet", "Không in gì", NoArg).Stays());
+            Track(DebugHub.Add(null, "flowtest.reads", "Đọc dữ liệu",
                 () => UnityEngine.Debug.Log("coins: 120")).Stays());
-            registered.Add(DebugCommands.Add(null, "flowtest.changes", "Đổi state, luồng bên trong có log",
+            Track(DebugHub.Add(null, "flowtest.changes", "Đổi state, luồng bên trong có log",
                 () => UnityEngine.Debug.Log("[Flow] loading level 5")));
 
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
-            Click("quiet");
+            TestPanel.ClickRowContaining(panel, "flowtest");
+            TestPanel.ClickRowContaining(panel, "quiet");
             Assert.IsFalse(toast.activeSelf, "không in gì thì không hiện dòng kết quả");
 
-            Click("reads");
+            TestPanel.ClickRowContaining(panel, "reads");
             Assert.IsTrue(toast.activeSelf);
             StringAssert.Contains("coins: 120", toast.GetComponentInChildren<TMP_Text>(true).text);
 
-            Click("changes");
+            TestPanel.ClickRowContaining(panel, "changes");
             Assert.IsFalse(toast.activeSelf, "command đổi state thì im, dù trong lúc chạy có log");
         }
 
@@ -270,12 +181,14 @@ namespace Hlight.Debug.Hub.Tests
         public void Result_ShowsErrorEvenWhenNothingWasLogged()
         {
             var toast = instance.transform.Find("Toast").gameObject;
-            registered.Add(DebugCommands.Add(null, "flowtest.boom", "Nổ",
+            Track(DebugHub.Add(null, "flowtest.boom", "Nổ",
                 () => throw new System.InvalidOperationException("bùm")));
 
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
-            Click("boom");
+            TestPanel.ClickRowContaining(panel, "flowtest");
+
+            LogAssert.Expect(LogType.Exception, "InvalidOperationException: bùm");
+            TestPanel.ClickRowContaining(panel, "boom");
 
             Assert.IsTrue(toast.activeSelf, "lỗi thì luôn phải hiện");
             var text = toast.GetComponentInChildren<TMP_Text>(true).text;
@@ -287,14 +200,14 @@ namespace Hlight.Debug.Hub.Tests
         public void CommandWithParams_OpensFieldPage_AndRunsTypedValue()
         {
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
-            Click("takeint");
+            TestPanel.ClickRowContaining(panel, "flowtest");
+            TestPanel.ClickRowContaining(panel, "takeint");
 
             var input = content.GetComponentsInChildren<TMP_InputField>(false).Single();
             Assert.AreEqual(TMP_InputField.ContentType.IntegerNumber, input.contentType);
 
             input.text = "7";
-            Click("Run");
+            TestPanel.ClickRowContaining(panel, "Run");
 
             Assert.AreEqual(7, lastInt);
         }
@@ -304,9 +217,9 @@ namespace Hlight.Debug.Hub.Tests
         public void ToggleCommand_AppliesImmediately_AndKeepsPanelOpen()
         {
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
+            TestPanel.ClickRowContaining(panel, "flowtest");
 
-            var toggle = ToggleRow("flag");
+            var toggle = TestPanel.Rows(panel).First(r => r.label.text.StartsWith("flag")).toggle;
             Assert.IsFalse(toggle.isOn, "switch phải hiện state hiện tại (đang tắt)");
 
             toggle.isOn = true;
@@ -324,18 +237,18 @@ namespace Hlight.Debug.Hub.Tests
             lastMixedType = LogType.Log;
 
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
-            Click("mixed");
+            TestPanel.ClickRowContaining(panel, "flowtest");
+            TestPanel.ClickRowContaining(panel, "mixed");
 
             content.GetComponentsInChildren<TMP_InputField>(false).Single().text = "7";
 
-            Click("type:");
-            Click(nameof(LogType.Exception));
+            TestPanel.ClickRowContaining(panel, "type:");
+            TestPanel.ClickRowContaining(panel, nameof(LogType.Exception));
 
             Assert.AreEqual("7", content.GetComponentsInChildren<TMP_InputField>(false).Single().text,
                 "typed value must survive the trip to the choice page");
 
-            Click("Run");
+            TestPanel.ClickRowContaining(panel, "Run");
             Assert.AreEqual(7, lastMixedAmount);
             Assert.AreEqual(LogType.Exception, lastMixedType);
         }
@@ -345,12 +258,12 @@ namespace Hlight.Debug.Hub.Tests
         public void ParamsPage_RemembersLastTypedValue()
         {
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
-            Click("takeint");
+            TestPanel.ClickRowContaining(panel, "flowtest");
+            TestPanel.ClickRowContaining(panel, "takeint");
             content.GetComponentsInChildren<TMP_InputField>(false).Single().text = "13";
             panel.Pop();
 
-            Click("takeint");
+            TestPanel.ClickRowContaining(panel, "takeint");
 
             Assert.AreEqual("13", content.GetComponentsInChildren<TMP_InputField>(false).Single().text);
         }
@@ -358,18 +271,16 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void ConfirmCommand_AsksBeforeRunning()
         {
-            var command = DebugCommands.Add(null, "flowtest.danger", "Nguy hiểm", NoArg);
-            command.Confirm = true;
-            registered.Add(command);
+            Track(DebugHub.Add(null, "flowtest.danger", "Nguy hiểm", NoArg).Confirms());
 
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
-            Click("danger");
+            TestPanel.ClickRowContaining(panel, "flowtest");
+            TestPanel.ClickRowContaining(panel, "danger");
 
             Assert.IsFalse(noArgCalled, "phải hỏi lại trước khi chạy");
-            Assert.IsTrue(Rows().Any(r => LabelOf(r).StartsWith("Huỷ")), "page xác nhận phải có nút Huỷ");
+            Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.StartsWith("Huỷ")), "page xác nhận phải có nút Huỷ");
 
-            Click("Chạy");
+            TestPanel.ClickRowContaining(panel, "Chạy");
             Assert.IsTrue(noArgCalled);
         }
 
@@ -378,15 +289,15 @@ namespace Hlight.Debug.Hub.Tests
         public void ReopeningPanel_ReturnsToThePageItWasClosedOn()
         {
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
-            Click("takeint");
+            TestPanel.ClickRowContaining(panel, "flowtest");
+            TestPanel.ClickRowContaining(panel, "takeint");
             var title = panel.transform.Find("Window/Header/Title").GetComponent<TMP_Text>();
-            Assert.AreEqual("flowtest.takeint", title.text);
+            Assert.AreEqual("takeint", title.text);
 
             panel.Close();
             panel.Show(CommandsPage.Root());
 
-            Assert.AreEqual("flowtest.takeint", title.text, "mở lại phải ở đúng page cũ");
+            Assert.AreEqual("takeint", title.text, "mở lại phải ở đúng page cũ");
             Assert.AreEqual(1, content.GetComponentsInChildren<TMP_InputField>(false).Length);
         }
 
@@ -394,40 +305,12 @@ namespace Hlight.Debug.Hub.Tests
         public void Reset_GoesBackToRootPage()
         {
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
+            TestPanel.ClickRowContaining(panel, "flowtest");
             panel.Close();
 
             panel.ShowFromRoot(CommandsPage.Root());
 
             Assert.AreEqual("Commands", panel.transform.Find("Window/Header/Title").GetComponent<TMP_Text>().text);
-        }
-
-        [Test]
-        public void Search_ListsMatchesByFullPath()
-        {
-            panel.Show(CommandsPage.Root());
-            Click("Search");
-
-            content.GetComponentsInChildren<TMP_InputField>(false).Single().text = "takeint";
-            Click("Tìm");
-
-            var labels = Rows().Select(LabelOf).ToList();
-            Assert.IsTrue(labels.Any(label => label.StartsWith("flowtest.takeint")),
-                "kết quả tìm phải hiện đường dẫn đầy đủ. Rows: " + string.Join(" | ", labels));
-        }
-
-        [Test]
-        public void Recent_ListsWhatWasJustRun()
-        {
-            panel.Show(CommandsPage.Root());
-            Click("flowtest");
-            Click("noarg");
-
-            panel.ShowFromRoot(CommandsPage.Root());
-            Click("Recent");
-
-            Assert.IsTrue(Rows().Any(r => LabelOf(r).StartsWith("flowtest.noarg")),
-                "command vừa chạy phải nằm trong Recent");
         }
 
         [Test]
@@ -441,8 +324,8 @@ namespace Hlight.Debug.Hub.Tests
                 .Invoke(panel, null);
 
             panel.Show(CommandsPage.Root());
-            Click("flowtest");
-            Click("takeint");
+            TestPanel.ClickRowContaining(panel, "flowtest");
+            TestPanel.ClickRowContaining(panel, "takeint");
             Assert.AreEqual(1, content.GetComponentsInChildren<TMP_InputField>(false).Length, "should be on the params page");
 
             panel.transform.Find("BG").GetComponent<Button>().onClick.Invoke();
@@ -462,14 +345,14 @@ namespace Hlight.Debug.Hub.Tests
 
             LayoutRebuilder.ForceRebuildLayoutImmediate(content as RectTransform);
 
-            var rows = Rows();
+            var rows = TestPanel.Rows(panel);
             Assert.AreEqual(3, rows.Count);
             var total = 0f;
             foreach (var row in rows)
             {
                 var rect = (RectTransform)row.transform;
                 Assert.GreaterOrEqual(rect.rect.height, ROW_HEIGHT - 0.5f,
-                    $"row '{LabelOf(row)}' is {rect.rect.height} tall, below the {ROW_HEIGHT} touch target");
+                    $"row '{row.label.text}' is {rect.rect.height} tall, below the {ROW_HEIGHT} touch target");
                 total += rect.rect.height;
             }
 
@@ -486,14 +369,63 @@ namespace Hlight.Debug.Hub.Tests
             panel.Show(CommandsPage.Root());
             Assert.IsFalse(back.gameObject.activeSelf, "root page has nowhere to go back to");
 
-            Click("flowtest");
+            TestPanel.ClickRowContaining(panel, "flowtest");
             Assert.IsTrue(back.gameObject.activeSelf, "sub page must show the back button");
 
             // Không bấm back.onClick: EditMode instantiate prefab đã chạy Awake nên gọi Awake tay lần
             // nữa sẽ gắn listener Pop hai lần và pop hai tầng.
             panel.Pop();
-            Assert.IsTrue(Rows().Any(r => LabelOf(r) == "flowtest"), "back must return to the folder list");
+            Assert.IsTrue(TestPanel.LabelsOf(panel).Contains("flowtest"), "back must return to the folder list");
             Assert.IsFalse(back.gameObject.activeSelf);
+        }
+
+        [Test]
+        public void Root_MixesPackageFoldersWithGameFolders_Alphabetically()
+        {
+            Track(DebugHub.Add(null, "aaa.one", "d", () => { }));
+            Track(DebugHub.Add(null, "zzz.two", "d", () => { }));
+            panel.ShowFromRoot(CommandsPage.Root());
+
+            var labels = TestPanel.LabelsOf(panel);
+            Assert.Less(labels.FindIndex(l => l.Contains("aaa")), labels.FindIndex(l => l.Contains("zzz")));
+            Assert.IsFalse(labels.Exists(l => l.Contains("Built-in")));
+            Assert.IsFalse(labels.Exists(l => l.Contains("Recent")));
+        }
+
+        [Test]
+        public void ValueCommand_ShowsCurrentState_AndAppliesOnSubmit()
+        {
+            var on = false;
+            Track(DebugHub.AddValue(null, "view.ui2", "d", () => on, v => on = v));
+            panel.ShowFromRoot(CommandsPage.Root());
+            TestPanel.ClickRowContaining(panel, "view");
+
+            TestPanel.Rows(panel)[0].toggle.onValueChanged.Invoke(true);
+
+            Assert.IsTrue(on);
+        }
+
+        [Test]
+        public void FolderCommand_BuildsItsNodesWhenOpened()
+        {
+            Track(DebugHub.AddFolder(null, "info.app2", "d",
+                () => new DebugNode[] { Node.Value("bundle", () => "com.x") }));
+            panel.ShowFromRoot(CommandsPage.Root());
+            TestPanel.ClickRowContaining(panel, "info");
+            TestPanel.ClickRowContaining(panel, "app2");
+
+            Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("bundle")));
+        }
+
+        [Test]
+        public void DuplicatePathsInSameFolder_AreToldApartByArgCount()
+        {
+            Track(DebugHub.Add(null, "dup.x", "d", () => { }));
+            Track(DebugHub.Add<int>(null, "dup.x", "d", _ => { }));
+            panel.ShowFromRoot(CommandsPage.Root());
+            TestPanel.ClickRowContaining(panel, "dup");
+
+            Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("1 args")));
         }
     }
 }

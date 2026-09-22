@@ -3,215 +3,125 @@ using System.Collections.Generic;
 
 namespace Hlight.Debug.Hub
 {
-    /// Page Commands: cây page dựng từ path của command trong storage của hub. Mỗi dấu '.' là một
-    /// tầng (prefs.set.int -> prefs › set › int) nên không còn khái niệm "category" đặc biệt, chỉ có
-    /// thư mục và lá; command không có dấu '.' nằm ngay ở tầng đầu.
+    /// Page Commands: cây page dựng từ path của node trong <see cref="DebugRegistry"/>. Mỗi dấu '.'
+    /// là một tầng (prefs.set.int -> prefs › set › int) nên không còn khái niệm "category" đặc biệt,
+    /// chỉ có thư mục và lá; node không có dấu '.' nằm ngay ở tầng đầu.
     ///
-    /// Page dựng từ **prefix**, không giữ sẵn danh sách command: panel giữ stack khi đóng nên page
-    /// sống rất lâu, giữ danh sách thì mở lại có thể dựng row cho command đã rụng (owner bị Destroy).
+    /// Page dựng từ **prefix**, không giữ sẵn danh sách: panel giữ stack khi đóng nên page sống rất
+    /// lâu, giữ danh sách thì mở lại có thể dựng row cho node đã rụng (owner bị Destroy).
     public static class CommandsPage
     {
         private const int DESCRIPTION_LIMIT = 90;
 
-        private static string query = string.Empty;
+        public static DebugPage Root() => Folder(Array.Empty<string>(), "Commands");
 
-        private const string BUILT_IN = "Built-in";
-
-        public static DebugPage Root() => Folder(Array.Empty<string>(), "Commands", false);
-
-        /// <paramref name="builtIn"/> chọn nửa nào của cây: command của game, hay command có sẵn của
-        /// package. Hai nửa không trộn vào nhau ở bất kỳ tầng nào.
-        internal static DebugPage Folder(string[] prefix, string title, bool builtIn)
+        internal static DebugPage Folder(string[] prefix, string title)
         {
-            return new DebugPage(title, panel => BuildFolder(panel, prefix, builtIn));
+            return new DebugPage(title, panel => BuildFolder(panel, prefix));
         }
 
-        private static void BuildFolder(DebugHubPanel panel, string[] prefix, bool builtIn)
+        private static void BuildFolder(DebugHubPanel panel, string[] prefix)
         {
             var folders = new SortedDictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-            var leaves = new List<DebugCommand>();
-            var builtInCount = 0;
+            var leaves = new List<DebugRegistry.Entry>();
 
-            foreach (var command in DebugCommands.All)
+            foreach (var entry in DebugRegistry.All)
             {
-                if (command.IsBuiltIn != builtIn)
-                {
-                    if (command.IsBuiltIn) builtInCount++;
-                    continue;
-                }
-                if (!Contains(command.Segments, prefix)) continue;
+                var segments = Segments(entry);
+                if (!Contains(segments, prefix)) continue;
+                if (segments.Length == prefix.Length + 1) { leaves.Add(entry); continue; }
 
-                if (command.Segments.Length == prefix.Length + 1)
-                {
-                    leaves.Add(command);
-                    continue;
-                }
-
-                var folder = command.Segments[prefix.Length];
+                var folder = segments[prefix.Length];
                 folders.TryGetValue(folder, out var count);
                 folders[folder] = count + 1;
             }
 
-            // Recent/Search dò cả hai nửa nên chỉ cần ở gốc của cây game.
-            if (prefix.Length == 0 && !builtIn)
-            {
-                var recent = DebugCommands.Recent;
-                if (recent.Count > 0) panel.AddShortcut("Recent", RecentPage(), recent.Count.ToString());
-                panel.AddShortcut("Search", SearchPage());
-            }
-
             foreach (var folder in folders)
+                panel.AddNavigation(folder.Key, Folder(Concat(prefix, folder.Key), folder.Key), null, folder.Value.ToString());
+
+            foreach (var leaf in leaves)
             {
-                var name = folder.Key;
-                panel.AddNavigation(name, Folder(Concat(prefix, name), name, builtIn), null, folder.Value.ToString());
+                var entry = leaf;
+                entry.Node.Label = LabelOf(entry, leaves, false);
+                NodeRenderer.Render(panel, entry.Node, (node, values) => Dispatch(panel, entry, node, values));
             }
 
-            foreach (var leaf in leaves) AddLeaf(panel, leaf, leaves, false);
+            if (folders.Count == 0 && leaves.Count == 0) panel.AddText("No command registered.");
+        }
 
-            // ponytail: DebugRegistry (model mới, đăng ký qua DebugHub.Add/AddValue/AddFolder) chưa có
-            // cây thư mục theo dấu '.' như DebugCommand ở trên — chỉ liệt phẳng entry nằm dưới prefix
-            // này, hiện nguyên full path để khỏi mất ngữ cảnh. Task 9 viết lại CommandsPage trên hẳn
-            // registry mới sẽ thay bằng cây thật.
-            var registryLeaves = 0;
-            if (!builtIn)
+        /// Tìm toàn registry — cái panel gọi khi page không tự khai Search. Quét path + description,
+        /// **không** gọi Children của folder động: delegate đó là code của game.
+        internal static void SearchAll(DebugHubPanel panel, string query)
+        {
+            var matches = new List<DebugRegistry.Entry>();
+            foreach (var entry in DebugRegistry.All)
             {
-                foreach (var entry in DebugRegistry.All)
-                {
-                    var segments = entry.Path.Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
-                    if (!Contains(segments, prefix)) continue;
-                    registryLeaves++;
-                    NodeRenderer.Render(panel, entry.Node, (node, values) => Run(panel, node, values), entry.Path);
-                }
+                if (Matches(entry, query)) matches.Add(entry);
             }
+            if (matches.Count == 0) { panel.AddText("Không có command nào khớp."); return; }
 
-            if (folders.Count == 0 && leaves.Count == 0 && registryLeaves == 0) panel.AddText("No command registered.");
-
-            // Cuối cùng, sau cả leaf: đồ có sẵn của package không được chen vào giữa cheat của game.
-            if (prefix.Length == 0 && !builtIn && builtInCount > 0)
+            foreach (var match in matches)
             {
-                panel.AddShortcut(BUILT_IN, Folder(Array.Empty<string>(), BUILT_IN, true), builtInCount.ToString());
+                var entry = match;
+                entry.Node.Label = entry.Path;      // full path: tên lá mất ngữ cảnh ở trang kết quả
+                NodeRenderer.Render(panel, entry.Node, (node, values) => Dispatch(panel, entry, node, values));
             }
         }
 
-        /// Một row cho một command, hình thái theo <see cref="DebugCommand.IsInstant"/> /
-        /// <see cref="DebugCommand.IsInline"/> / <see cref="DebugCommand.Page"/>.
-        /// <paramref name="fullPath"/> = true ở page Recent/Search, nơi chỉ có tên lá thì mất ngữ cảnh.
-        private static void AddLeaf(DebugHubPanel panel, DebugCommand command, IReadOnlyList<DebugCommand> siblings,
-            bool fullPath)
+        /// Callback của một leaf đi xuống **cả cây con** của nó: mở một FolderNode do game đăng ký rồi
+        /// bấm một row bên trong sẽ bắn về đúng callback này, với node là **con**, không phải leaf.
+        /// Chạy `entry` một cách vô điều kiện = bấm gì trong `info.app` cũng chạy `info.app`.
+        private static void Dispatch(DebugHubPanel panel, DebugRegistry.Entry entry, DebugNode node, string[] values)
         {
-            var label = LabelOf(command, siblings, fullPath);
-            var description = string.IsNullOrEmpty(command.Description) ? null : Shorten(command.Description);
-
-            if (command.Page != null)
+            if (ReferenceEquals(node, entry.Node))
             {
-                panel.AddNavigation(label, new DebugPage(command.Path, command.Page), description);
+                Run(panel, entry, values);
                 return;
             }
 
-            if (command.IsInstant)
+            // Node con do game dựng trong AddFolder: không có path nên không vào LastCommand và không
+            // có gì để echo ngoài log của chính nó.
+            var ok = DebugRegistry.Run(node, values, out var message);
+            if (!ok || (node.ShowsResult && !string.IsNullOrEmpty(message))) panel.ShowResult(message, !ok);
+            else panel.HideResult();
+        }
+
+        /// Cửa vào: node có Confirm thì hỏi trước.
+        internal static void Run(DebugHubPanel panel, DebugRegistry.Entry entry, string[] values)
+        {
+            if (!entry.Node.Confirm)
             {
-                panel.AddAction(label, () => ConfirmThenRun(panel, command, Array.Empty<string>()), description);
+                RunNow(panel, entry, values);
                 return;
             }
 
-            if (command.IsInline)
+            panel.Push(new DebugPage(entry.Node.Label, page =>
             {
-                var parameter = command.Parameters[0];
-                panel.AddField(label, parameter.Type, DebugCommands.ToText(parameter.Current()), null,
-                    value => ConfirmThenRun(panel, command, new[] { value }), description);
-                return;
-            }
-
-            panel.AddNavigation(label, ParamsPage(command), description);
-        }
-
-        /// Tên hiện trên row: mặc định là segment cuối. Overload trùng tên trong cùng một thư mục thì
-        /// thêm số tham số, không thì hai row giống nhau y hệt. Description do panel format.
-        internal static string LabelOf(DebugCommand command, IReadOnlyList<DebugCommand> siblings, bool fullPath)
-        {
-            var name = fullPath ? command.Path : command.Label;
-            return Duplicated(command, siblings) ? $"{name}  ({command.Parameters.Length} args)" : name;
-        }
-
-        private static bool Duplicated(DebugCommand command, IReadOnlyList<DebugCommand> siblings)
-        {
-            if (siblings == null) return false;
-            foreach (var sibling in siblings)
-            {
-                if (sibling != command && string.Equals(sibling.Path, command.Path, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-            return false;
-        }
-
-        /// Description dài thì cắt ở khoảng trắng gần nhất — toàn văn nằm ở page Help.
-        internal static string Shorten(string description)
-        {
-            if (description.Length <= DESCRIPTION_LIMIT) return description;
-
-            var cut = description.LastIndexOf(' ', DESCRIPTION_LIMIT);
-            if (cut < DESCRIPTION_LIMIT / 2) cut = DESCRIPTION_LIMIT;
-            return description.Substring(0, cut) + "…";
-        }
-
-        /// Page nhập liệu cho command nhiều tham số. Giá trị nằm ở <see cref="DebugCommand.Args"/> chứ
-        /// không phải trong closure: page được dựng lại mỗi lần điều hướng (kể cả khi back từ page chọn
-        /// enum) nên để trong closure là mất cái vừa nhập, và giữ ở đây thì lần sau vào không phải gõ lại.
-        private static DebugPage ParamsPage(DebugCommand command)
-        {
-            return new DebugPage(command.Path, panel =>
-            {
-                if (command.Args == null || command.Args.Length != command.Parameters.Length)
-                    command.Args = DebugCommands.SeedArgs(command);
-                var values = command.Args;
-
-                if (!string.IsNullOrEmpty(command.Description)) panel.AddText(command.Description);
-
-                for (var i = 0; i < command.Parameters.Length; i++)
-                {
-                    var index = i;
-                    var parameter = command.Parameters[index];
-                    panel.AddField(parameter.Name, parameter.Type, values[index], value => values[index] = value);
-                }
-
-                panel.AddPrimary("Run", () => ConfirmThenRun(panel, command, values));
-            });
-        }
-
-        private static void ConfirmThenRun(DebugHubPanel panel, DebugCommand command, string[] values)
-        {
-            if (!command.Confirm)
-            {
-                Run(panel, command, values);
-                return;
-            }
-
-            panel.Push(new DebugPage(command.Label, page =>
-            {
-                page.AddText($"Xác nhận: <b>{DebugCommands.Signature(command, values)}</b>");
+                page.AddText($"Xác nhận: <b>{entry.Path} {string.Join(" ", values)}</b>");
                 page.AddPrimary("Chạy", () =>
                 {
                     page.Pop();
-                    Run(page, command, values);
+                    RunNow(page, entry, values);
                 });
                 page.AddButton("Huỷ", page.Pop);
-            }));
+            }, searchable: false));
         }
 
-        private static void Run(DebugHubPanel panel, DebugCommand command, string[] values)
+        internal static void RunNow(DebugHubPanel panel, DebugRegistry.Entry entry, string[] values)
         {
-            var ok = DebugCommands.TryRun(command, values, out var message);
+            var ok = DebugRegistry.Run(entry.Node, values, out var message);
 
-            // Lỗi thì luôn hiện. Còn lại chỉ hiện khi command là loại cần đọc kết quả và thật sự có
-            // in ra gì: "> view.fps true" hay log của luồng load level nổi giữa màn hình chỉ là rác.
-            if (!ok) panel.ShowResult($"{command.Path}: {message}", true);
-            else if (command.ShowsResult && !string.IsNullOrEmpty(message))
-                panel.ShowResult(Result(command, values, message), false);
+            // Lỗi thì luôn hiện. Còn lại chỉ hiện khi node là loại cần đọc kết quả và thật sự có in
+            // ra gì: "> view.fps true" hay log của luồng load level nổi giữa màn hình chỉ là rác.
+            if (!ok) panel.ShowResult($"{entry.Path}: {message}", true);
+            else if (entry.Node.ShowsResult && !string.IsNullOrEmpty(message))
+                panel.ShowResult($"> {entry.Path} {string.Join(" ", values)}\n{message}", false);
             else panel.HideResult();
 
             if (!ok) return;
+            RecordLast(entry, values);
 
-            switch (command.Dismiss)
+            switch (entry.Node.Dismiss)
             {
                 case DismissMode.ClosePanel:
                     panel.Close();
@@ -226,107 +136,74 @@ namespace Hlight.Debug.Hub
             }
         }
 
-        /// Dòng lệnh vừa chạy + log mà nó in ra. Echo lại dòng lệnh để biết log đó của command nào.
-        private static string Result(DebugCommand command, string[] values, string message)
+        /// Ghi lại dòng lệnh cho nút repeat, đối xứng với <see cref="DebugRegistry.Execute"/>: parse
+        /// lại giá trị đã chạy thành công (không nối thô chuỗi nhập) rồi giao cho registry mã hoá.
+        private static void RecordLast(DebugRegistry.Entry entry, string[] values)
         {
-            return $"{DebugCommands.Signature(command, values)}\n{message}";
-        }
+            var types = entry.Node is ActionNode action
+                ? Array.ConvertAll(action.Parameters, p => p.Type)
+                : new[] { ((ValueNode)entry.Node).Declared };
 
-        /// Chạy một node của DebugRegistry (model mới). Tối giản so với Run(DebugCommand) ở trên —
-        /// không Confirm/Recent, đó là việc của Task 9 khi viết lại hẳn CommandsPage trên registry mới.
-        private static void Run(DebugHubPanel panel, DebugNode node, string[] values)
-        {
-            var ok = DebugRegistry.Run(node, values, out var message);
-
-            if (!ok) panel.ShowResult($"{node.Label}: {message}", true);
-            else if (node.ShowsResult && !string.IsNullOrEmpty(message)) panel.ShowResult(message, false);
-            else panel.HideResult();
-
-            if (!ok) return;
-
-            switch (node.Dismiss)
+            var parsed = new object[values.Length];
+            for (var i = 0; i < values.Length; i++)
             {
-                case DismissMode.ClosePanel:
-                    panel.Close();
-                    break;
-
-                case DismissMode.HideHub:
-                    DebugHub.Visible = false;
-                    panel.Close();
-                    break;
+                if (!DebugValues.TryParse(values[i], types[i], out parsed[i], out _, allowVars: true)) return;
             }
+            DebugRegistry.RecordLastCommand(entry.Path, entry.Node, parsed);
         }
 
-        #region Recent, Search
+        #region Label
 
-        private static DebugPage RecentPage()
+        /// Tên hiện trên row: mặc định là segment cuối (hay full path ở trang Search, nơi tên lá mất
+        /// ngữ cảnh). Overload trùng path trong cùng một thư mục thì thêm số tham số, không thì hai
+        /// row giống nhau y hệt. Description do panel format.
+        ///
+        /// ponytail: bản cũ còn cắt bớt description dài (Shorten) trước khi đưa vào row — giữ lại hàm
+        /// đó bên dưới cho test, nhưng không gọi ở đây nữa: NodeRenderer.Render không nhận description
+        /// riêng cho row, mà node.Description còn bị ParamsPage/ActionsPage đọc lại nguyên văn ở trang
+        /// sau — cắt ở đây là cắt luôn cả trang đó. Row dài thì tự wrap (GrowRowsToLabel lo phần cao).
+        internal static string LabelOf(DebugRegistry.Entry entry, IReadOnlyList<DebugRegistry.Entry> siblings,
+            bool fullPath)
         {
-            return new DebugPage("Recent", panel =>
+            var name = fullPath ? entry.Path : LastSegment(entry);
+            return Duplicated(entry, siblings) ? $"{name}  ({ArgCount(entry)} args)" : name;
+        }
+
+        private static int ArgCount(DebugRegistry.Entry entry) =>
+            entry.Node is ActionNode action ? action.Parameters.Length : 0;
+
+        private static bool Duplicated(DebugRegistry.Entry entry, IReadOnlyList<DebugRegistry.Entry> siblings)
+        {
+            if (siblings == null) return false;
+            foreach (var sibling in siblings)
             {
-                var recent = DebugCommands.Recent;
-                if (recent.Count == 0)
-                {
-                    panel.AddText("Chưa chạy command nào.");
-                    return;
-                }
-                foreach (var command in recent) AddLeaf(panel, command, recent, true);
-            });
-        }
-
-        private static DebugPage SearchPage()
-        {
-            return new DebugPage("Search", panel =>
-            {
-                // Nút riêng chứ không tìm ngay lúc onEndEdit: chốt bằng field thì Push() sẽ destroy
-                // đúng cái InputField đang bắn event.
-                panel.AddField("Từ khoá", typeof(string), query, value => query = value);
-                panel.AddPrimary("Tìm", () => panel.Push(ResultsPage()));
-            });
-        }
-
-        private static DebugPage ResultsPage()
-        {
-            return new DebugPage($"\"{query}\"", panel =>
-            {
-                var matches = new List<DebugCommand>();
-                foreach (var command in DebugCommands.All)
-                {
-                    if (Matches(command, query)) matches.Add(command);
-                }
-
-                if (matches.Count == 0)
-                {
-                    panel.AddText("Không có command nào khớp.");
-                    return;
-                }
-                foreach (var command in matches) AddLeaf(panel, command, matches, true);
-            });
-        }
-
-        internal static bool Matches(DebugCommand command, string keyword)
-        {
-            if (string.IsNullOrEmpty(keyword)) return true;
-            if (command.Path.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0) return true;
-            return !string.IsNullOrEmpty(command.Description) &&
-                   command.Description.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        /// Fallback search của DebugHubPanel.Rebuild() khi page không tự khai Search riêng: tìm trên
-        /// toàn DebugRegistry (model mới), hiện full path để không mất ngữ cảnh. Chỉ so path/mô tả —
-        /// không mở bất kỳ FolderNode nào nên folder động không bị gọi Children() ngoài ý muốn.
-        public static void SearchAll(DebugHubPanel panel, string query)
-        {
-            var any = false;
-            foreach (var entry in DebugRegistry.All)
-            {
-                if (!MatchesEntry(entry, query)) continue;
-                any = true;
-                NodeRenderer.Render(panel, entry.Node, (node, values) => Run(panel, node, values), entry.Path);
+                if (sibling != entry && string.Equals(sibling.Path, entry.Path, StringComparison.OrdinalIgnoreCase))
+                    return true;
             }
-            if (!any) panel.AddText("Không có gì khớp.");
+            return false;
         }
 
-        internal static bool MatchesEntry(DebugRegistry.Entry entry, string query)
+        private static string LastSegment(DebugRegistry.Entry entry)
+        {
+            var segments = Segments(entry);
+            return segments.Length > 0 ? segments[segments.Length - 1] : entry.Path;
+        }
+
+        /// Description dài thì cắt ở khoảng trắng gần nhất — toàn văn nằm ở page Help.
+        internal static string Shorten(string description)
+        {
+            if (description.Length <= DESCRIPTION_LIMIT) return description;
+
+            var cut = description.LastIndexOf(' ', DESCRIPTION_LIMIT);
+            if (cut < DESCRIPTION_LIMIT / 2) cut = DESCRIPTION_LIMIT;
+            return description.Substring(0, cut) + "…";
+        }
+
+        #endregion
+
+        #region Search
+
+        internal static bool Matches(DebugRegistry.Entry entry, string query)
         {
             if (string.IsNullOrEmpty(query)) return true;
             if (entry.Path.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) return true;
@@ -339,7 +216,7 @@ namespace Hlight.Debug.Hub
 
         #region Path
 
-        /// Command nằm dưới prefix này (và còn ít nhất một segment nữa để hiện).
+        /// Node nằm dưới prefix này (và còn ít nhất một segment nữa để hiện).
         internal static bool Contains(string[] segments, string[] prefix)
         {
             if (segments.Length <= prefix.Length) return false;
@@ -349,6 +226,9 @@ namespace Hlight.Debug.Hub
             }
             return true;
         }
+
+        private static string[] Segments(DebugRegistry.Entry entry) =>
+            entry.Path.Split(new[] { '.' }, StringSplitOptions.RemoveEmptyEntries);
 
         private static string[] Concat(string[] prefix, string segment)
         {
