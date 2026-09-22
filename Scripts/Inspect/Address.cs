@@ -395,7 +395,19 @@ namespace Hlight.Debug.Hub
             try { value = indexer.GetValue(source, keys); }
             catch (Exception exception) { error = (exception.InnerException ?? exception).Message; return false; }
 
-            Action<object> write = indexer.CanWrite ? v => indexer.SetValue(source, v, keys) : null;
+            // Cùng luật write-back với TryMember (§9.2): parent là struct đã boxing thì phải có
+            // parent.Write để ghi cả bản copy về chỗ cũ — không thì `SomeVectorField[0] = 5` chạy
+            // không lỗi nhưng chỉ sửa một bản copy vứt đi, y hệt lỗi Executor cũ mắc với field.
+            var needsWriteBack = source != null && source.GetType().IsValueType;
+            Action<object> write = null;
+            if (indexer.CanWrite && (!needsWriteBack || parent.Write != null))
+            {
+                write = v =>
+                {
+                    indexer.SetValue(source, v, keys);
+                    if (needsWriteBack) parent.Write(source);
+                };
+            }
             cursor = new Cursor(indexer.PropertyType, value, write);
             return true;
         }

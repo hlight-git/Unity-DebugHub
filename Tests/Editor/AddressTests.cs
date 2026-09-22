@@ -15,6 +15,7 @@ namespace Hlight.Debug.Hub.Tests
         public int Computed => Number * 2;
         public Inner Box = new Inner();
         public Leg TheLeg;
+        public Pair ThePair;
         public List<int> Items = new List<int> { 1, 2, 3 };
         public Dictionary<string, int> Map = new Dictionary<string, int> { { "a", 1 } };
 
@@ -32,6 +33,19 @@ namespace Hlight.Debug.Hub.Tests
         public class Inner { public int Value = 5; }
         public struct Leg { public int Length; public Foot Foot; }
         public struct Foot { public int Size; }
+
+        /// Struct có indexer public — kiểu Vector2/Vector3/Color của Unity. Test write-back qua
+        /// bước indexer trên struct lồng nhau, riêng khỏi Leg/Foot vốn chỉ đi qua member (dấu chấm).
+        public struct Pair
+        {
+            public int A;
+            public int B;
+            public int this[int i]
+            {
+                get => i == 0 ? A : B;
+                set { if (i == 0) A = value; else B = value; }
+            }
+        }
 
         public static void Reset()
         {
@@ -74,6 +88,16 @@ namespace Hlight.Debug.Hub.Tests
         {
             Assert.IsTrue(Address.TryWrite($"{ROOT}.TheLeg.Foot.Size", 4, out var error), error);
             Assert.AreEqual(4, AddressFixture.Instance.TheLeg.Foot.Size);
+        }
+
+        [Test]
+        public void Write_ThroughAnIndexerOnAStructField_LandsBackOnTheOriginal()
+        {
+            // §9.2 áp dụng y hệt cho bước indexer: ThePair là struct (như Vector2/Vector3/Color
+            // của Unity, đều có this[int]) — ghi qua ngoặc vuông phải write-back giống ghi qua dấu
+            // chấm, không thì chỉ sửa được một bản copy vứt đi.
+            Assert.IsTrue(Address.TryWrite($"{ROOT}.ThePair[1]", 9, out var error), error);
+            Assert.AreEqual(9, AddressFixture.Instance.ThePair.B);
         }
 
         [Test]
