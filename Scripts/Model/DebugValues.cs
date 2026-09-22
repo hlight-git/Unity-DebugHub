@@ -136,8 +136,24 @@ namespace Hlight.Debug.Hub
 
             if (allowVars && !string.IsNullOrEmpty(text) && text.StartsWith("$"))
             {
-                error = "Biến $ chưa có — Vars làm ở Task 16.";
-                return false;
+                var name = text.Substring(1);
+                if (!Vars.TryGet(name, out var bound))
+                {
+                    error = $"Biến '{name}' chưa được gán.";
+                    return false;
+                }
+                if (bound is Object unityObject && !unityObject)
+                {
+                    error = $"Biến '{name}' trỏ vào object đã destroy.";
+                    return false;
+                }
+                if (bound != null && !declared.IsInstanceOfType(bound))
+                {
+                    error = $"Biến '{name}' là {bound.GetType().Name}, không gán được vào {declared.Name}.";
+                    return false;
+                }
+                value = bound;
+                return true;
             }
 
             var nullable = !declared.IsValueType;

@@ -1,17 +1,37 @@
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace Hlight.Debug.Hub
 {
-    /// Biến tạm gán bằng `$tên`, dùng làm root hoặc tham số trong address.
+    /// Biến của debugger: đặt tên cho một **ảnh chụp** giá trị hoặc type rồi dùng lại bằng `$tên`.
     ///
-    /// Stub tối thiểu cho Task 15 — chỉ đủ để Address.cs biên dịch và test qua. Task 16 xây UI +
-    /// phần còn lại (liệt kê, xoá theo scope, …) trên chính API Bind/TryGet/Remove này.
-    internal static class Vars
+    /// Khác hẳn Watch (địa chỉ sống, đọc lại mỗi lần) — lằn ranh này cố ý giữ. Vars tồn tại vì hai
+    /// lý do text không làm được: truyền đúng reference (tên Unity object không phải định danh —
+    /// `GameObject.Find` không thấy object inactive, `GetComponent` chỉ trả cái đầu tiên), và
+    /// truyền tham số generic.
+    ///
+    /// Chỉ nằm trong RAM vì nó giữ object sống.
+    public static class Vars
     {
-        private static readonly Dictionary<string, object> values = new();
+        private static readonly Dictionary<string, object> bound = new();
 
-        public static void Bind(string name, object value) => values[name] = value;
-        public static bool TryGet(string name, out object value) => values.TryGetValue(name, out value);
-        public static void Remove(string name) => values.Remove(name);
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void ResetStatics() => bound.Clear();
+
+        public static bool TryGet(string name, out object value) => bound.TryGetValue(name, out value);
+
+        public static void Bind(string name, object value) => bound[name] = value;
+
+        public static void Remove(string name) => bound.Remove(name);
+
+        public static IReadOnlyList<KeyValuePair<string, object>> All
+        {
+            get
+            {
+                var list = new List<KeyValuePair<string, object>>(bound);
+                list.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
+                return list;
+            }
+        }
     }
 }
