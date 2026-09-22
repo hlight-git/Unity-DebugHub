@@ -11,9 +11,14 @@ namespace Hlight.Debug.Hub
         public const string DEFAULT_ASSEMBLY = "Assembly-CSharp";
         private const string AUTO_ENABLE_KEY = "AutoEnableDebugConsole";
         [SerializeField] private string resourcePath;
+        [SerializeField] private RepeatButton repeat;
 
         private Canvas inGameDebugConsoleCanvas;
         object ans;
+
+        /// Đẩy vào từ DebugHub.Awake() (chạy trước nhờ DefaultExecutionOrder(-100)): Proxima dùng
+        /// chung password với xác thực hub nên DebugHub vẫn là nơi khởi tạo, console chỉ đăng ký command.
+        internal ProximaFeature proxima;
 
         /// Console đang hiện hay không. Lần bật đầu tiên mới instantiate prefab console.
         public bool Enabled
@@ -55,25 +60,26 @@ namespace Hlight.Debug.Hub
         {
             // Command duy nhất còn đăng ký vào IDC: cầu để ô nhập lệnh của console vẫn chạy được
             // command của hub sau khi hub thôi dùng registry của IDC. VD: hub "level.goto 5".
+            // Thử registry mới trước, rớt về registry cũ cho inspect.* (chưa migrate tới Task 21).
             DebugLogConsole.AddCommand<string>("hub", "Chạy một command của Debug Hub, VD: hub \"level.goto 5\".",
-                line => DebugCommands.Execute(line));
+                line => { if (!DebugHub.Execute(line, out _)) DebugCommands.Execute(line); });
 
             // Đọc/ghi dữ liệu thì Stays(): kết quả hiện ở dòng kết quả, người ta còn tra tiếp chứ
             // không phải chạy một lần rồi ra nhìn game.
-            DebugCommands.Add<string>(this, "prefs.get", "Log giá trị đang lưu trong PlayerPrefs.", GetPlayerPrefsValue)
+            DebugHub.Add<string>(this, "prefs.get", "Log giá trị đang lưu trong PlayerPrefs.", GetPlayerPrefsValue)
                 .Stays();
-            DebugCommands.Add<string, string>(this, "prefs.set.str", "Ghi PlayerPrefs dạng string.", SetPlayerPrefsValue)
+            DebugHub.Add<string, string>(this, "prefs.set.str", "Ghi PlayerPrefs dạng string.", SetPlayerPrefsValue)
                 .Stays();
-            DebugCommands.Add<string, int>(this, "prefs.set.int", "Ghi PlayerPrefs dạng int.", SetPlayerPrefsValue)
+            DebugHub.Add<string, int>(this, "prefs.set.int", "Ghi PlayerPrefs dạng int.", SetPlayerPrefsValue)
                 .Stays();
-            DebugCommands.Add<string, float>(this, "prefs.set.float", "Ghi PlayerPrefs dạng float.", SetPlayerPrefsValue)
+            DebugHub.Add<string, float>(this, "prefs.set.float", "Ghi PlayerPrefs dạng float.", SetPlayerPrefsValue)
                 .Stays();
 
-            DebugCommands.AddValue(this, "time.scale", "Time scale hiện tại.", () => Time.timeScale, SetTimeScale);
+            DebugHub.AddValue(this, "time.scale", "Time scale hiện tại.", () => Time.timeScale, SetTimeScale);
 
             // Các overload cũ chỉ tồn tại để đặt sẵn một tham số (speed = 100, assembly =
             // Assembly-CSharp). Page nhập liệu prefill được nên gộp về một command, đỡ hai row trùng tên.
-            DebugCommands.Add<float, float>(this, "time.skip", "Tua nhanh sec giây với time scale speed.", FastForward)
+            DebugHub.Add<float, float>(this, "time.skip", "Tua nhanh sec giây với time scale speed.", FastForward)
                 .Defaults("1", "100");
 
             // "inspect" thay cho get/set/reg trần ở gốc: cây page chỉ hiện tên lá nên một row tên
@@ -102,11 +108,19 @@ namespace Hlight.Debug.Hub
 
             // Debugger của SDK là UI riêng: hub còn hiện thì che mất, phải bấm được vào nó.
 #if MAX_SDK
-            DebugCommands.Add(this, "sdk.max", "Mở mediation debugger của MAX.", ShowMaxDebugger).HidesHub();
+            DebugHub.Add(this, "sdk.max", "Mở mediation debugger của MAX.", ShowMaxDebugger).HidesHub();
 #endif
 #if USE_ADMOB
-            DebugCommands.Add(this, "sdk.admob", "Mở ad inspector của AdMob.", ShowAdMobDebugger).HidesHub();
+            DebugHub.Add(this, "sdk.admob", "Mở ad inspector của AdMob.", ShowAdMobDebugger).HidesHub();
 #endif
+
+            DebugHub.AddValue(this, "console.show", "Hiện cửa sổ log.", () => Enabled, value => Enabled = value);
+            DebugHub.AddValue(this, "console.auto", "Tự bật console ở lần chạy sau.", () => AutoEnable, value => AutoEnable = value);
+            if (proxima.Supported)
+                DebugHub.AddValue(this, "console.proxima", "Bật Proxima Inspector.", () => proxima.Enabled, v => proxima.Enabled = v);
+
+            DebugHub.AddValue(this, "hub.repeat", "Nút chạy lại lệnh cuối.", () => repeat.Enabled, v => repeat.Enabled = v);
+            DebugHub.Add(this, "hub.hide", "Ẩn hub để nhìn game — gọi lại bằng lắc / gõ 4 góc.", () => { }).HidesHub();
         }
 
         #region Commands

@@ -27,6 +27,7 @@ namespace Hlight.Debug.Hub
         [SerializeField] private DebugHubEntry entry;
         [SerializeField] private DebugHubPanel panel;
         [SerializeField] private ConsoleController console;
+        [SerializeField] private RepeatButton repeat;
         [SerializeField] private TMP_InputField authenticationInputField;
         [SerializeField] private NetworkReachabilityAuthenticationBypass networkReachabilityAuthenticationBypass;
 
@@ -61,12 +62,14 @@ namespace Hlight.Debug.Hub
                 {
                     if (instance.CurrentAuthenticationState != AuthenticationState.Success) return;
                     instance.entry.Activating = true;
+                    instance.repeat.Refresh();
                     return;
                 }
 
                 // Ẩn cả dòng kết quả: "ẩn hub" là để màn hình sạch (chụp ảnh level, xem UI game),
                 // chừa lại một dòng chữ nổi ở đáy thì vẫn dính vào ảnh.
                 instance.entry.Activating = false;
+                instance.repeat.gameObject.SetActive(false);
                 instance.panel.HideResult();
                 instance.panel.Close();
             }
@@ -130,6 +133,9 @@ namespace Hlight.Debug.Hub
             DontDestroyOnLoad(this);
             instance = this;
             proxima = new ProximaFeature(password);
+            // Đẩy vào console TRƯỚC khi Awake() của nó chạy (DebugHub có DefaultExecutionOrder(-100)
+            // nên luôn chạy trước): console.proxima cần sẵn để đăng ký command "console.proxima".
+            console.proxima = proxima;
             entry.Clicked += OpenRootPage;
             // Kết quả dài bị cắt ở dòng nổi; toàn văn kèm stack trace nằm ở log window.
             panel.ResultClicked += () => console.Enabled = true;
@@ -163,7 +169,9 @@ namespace Hlight.Debug.Hub
             switch (action)
             {
                 case DebugHubAction.ShowEntry:
-                    entry.Activating = true;
+                    // Qua Visible chứ không set entry.Activating trực tiếp: nút repeat sống ngoài
+                    // entry, phải được refresh cùng lúc entry hiện lại.
+                    Visible = true;
                     break;
 
                 case DebugHubAction.AskPassword:
@@ -210,9 +218,9 @@ namespace Hlight.Debug.Hub
 
         private void AcceptAuthentication()
         {
-            entry.Activating = true;
             Destroy(authenticationInputField.gameObject);
             CurrentAuthenticationState = AuthenticationState.Success;
+            Visible = true;
         }
 
         private void OpenRootPage()
@@ -324,6 +332,23 @@ namespace Hlight.Debug.Hub
         }
 
         public static void Remove(DebugNode node) => DebugRegistry.Remove(node);
+
+        /// Lệnh này có Confirms() không — nút repeat hỏi trước khi chạy.
+        public static bool NeedsConfirm(string line) => DebugRegistry.Find(line, out var entry) && entry.Node.Confirm;
+
+        /// Mở panel ngay tại trang xác nhận của lệnh này.
+        public static void OpenConfirm(string line)
+        {
+            if (!instance || !DebugRegistry.Find(line, out var entry)) return;
+            instance.panel.Show(CommandsPage.Root());
+            CommandsPage.Run(instance.panel, entry, DebugRegistry.ArgumentsOf(line));
+        }
+
+        /// Đẩy một dòng ra dòng kết quả từ ngoài panel.
+        public static void Report(string message, bool error)
+        {
+            if (instance) instance.panel.ShowResult(message, error);
+        }
 
         public static bool Execute(string line, out string message) => DebugRegistry.Execute(line, out message);
 

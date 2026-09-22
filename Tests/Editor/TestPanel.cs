@@ -63,10 +63,12 @@ namespace Hlight.Debug.Hub.Tests
 
         public static Button SearchButtonOf(DebugHubPanel panel) => (Button)Field("searchButton").GetValue(panel);
 
-        // ponytail: BuildRepeatButton() (Task 11 helper) bị bỏ ở đây — khác với SearchButtonOf,
-        // nó trả về kiểu RepeatButton thật (không phải string reflection), mà class đó chưa tồn tại
-        // trong repo nên khai báo signature này sẽ không compile. Task 11 tự thêm lại khi nó tạo
-        // Scripts/RepeatButton.cs.
+        public static RepeatButton BuildRepeatButton()
+        {
+            var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(PREFAB_PATH);
+            var instance = Object.Instantiate(prefab);
+            return instance.GetComponentInChildren<RepeatButton>(true);
+        }
 
         private static FieldInfo Field(string name)
         {
