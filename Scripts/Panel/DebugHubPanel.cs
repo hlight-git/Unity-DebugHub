@@ -19,8 +19,8 @@ namespace Hlight.Debug.Hub
         /// Tên của command chạy ngay. Đủ để đọc ra "bấm là chạy" mà không phải tô nền cả row.
         private static readonly Color AccentColor = new Color(0.47f, 0.67f, 1f);
 
-        /// Row điều hướng của chính hub (Recent, Search, Built-in) — không phải thư mục command của
-        /// game, nên không dùng chung màu với chúng.
+        /// Row điều hướng của chính hub — không phải thư mục command của game, nên không dùng
+        /// chung màu với chúng.
         private static readonly Color ShortcutColor = new Color(0.85f, 0.70f, 0.42f);
         private const string DescriptionColor = "#8A929C";
         /// TMP nhận size theo phần trăm, không như legacy Text — nên description tự co theo cỡ chữ
@@ -307,7 +307,7 @@ namespace Hlight.Debug.Hub
             row.button.onClick.AddListener(() => Push(page));
         }
 
-        /// Row điều hướng của chính hub, không phải nội dung do game đăng ký: Recent, Search, Built-in.
+        /// Row điều hướng của chính hub, không phải nội dung do game đăng ký.
         public void AddShortcut(string label, DebugPage page, string detail = null)
         {
             var row = Spawn(navTemplate, label);

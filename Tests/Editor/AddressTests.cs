@@ -315,8 +315,9 @@ namespace Hlight.Debug.Hub.Tests
             finally { Object.DestroyImmediate(go); }
         }
 
-        /// Bug Task 22: `#Namespace.Type[i]` bị cắt root ở dấu '.' đầu tiên của namespace
-        /// (`CutAfterRootToken` cũ), nên `#UnityEngine.Camera[0]` báo lỗi ngay ở "UnityEngine".
+        /// Bug Task 22: `#Namespace.Type[i]` từng bị cắt root ở dấu '.' đầu tiên của namespace
+        /// (`CutAfterDollarToken`/`TrySplitInstanceRoot` sửa lại việc này), nên
+        /// `#UnityEngine.Camera[0]` từng báo lỗi ngay ở "UnityEngine".
         [Test]
         public void Resolve_InstanceRoot_NamespacedType_WithIndex()
         {

@@ -277,7 +277,7 @@ root = TypeName        static context; TypeFinder dò mọi assembly đã nạp
      | @command.path   một ValueNode đã đăng ký — watch được cả cheat của game
 ```
 
-Ví dụ: `@economy.coin`, `Harvest.GameplayCheats.SomeStaticField`, `#Camera[0]` (root không có dấu `.` — xem trần đã biết bên dưới về root `#TypeName[i]` với type có namespace).
+Ví dụ: `@economy.coin`, `Harvest.GameplayCheats.SomeStaticField`, `#Camera[0]`, `#UnityEngine.Camera[0]` (type có namespace resolve đúng — short name mơ hồ giữa nhiều namespace thì phải gõ full name, xem mục Trần đã biết).
 
 Giới hạn có chủ ý:
 
@@ -304,7 +304,7 @@ Ba đường thêm Watch: nút `…` trên một row giá trị (kể cả scala
 ### Types / Instances / Execute
 
 - **Types** — trống cho tới khi gõ ≥ 2 ký tự vào ô `Tìm`; hiện các type có tên chứa chuỗi đó, bấm vào mở static member.
-- **Instances** — gõ tên type, hiện instance đang sống (kể cả inactive), mỗi dòng là một address `#Type[i]`, mở vào xem/sửa được field. *(Xem bug root `#TypeName[i]` ở mục Trần đã biết — hiện chỉ mở được instance của type không có namespace.)*
+- **Instances** — gõ tên type, hiện instance đang sống (kể cả inactive), mỗi dòng là một address `#Type[i]`, mở vào xem/sửa được field. Hoạt động với cả type có namespace lẫn type không namespace; short name mơ hồ giữa nhiều namespace thì phải gõ full name (xem mục Trần đã biết).
 - **Execute** — ô address + ô value + `Get` / `Set` + `Watch địa chỉ này` + `Lưu vào $…`. Đường thoát cho thứ mà duyệt bằng tay không tới được: method generic (`Find<$T>(...)`), overload (`Ten{0}(...)`), biểu thức cần ngoặc lồng (chia bước qua `$var`).
 
 ## Trần đã biết
@@ -312,7 +312,6 @@ Ba đường thêm Watch: nút `…` trên một row giá trị (kể cả scala
 - **IL2CPP managed code stripping** — Advanced/`Reflect`/`Address` chạy bằng reflection; trên build IL2CPP, member không ai gọi tĩnh sẽ bị strip và inspect báo "không tìm thấy" dù code có thật. Hub là đồ dev (`RenameFolderOnBuild` đổi tên folder `Resources` khi build PRODUCTION) nên package **không** mang `link.xml` chống stripping — đây là quyết định có chủ ý, không phải thiếu sót.
 - **Gọi method tuỳ ý qua Execute có thể làm hỏng state game.** Đó là bản chất công cụ, không phải lỗi.
 - **`#TypeName[i]` không ổn định qua phiên** (mục Advanced ở trên).
-- **Bug đã biết: root `#TypeName[i]` cắt sai tại dấu `.` đầu tiên khi `TypeName` có namespace.** `Address.CutAfterRootToken` (dùng chung cho root `$` và `#`) dừng ở dấu `.` đầu tiên bất kể ký tự đó thuộc tên type hay không, nên `#UnityEngine.Camera[0]` bị cắt còn `#UnityEngine` rồi báo "'UnityEngine' không phải một UnityEngine.Object type." — `Reflect`/`Instances`/`Watch` không mở được instance của bất kỳ type có namespace nào (tức gần như mọi type thật trong game) bằng địa chỉ dạng này. Không có test nào phủ root `#…` với type có dấu `.`. Ảnh hưởng cả trang **Instances** (mở instance ra lỗi ngay) lẫn Watch tạo từ đó. Chưa sửa — xem báo cáo Task 22 để biết chi tiết tái hiện.
 - **Types/Instances không phân biệt được type trùng tên ngắn.** `TypeFinder.Find` tra theo `Dictionary<string,List<Type>>` theo cả short name lẫn full name; gõ short name khớp ≥ 2 type (ví dụ `Camera` khớp cả `UnityEngine.Camera` và một type test nội bộ khác) thì trả `null` thay vì cho chọn — phải gõ full name mới chắc ăn.
 - **Search không quét trong `FolderNode` động.**
 - **Tên Unity object không phải định danh** — text lookup (`GameObject.Find`/`GetComponent`) không bảo đảm round-trip; dùng `$var` để giữ đúng reference trong session. Nút repeat không lưu được reference/collection chứa reference.
