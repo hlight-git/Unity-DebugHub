@@ -12,7 +12,7 @@ namespace Hlight.Debug.Hub.Tests
 
             var lines = text.Split('\n');
             StringAssert.StartsWith("<mspace=", lines[0]);
-            StringAssert.Contains("color  sets", lines[0]);
+            StringAssert.Contains("color   sets", lines[0]);
             StringAssert.Contains("A       3", lines[1]);
             StringAssert.Contains("Purple  12", lines[2]);
         }
