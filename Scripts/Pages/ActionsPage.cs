@@ -13,13 +13,45 @@ namespace Hlight.Debug.Hub
             return new DebugPage(node.Label, panel =>
             {
                 var text = DebugValues.ToText(current);
-                if (string.IsNullOrEmpty(text)) return;
-
-                panel.AddButton("Copy giá trị", () =>
+                if (!string.IsNullOrEmpty(text))
                 {
-                    GUIUtility.systemCopyBuffer = text;
-                    panel.ShowResult($"đã copy {node.Label}", false);
+                    panel.AddButton("Copy giá trị", () =>
+                    {
+                        GUIUtility.systemCopyBuffer = text;
+                        panel.ShowResult($"đã copy {node.Label}", false);
+                        panel.Pop();
+                    });
+                }
+
+                // Gán chỉ cho giá trị **không** có editor tại chỗ: số/bool/enum/vector đã sửa được
+                // ngay trên row, thêm một page nữa là hai đường sửa cho cùng một thứ. Chỗ thật sự
+                // cần là gán một reference (hoặc null) cho field kiểu object.
+                if (node.Set != null && !DebugValues.IsInlineValue(node.Declared))
+                    panel.AddNavigation("Gán giá trị", AssignPage(node, run));
+            }, searchable: false);
+        }
+
+        private static DebugPage AssignPage(ValueNode node, Action<DebugNode, string[]> run)
+        {
+            return new DebugPage($"Gán {node.Label}", panel =>
+            {
+                var typed = string.Empty;
+                panel.AddText($"Kiểu: {node.Declared.Name}. Gõ 'null' để xoá tham chiếu, `$tên` để gán biến.");
+                panel.AddField("Giá trị", typeof(string), string.Empty, value => typed = value);
+                panel.AddPrimary("Gán", () =>
+                {
+                    // Kiểm trước để báo lỗi ngay tại chỗ nhập…
+                    if (!DebugValues.TryParse(typed, node.Declared, out _, out var error, allowVars: true))
+                    {
+                        panel.ShowResult(error, true);
+                        return;
+                    }
+
+                    // …còn việc ghi thì đi qua đúng luồng chạy của node: node.Set thẳng sẽ bỏ qua
+                    // Confirm, bỏ qua DismissMode và không bắt được log/exception mà setter in ra.
+                    // Truyền **text gốc** chứ không serialize lại: `$g` mà ToText lại là mất reference.
                     panel.Pop();
+                    run(node, new[] { typed });
                 });
             }, searchable: false);
         }

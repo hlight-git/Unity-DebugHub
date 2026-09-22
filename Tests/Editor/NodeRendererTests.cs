@@ -29,6 +29,15 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
+        public void WritableBool_HasMoreButton()
+        {
+            // Task 8: ToggleRow thiếu nút `…` — Gán/Watch/Lưu vào $var không mở được cho bool.
+            Render(Node.Value("flag", () => true, v => { }));
+
+            Assert.IsNotNull(TestPanel.Rows(panel)[0].more);
+        }
+
+        [Test]
         public void ComponentField_OpensMembers_EvenThoughIdcCanParseIt()
         {
             var go = new GameObject("probe");
