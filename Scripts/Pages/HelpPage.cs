@@ -50,8 +50,12 @@ namespace Hlight.Debug.Hub
                 case ValueNode value:
                     // Getter của Unity ném khá thường (component đã chết) — một dòng lỗi tốt hơn
                     // cả trang Help vỡ ngang chừng, xem NodeRenderer.RenderValue.
-                    try { builder.Append(" = ").Append(DebugValues.ToText(value.Get())); }
-                    catch (Exception exception) { builder.Append(" = <color=#E5484D>").Append(exception.Message).Append("</color>"); }
+                    try
+                    {
+                        var current = value.Get();
+                        builder.Append(" = ").Append(current is null ? "null" : DebugValues.ToText(current));
+                    }
+                    catch (Exception exception) { builder.Append(" = <color=").Append(Palette.BAD).Append('>').Append(exception.Message).Append("</color>"); }
                     return;
 
                 case FolderNode:
