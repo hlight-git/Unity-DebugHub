@@ -106,6 +106,18 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
+        public void Root_ResolvesEachPinnedAddressOncePerBuild()
+        {
+            Watches.TryAdd($"{ROOT}.Counted", out _);
+            AddressFixture.CountedReads = 0;
+
+            panel.ShowFromRoot(ObjectsPage.Root());
+
+            Assert.AreEqual(1, AddressFixture.CountedReads,
+                "trang Live resolve hai lần mỗi nhịp là nhân đôi mọi getter, 4 lần/giây");
+        }
+
+        [Test]
         public void Page_IsLive()
         {
             Assert.IsTrue(ObjectsPage.Root().Live);

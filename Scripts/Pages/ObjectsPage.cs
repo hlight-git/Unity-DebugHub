@@ -67,9 +67,15 @@ namespace Hlight.Debug.Hub
                 return;
             }
 
+            // Lần đọc **đầu tiên** (renderer dựng row ngay sau đây) dùng lại giá trị vừa resolve: trang
+            // Live dựng lại 4 lần/giây, resolve hai lần mỗi nhịp là nhân đôi mọi getter. Lần đọc sau đó
+            // (trang member mở từ row này) resolve lại, không bám bản cũ.
+            //
             // Lỗi phải nổi lên (cùng luật với Reflect.ValueFor): Get nuốt lỗi thì một resolve thất bại
             // hiện thành "null" — không phân biệt được với giá trị thật sự null; Set nuốt lỗi thì người
             // dùng tưởng đã ghi xong.
+            var snapshot = cursor.Value;
+            var fresh = true;
             var node = new ValueNode
             {
                 Label = Leaf(address),
@@ -78,8 +84,9 @@ namespace Hlight.Debug.Hub
                 Address = address,
                 Get = () =>
                 {
-                    if (!Address.TryResolve(address, out var fresh, out var message)) throw new System.Exception(message);
-                    return fresh.Value;
+                    if (fresh) { fresh = false; return snapshot; }
+                    if (!Address.TryResolve(address, out var again, out var message)) throw new System.Exception(message);
+                    return again.Value;
                 },
                 Set = cursor.CanWrite
                     ? value =>

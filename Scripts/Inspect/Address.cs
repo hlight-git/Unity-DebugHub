@@ -371,9 +371,7 @@ namespace Hlight.Debug.Hub
                 catch (Exception exception) { error = (exception.InnerException ?? exception).Message; return false; }
 
                 Action<object> write = null;
-                var writable = !field.IsInitOnly && !field.IsLiteral &&
-                               (field.IsStatic || !needsWriteBack || parent.Write != null);
-                if (writable)
+                if (Writable(field, parent))
                 {
                     write = v =>
                     {
@@ -399,7 +397,7 @@ namespace Hlight.Debug.Hub
 
             Action<object> setter = null;
             var isStatic = getter != null && getter.IsStatic;
-            if (property.CanWrite && (isStatic || !needsWriteBack || parent.Write != null))
+            if (Writable(property, parent))
             {
                 setter = v =>
                 {
@@ -409,6 +407,34 @@ namespace Hlight.Debug.Hub
             }
             cursor = new Cursor(property.PropertyType, read, setter);
             return true;
+        }
+
+        /// Ghi được member `name` của parent không — xét **chỉ bằng metadata**, không đọc giá trị.
+        /// Reflect hỏi câu này cho mọi dòng lúc dựng trang; đi qua TryMember là đọc mỗi getter một lần
+        /// chỉ để vứt giá trị đi, rồi renderer đọc lại lần nữa.
+        internal static bool CanWrite(Cursor parent, string name)
+        {
+            var type = parent.Value?.GetType() ?? parent.Declared;
+            var field = type.GetFieldRecursive(name, ALL);
+            if (field != null) return Writable(field, parent);
+            var property = type.GetPropertyRecursive(name, ALL);
+            return property != null && Writable(property, parent);
+        }
+
+        /// Một bản duy nhất của luật ghi (§9.2), dùng chung cho TryMember và CanWrite.
+        /// Member instance trên root static (Value null) không ghi được: không có object để ghi vào.
+        private static bool Writable(FieldInfo field, Cursor parent)
+        {
+            if (field.IsInitOnly || field.IsLiteral) return false;
+            return field.IsStatic || (parent.Value != null && (!parent.Value.GetType().IsValueType || parent.Write != null));
+        }
+
+        private static bool Writable(PropertyInfo property, Cursor parent)
+        {
+            if (!property.CanWrite) return false;
+            var accessor = property.GetMethod ?? property.SetMethod;
+            if (accessor.IsStatic) return true;
+            return parent.Value != null && (!parent.Value.GetType().IsValueType || parent.Write != null);
         }
 
         private static bool TryIndexer(Cursor parent, string step, out Cursor cursor, out string error)

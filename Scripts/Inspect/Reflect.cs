@@ -291,10 +291,7 @@ namespace Hlight.Debug.Hub
             return member is FieldInfo && member.Name.StartsWith("m_", StringComparison.Ordinal);
         }
 
-        private static bool Writable(Cursor parent, string name)
-        {
-            return Step(parent, name, out var child) && child.CanWrite;
-        }
+        private static bool Writable(Cursor parent, string name) => Address.CanWrite(parent, name);
 
         private static object Read(Cursor parent, string name)
         {
@@ -307,11 +304,6 @@ namespace Hlight.Debug.Hub
             if (!Address.TryMember(parent, name, out var child, out var error)) throw new Exception(error);
             if (!child.CanWrite) throw new Exception($"'{name}' không ghi được.");
             child.Write(value);
-        }
-
-        private static bool Step(Cursor parent, string name, out Cursor child)
-        {
-            return Address.TryMember(parent, name, out child, out _);
         }
 
         private static string DebugLogConsoleName(Type type)

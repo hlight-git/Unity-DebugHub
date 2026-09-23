@@ -219,6 +219,36 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(Reflect.Methods(cursor, null).Count(), Reflect.MethodCount(cursor));
         }
 
+        private class Counting
+        {
+            public int Reads;
+            public int Probe => ++Reads;
+        }
+
+        /// Dựng danh sách + renderer đọc một lần = đúng một lần gọi getter. Bản cũ đọc thêm một lần lúc
+        /// dựng chỉ để hỏi "ghi được không" — property có side effect chạy gấp đôi, trang Live thì 8 lần/giây.
+        [Test]
+        public void Members_ReadEachGetterOnce_BuildPlusRender()
+        {
+            var probe = new Counting();
+            var cursor = new Cursor(typeof(Counting), probe, null);
+
+            var node = Reflect.Members(cursor, null).OfType<ValueNode>().First(n => n.Label == "Probe");
+            node.Get();
+
+            Assert.AreEqual(1, probe.Reads, $"getter chạy {probe.Reads} lần cho một lần dựng + một lần hiện");
+        }
+
+        [Test]
+        public void Members_InstanceMemberOnAStaticRoot_IsNotWritable()
+        {
+            var cursor = new Cursor(typeof(AddressFixture), null, null);
+            var number = Reflect.Members(cursor, "Hlight.Debug.Hub.Tests.AddressFixture")
+                .OfType<ValueNode>().First(n => n.Label == "Number");
+
+            Assert.IsNull(number.Set, "không có object nào để ghi vào");
+        }
+
         [Test]
         public void Methods_KeepsEveryOverload_EvenWhenTheyShareArity()
         {

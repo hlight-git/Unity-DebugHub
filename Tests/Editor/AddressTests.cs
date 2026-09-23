@@ -28,6 +28,11 @@ namespace Hlight.Debug.Hub.Tests
         public string Name { get; set; } = "a";
         public int Computed => Number * 2;
 
+        /// Đếm số lần đọc — test "resolve một lần mỗi lần dựng". Riêng khỏi Number: nhiều test ghi
+        /// thẳng vào Number, đổi nó thành property là đổi luôn thứ Members báo cáo.
+        public static int CountedReads;
+        public int Counted => ++CountedReads;
+
         /// Setter luôn ném — fixture cho "Run/Set thất bại phải hiện lỗi rõ ràng, không được nuốt"
         /// (xem AdvancedPageTests.WatchPage_FailingWrite_...).
         public int Explosive { get => 0; set => throw new System.Exception("bùm"); }
