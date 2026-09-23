@@ -257,12 +257,12 @@ Mặt thứ hai của hub, mở bằng nút `Adv` ở header — **đồ nghề 
 ```
   ‹  Advanced                        Tìm   ?
   ───────────────────────────────────────────
-     Watch                                4 ›
-     Types                                  ›
-     Instances                              ›
-     Vars                                 2 ›
-     Execute                                ›
+     Objects                              6 ›
+     Duyệt                                  ›
 ```
+
+- **Objects** — một danh sách: address đã ghim + biến `$` (biến `$` ghi rõ "chỉ trong phiên này"). `+ Thêm address` để gõ address tay.
+- **Duyệt** — chọn từng bước Assembly → Type → Instance, rồi tới trang member của nó.
 
 ### Address — trạng thái điều hướng duy nhất
 
@@ -271,7 +271,7 @@ Trang inspect không giữ tham chiếu object nào cả, chỉ giữ **một ch
 ```
 address = root ( "." member | "[" args "]" | "." Method(args) )*
 
-root = TypeName        static context; TypeFinder dò mọi assembly đã nạp
+root = TypeName        static context; full name tra thẳng từng assembly, tên ngắn mới phải quét
      | $var            giá trị hoặc type đã lưu trong Vars
      | #TypeName[i]    instance thứ i đang sống trong scene (mặc định [0])
      | @command.path   một ValueNode đã đăng ký — watch được cả cheat của game
@@ -281,16 +281,24 @@ Ví dụ: `@economy.coin`, `Harvest.GameplayCheats.SomeStaticField`, `#Camera[0]
 
 Giới hạn có chủ ý:
 
-- **Không parse ngoặc lồng** — bắc cầu qua `$var` (chạy Execute, lưu kết quả, rồi drill vào biến).
+- **Không parse ngoặc lồng** — bắc cầu qua `$var` (`…` › `Lưu vào $…` trên kết quả, rồi drill vào biến).
 - **`#TypeName[i]` không ổn định qua các phiên** — thứ tự `FindObjectsByType` không có bảo đảm, watch vào instance có thể trỏ sang object khác sau khi load lại scene.
 - **Reflect.Elements cắt ở 100 phần tử** + một dòng "còn N…" — collection lớn hoặc `IEnumerable` tự sinh vô hạn không được giết panel.
-- Method **mặc định ẩn** trong danh sách member (toggle riêng để bật), và `[Obsolete]`/backing field bị lọc bỏ.
+- Trang member **hiện hết** (xem mục dưới).
 
-### Watch vs Vars
+### Trang member: hiện hết, không ghi được thì read-only
 
-Hai khái niệm cố ý tách bạch:
+Mọi field + property, public lẫn private, instance lẫn static, đi hết chuỗi kế thừa (lớp dẫn xuất trước). Ghi được thì là ô sửa, không thì dòng read-only — không có bộ lọc. Ngoại lệ duy nhất: backing field của auto-property (trùng ô nhớ với property). `[Obsolete]` của Unity cũng hiện, đọc ra một dòng lỗi "deprecated".
 
-| | Watch | Vars |
+Method nằm sau một row riêng `Method  N ›` ở cuối trang — `RootScope` có 239 method, `Transform` 319, trộn chung là mất dấu giá trị. Method trả `Task`/`ValueTask`/`UniTask` (nhận theo mẫu awaiter, không tham chiếu UniTask) có switch **`Chờ kết quả`** ở trang tham số: bật (mặc định) thì log `Tên xong: kết quả` khi xong.
+
+Lý do bỏ luật cũ "chỉ member lớp cuối": `ProfileEntry` không khai member nào (tất cả ở `DataEntry<T>`), mở ra là trang trống.
+
+### Objects: address ghim vs biến `$`
+
+Cùng một trang, hai nguồn khác nhau ở chỗ sống bao lâu:
+
+| | Address ghim (`Watches`) | Biến `$` (`Vars`) |
 |---|---|---|
 | Là gì | một **address sống**, resolve lại mỗi lần | một **ảnh chụp** — giá trị hoặc type tại thời điểm lưu |
 | Đọc lại | 4 lần/giây (trang `Live`, bỏ nhịp khi đang gõ), giá trị đổi theo game | không tự đổi — đúng object/giá trị đã bind |
@@ -299,20 +307,33 @@ Hai khái niệm cố ý tách bạch:
 
 **Watch từ chối address chứa bước gọi method** trước khi resolve (xét từng step đã parse, không chỉ tìm dấu ngoặc trong chuỗi — literal của indexer có thể chứa ngoặc) — nếu không, một watch vào `Factory.Spawn()` sẽ gọi nó 4 lần/giây. Luật áp dụng lúc thêm, lúc đọc lại từ PlayerPrefs, và trước mỗi lần resolve để refresh; address có method đã lưu từ trước hiện lỗi kèm nút `Gỡ`, không được thực thi.
 
-Ba đường thêm Watch: nút `…` trên một row giá trị (kể cả scalar không có trang riêng), nút `+ Watch trang này` ở cuối trang member/phần tử, và ô `Watch địa chỉ này` ở trang Execute.
+Các đường ghim: nút `…` trên một row giá trị (kể cả scalar không có trang riêng), nút `+ Ghim trang này` ở cuối trang member/phần tử, `+ Ghim vào Objects` ở trang của `Duyệt`.
 
-### Types / Instances / Execute
+### Duyệt
 
-- **Types** — trống cho tới khi gõ ≥ 2 ký tự vào ô `Tìm`; hiện các type có tên chứa chuỗi đó, bấm vào mở static member.
-- **Instances** — gõ tên type, hiện instance đang sống (kể cả inactive), mỗi dòng là một address `#Type[i]`, mở vào xem/sửa được field. Hoạt động với cả type có namespace lẫn type không namespace; short name mơ hồ giữa nhiều namespace thì phải gõ full name (xem mục Trần đã biết).
-- **Execute** — ô address + ô value + `Get` / `Set` + `Watch địa chỉ này` + `Lưu vào $…`. Đường thoát cho thứ mà duyệt bằng tay không tới được: method generic (`Find<$T>(...)`), overload (`Ten{0}(...)`), biểu thức cần ngoặc lồng (chia bước qua `$var`).
+- **Assembly** — bấm `Tìm`, gõ một phần tên (`Assembly-CSharp` — code game nằm ở đây, `Hlight`).
+- **Type** — type trong đúng assembly đó.
+- **Instance** — `Member static` luôn có; là `UnityEngine.Object` thì thêm instance đang sống (kể cả inactive), mỗi dòng một address `#Type[i]`.
+- **Trang member** — dòng copy address, danh sách member, `+ Ghim vào Objects`.
+
+Gợi ý chạy thread nền (debounce 0.15 s) nên gõ không giật. Lý do làm lại:
+
+| | Trước | Sau |
+|---|---|---|
+| Dựng index type | 4142 ms trên main thread, 135.358 key | không có index |
+| `Find` full name | tra index | `Assembly.GetType` từng assembly, ~0 ms |
+| Tìm type mỗi ký tự gõ | 32 ms, quét cả domain | ~6 ms lần đầu, trong một assembly, ở thread nền |
+
+Address gõ tay (method generic `Find<$T>(...)`, overload `Ten{0}(...)`, bắc cầu `$var`): `Objects` › `+ Thêm address`.
 
 ## Trần đã biết
 
 - **IL2CPP managed code stripping** — Advanced/`Reflect`/`Address` chạy bằng reflection; trên build IL2CPP, member không ai gọi tĩnh sẽ bị strip và inspect báo "không tìm thấy" dù code có thật. Hub là đồ dev (`RenameFolderOnBuild` đổi tên folder `Resources` khi build PRODUCTION) nên package **không** mang `link.xml` chống stripping — đây là quyết định có chủ ý, không phải thiếu sót.
-- **Gọi method tuỳ ý qua Execute có thể làm hỏng state game.** Đó là bản chất công cụ, không phải lỗi.
+- **Gọi method tuỳ ý qua trang Method có thể làm hỏng state game.** Đó là bản chất công cụ, không phải lỗi.
 - **`#TypeName[i]` không ổn định qua phiên** (mục Advanced ở trên).
-- **Types/Instances không phân biệt được type trùng tên ngắn.** `TypeFinder.Find` tra theo `Dictionary<string,List<Type>>` theo cả short name lẫn full name; gõ short name khớp ≥ 2 type (ví dụ `Camera` khớp cả `UnityEngine.Camera` và một type test nội bộ khác) thì trả `null` thay vì cho chọn — phải gõ full name mới chắc ăn.
+- **Address gõ tay với tên type ngắn** phải quét mọi assembly (lần đầu, ~20 ms), và tên ngắn khớp ≥ 2 type (`Camera` ở hai namespace) thì trả `null` — gõ full name. Address do `Duyệt` sinh ra luôn mang full name.
+- **Gợi ý của `Duyệt` có độ trễ** (debounce + thread nền).
+- **`IEnumerator` (coroutine Unity) không await được** — switch `Chờ kết quả` chỉ có cho kiểu theo mẫu awaiter.
 - **Search không quét trong `FolderNode` động.**
 - **Tên Unity object không phải định danh** — text lookup (`GameObject.Find`/`GetComponent`) không bảo đảm round-trip; dùng `$var` để giữ đúng reference trong session. Nút repeat không lưu được reference/collection chứa reference.
 - **Không parse ngoặc lồng** trong address.

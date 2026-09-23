@@ -23,7 +23,7 @@ namespace Hlight.Debug.Hub
             // Mỗi trang một Suggester: dùng chung thì kết quả của trang trước lọt sang trang sau.
             var suggester = new Suggester<Assembly>(TypeFinder.Assemblies);
             return new DebugPage("Assembly",
-                panel => panel.AddText("Bấm Tìm rồi gõ tên assembly (ví dụ: Assembly-CSharp, Harvest, Hlight)."),
+                panel => panel.AddText("Bấm Tìm rồi gõ tên assembly (ví dụ: Assembly-CSharp, Hlight)."),
                 search: (panel, query) => Suggest(panel, suggester, query, "Không có assembly nào khớp.",
                     assembly => panel.AddNavigation(assembly.GetName().Name, Types(assembly))),
                 live: true);
