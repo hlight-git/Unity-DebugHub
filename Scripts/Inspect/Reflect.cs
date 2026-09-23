@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Text;
 using UnityEngine;
 
 namespace Hlight.Debug.Hub
@@ -18,15 +19,16 @@ namespace Hlight.Debug.Hub
 
         public static bool IsCollection(object value) => value is IEnumerable && value is not string;
 
-        /// Hiện **hết** field và property, đi hết chuỗi kế thừa, public lẫn private, instance lẫn static.
-        /// Ghi được thì node có Set, không ghi được thì Set = null và renderer ra dòng read-only —
-        /// không có bộ lọc nào nữa.
+        /// Hiện **hết** field và property dùng được, đi hết chuỗi kế thừa, public lẫn private, instance
+        /// lẫn static. Ghi được thì node có Set, không thì Set = null và renderer ra dòng read-only.
         ///
-        /// Lý do bỏ "chỉ member khai báo ở lớp cuối": `Harvest.Data.ProfileEntry` không khai một member
-        /// nào (tất cả ở `DataEntry<T>`), nên luật cũ mở nó ra là một trang trống.
+        /// Mỗi lớp khai báo một dòng tiêu đề. Đây là cách giải phần ồn còn lại **mà không giấu gì**:
+        /// `RootScope` có ~20 member đến từ MonoBehaviour/Component/Object, chúng dùng được thật
+        /// (`enabled`, `name`, `tag`) nên không có cớ để lọc — nhưng gom vào một khối có tên thì mắt bỏ
+        /// qua cả khối trong một nhịp.
         ///
-        /// Thứ tự: lớp dẫn xuất trước, lớp cha sau — member của chính object nằm trên đầu, đồ của Unity
-        /// rơi xuống cuối, mà không phải giấu cái gì.
+        /// Lý do đi hết chuỗi kế thừa: `Harvest.Data.ProfileEntry` không khai một member nào (tất cả ở
+        /// `DataEntry<T>`), luật cũ "chỉ lớp cuối" mở nó ra là một trang trống.
         public static IEnumerable<DebugNode> Members(Cursor cursor, string address)
         {
             var type = cursor.Value?.GetType() ?? cursor.Declared;
@@ -34,23 +36,30 @@ namespace Hlight.Debug.Hub
 
             for (var level = type; level != null && level != typeof(object); level = level.BaseType)
             {
+                var rows = new List<DebugNode>();
+
                 foreach (var field in level.GetFields(ALL))
                 {
-                    if (Generated(field) || !seen.Add(field.Name)) continue;
-                    yield return ValueFor(cursor, address, field.Name, field.FieldType);
+                    if (Skip(field) || !seen.Add(field.Name)) continue;
+                    rows.Add(ValueFor(cursor, address, field.Name, field.FieldType));
                 }
                 foreach (var property in level.GetProperties(ALL))
                 {
-                    if (Generated(property) || property.GetIndexParameters().Length > 0) continue;
+                    if (Skip(property) || property.GetIndexParameters().Length > 0) continue;
                     if (!seen.Add(property.Name)) continue;
-                    yield return ValueFor(cursor, address, property.Name, property.PropertyType);
+                    rows.Add(ValueFor(cursor, address, property.Name, property.PropertyType));
                 }
+
+                // Lớp không có gì để hiện thì không có tiêu đề rỗng.
+                if (rows.Count == 0) continue;
+
+                yield return Node.Text(level == type ? level.Name : $"↑ {level.Name}", TextStyle.Note);
+                foreach (var row in rows) yield return row;
             }
         }
 
-        /// Method tách khỏi danh sách giá trị. Không phải để giấu: `RootScope` có 239 method và
-        /// `Transform` có 319 — trộn chung thì 72 dòng giá trị chìm mất. Trang member có một row
-        /// `Method (N) ›` mở thẳng sang danh sách đầy đủ này.
+        /// Method tách khỏi danh sách giá trị: `RootScope` có ~200, `Transform` ~300 — trộn chung thì
+        /// mấy chục dòng giá trị chìm mất. Trang member có một row `Method  N ›` mở sang đây.
         public static IEnumerable<DebugNode> Methods(Cursor cursor, string address)
         {
             var type = cursor.Value?.GetType() ?? cursor.Declared;
@@ -61,18 +70,53 @@ namespace Hlight.Debug.Hub
             {
                 foreach (var method in level.GetMethods(ALL))
                 {
-                    if (method.IsSpecialName || Generated(method)) continue;
-                    if (!seen.Add($"{method.Name}#{method.GetParameters().Length}")) continue;
+                    if (!Keep(method) || !seen.Add(Signature(method))) continue;
                     yield return ActionFor(cursor, address, method);
                 }
             }
         }
 
+        /// Đếm mà **không dựng node**: bản cũ gọi Methods() rồi bỏ đi, tức dựng vài trăm ActionNode
+        /// kèm DebugParameter[], GetTypeReadableName và một Awaitables.IsAwaitable mỗi cái — 7,5 ms
+        /// cho mỗi lần mở một trang member, chỉ để in một con số.
         public static int MethodCount(Cursor cursor)
         {
+            var type = cursor.Value?.GetType() ?? cursor.Declared;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
             var count = 0;
-            foreach (var _ in Methods(cursor, null)) count++;
+
+            for (var level = type; level != null; level = level.BaseType)
+            {
+                foreach (var method in level.GetMethods(ALL))
+                {
+                    if (Keep(method) && seen.Add(Signature(method))) count++;
+                }
+            }
             return count;
+        }
+
+        /// Chữ ký đầy đủ, không phải `Tên#số-tham-số`: `GetComponent(String)` và `GetComponent(Type)`
+        /// cùng arity, dedupe theo arity là **nuốt một cái** — đo trên Transform: 327 chữ ký thật chỉ
+        /// ra 268 dòng. Cái bị nuốt không có đường nào gọi tới từ UI.
+        private static string Signature(MethodInfo method)
+        {
+            var builder = new StringBuilder(method.Name).Append('(');
+            var parameters = method.GetParameters();
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                if (i > 0) builder.Append(',');
+                builder.Append(parameters[i].ParameterType.Name);
+            }
+            return builder.Append(')').ToString();
+        }
+
+        private static bool Keep(MethodInfo method)
+        {
+            if (method.IsSpecialName || Skip(method)) return false;
+
+            // Hai cái này thừa hưởng từ object, protected, và gọi thật thì hại: Finalize chạy destructor
+            // sớm, MemberwiseClone đẻ ra một bản sao nông không ai quản.
+            return method.Name != "Finalize" && method.Name != "MemberwiseClone";
         }
 
         public static IEnumerable<DebugNode> Elements(Cursor cursor, string address)
@@ -106,7 +150,10 @@ namespace Hlight.Debug.Hub
             {
                 if (index >= ELEMENT_LIMIT) { overflow = true; break; }
                 var captured = item;
-                yield return Node.Value<object>($"[{index++}]", () => captured);
+                // Element chứ không phải Node.Value<object>: Declared = object thì renderer cho mỗi số
+                // trong HashSet<int> là một row nav phải bấm vào mới thấy. Address null — không index
+                // được nên không ghim được.
+                yield return Element(cursor, null, null, $"[{index++}]", captured);
             }
             if (overflow) yield return Node.Text("còn nữa — cắt ở 100 phần tử.", TextStyle.Note);
         }
@@ -175,10 +222,14 @@ namespace Hlight.Debug.Hub
             // không tự tham chiếu được chính cái nó đang khởi tạo.
             var node = new ActionNode
             {
-                Label = method.Name,
+                // Nhãn kèm kiểu tham số: hai overload cùng tên phải phân biệt được bằng mắt.
+                Label = parameters.Length == 0
+                    ? method.Name
+                    : $"{method.Name}({string.Join(", ", Array.ConvertAll(parameters, p => p.ParameterType.Name))})",
                 Description = DebugLogConsoleName(method.ReturnType),
                 Parameters = descriptors,
-                Key = $"reflect:{owner}.{method.Name}#{parameters.Length}",
+                // Theo chữ ký: hai overload cùng arity phải có hai ô nhớ tham số riêng.
+                Key = $"reflect:{owner}.{Signature(method)}",
                 Dismiss = DismissMode.Stay,
                 Awaitable = awaitable,
             };
@@ -224,17 +275,20 @@ namespace Hlight.Debug.Hub
             return node;
         }
 
-        /// Hai ngoại lệ của "hiện hết":
-        /// - backing field của auto-property: đúng cùng một ô nhớ với property ngay trên nó, chỉ khác
-        ///   cái tên không đọc được — giữ cả hai là mọi auto-property ra hai dòng. Field viết tay
-        ///   (`_playerSave`) thì **giữ**: không có gì bảo đảm nó bằng property `PlayerSave`.
-        /// - `[Obsolete]`: mọi Component mang 13 property (`rigidbody`, `camera`, …) đọc là ném
-        ///   "deprecated" — 13 dòng lỗi đỏ ở cuối mỗi trang component mà không ai cần.
-        private static bool Generated(MemberInfo member)
+        /// Những thứ **không dùng được**, khác với "ít dùng":
+        /// - `[Obsolete]`: 13 property của mọi Component (`rigidbody`, `camera`…) đọc là ném "deprecated";
+        /// - backing field của auto-property: đúng cùng một ô nhớ với property, chỉ khác cái tên;
+        /// - `m_*` của engine (`m_CachedPtr`, `m_InstanceID`): con trỏ/handle phía C++, đọc ra số vô
+        ///   nghĩa và ghi vào là hỏng object. 3–4 dòng mỗi object.
+        ///
+        /// Field viết tay (`_playerSave`) thì **giữ**, kể cả khi có property cùng tên: không có gì bảo
+        /// đảm property trả về đúng field đó.
+        private static bool Skip(MemberInfo member)
         {
-            return member.IsDefined(typeof(CompilerGeneratedAttribute), false) ||
-                   member.IsDefined(typeof(ObsoleteAttribute), true) ||
-                   member.Name.Contains("k__BackingField");
+            if (member.IsDefined(typeof(CompilerGeneratedAttribute), false)) return true;
+            if (member.IsDefined(typeof(ObsoleteAttribute), true)) return true;
+            if (member.Name.Contains("k__BackingField")) return true;
+            return member is FieldInfo && member.Name.StartsWith("m_", StringComparison.Ordinal);
         }
 
         private static bool Writable(Cursor parent, string name)

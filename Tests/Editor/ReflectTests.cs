@@ -46,7 +46,7 @@ namespace Hlight.Debug.Hub.Tests
         {
             const string root = "Hlight.Debug.Hub.Tests.AddressFixture.Instance";
             Address.TryResolve(root, out var cursor, out _);
-            var nodes = Reflect.Members(cursor, root).Cast<ValueNode>().ToList();
+            var nodes = Reflect.Members(cursor, root).OfType<ValueNode>().ToList();
 
             Assert.IsNull(nodes.First(n => n.Label == "Frozen").Set);
             Assert.IsNotNull(nodes.First(n => n.Label == "Number").Set);
@@ -57,7 +57,7 @@ namespace Hlight.Debug.Hub.Tests
         {
             const string root = "Hlight.Debug.Hub.Tests.AddressFixture.Instance";
             Address.TryResolve(root, out var cursor, out _);
-            var nodes = Reflect.Members(cursor, root).Cast<ValueNode>().ToList();
+            var nodes = Reflect.Members(cursor, root).OfType<ValueNode>().ToList();
 
             var gone = nodes.First(n => n.Label == "Number");
             gone.Address = "Khong.Co.Gi";
@@ -75,7 +75,7 @@ namespace Hlight.Debug.Hub.Tests
             const string root = "Hlight.Debug.Hub.Tests.AddressFixture.Instance";
             Address.TryResolve(root, out var cursor, out _);
             var first = (ActionNode)Reflect.Methods(cursor, root)
-                .First(n => n.Label == "Doubled");
+                .First(n => n.Label.StartsWith("Doubled"));
 
             DebugRegistry.StoreArgs(first, new[] { "21" });
 
@@ -83,7 +83,7 @@ namespace Hlight.Debug.Hub.Tests
             // C# khác hẳn `first`, đúng như ParamsPage bị dựng lại từ đầu mỗi lần điều hướng.
             Address.TryResolve(root, out var cursor2, out _);
             var second = (ActionNode)Reflect.Methods(cursor2, root)
-                .First(n => n.Label == "Doubled");
+                .First(n => n.Label.StartsWith("Doubled"));
 
             Assert.AreNotSame(first, second);
             Assert.AreEqual(first.Key, second.Key);
@@ -96,7 +96,7 @@ namespace Hlight.Debug.Hub.Tests
             const string root = "Hlight.Debug.Hub.Tests.AddressFixture.Instance.Items";
             Address.TryResolve(root, out var cursor, out _);
 
-            var nodes = Reflect.Elements(cursor, root).Cast<ValueNode>().ToList();
+            var nodes = Reflect.Elements(cursor, root).OfType<ValueNode>().ToList();
 
             Assert.AreEqual(3, nodes.Count);
             Assert.AreEqual($"{root}[1]", nodes[1].Address);
@@ -219,10 +219,109 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(Reflect.Methods(cursor, null).Count(), Reflect.MethodCount(cursor));
         }
 
+        [Test]
+        public void Methods_KeepsEveryOverload_EvenWhenTheyShareArity()
+        {
+            var cursor = new Cursor(typeof(Overloaded), new Overloaded(), null);
+            var labels = Reflect.Methods(cursor, null).Select(n => n.Label).ToList();
+
+            Assert.AreEqual(2, labels.Count(l => l.StartsWith("Pick")),
+                "hai overload cùng số tham số khác kiểu — bỏ một cái là nó không có đường nào gọi tới");
+            Assert.IsTrue(labels.Any(l => l.Contains("Int32")), "nhãn phải kèm kiểu tham số để phân biệt");
+        }
+
+        private class Overloaded
+        {
+            public string Pick(int x) => "int";
+            public string Pick(string x) => "string";
+        }
+
+        [Test]
+        public void MethodCount_DoesNotBuildNodes()
+        {
+            var go = new GameObject("probe", typeof(BoxCollider));
+            try
+            {
+                var cursor = new Cursor(typeof(BoxCollider), go.GetComponent<BoxCollider>(), null);
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                var count = Reflect.MethodCount(cursor);
+
+                Assert.Greater(count, 0);
+                Assert.Less(watch.ElapsedMilliseconds, 3,
+                    "đếm mà dựng cả trăm ActionNode thì mỗi lần mở trang member mất 7ms cho một con số");
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void Elements_KeepTheRuntimeTypeOfEachItem_EvenWithoutAnIndexer()
+        {
+            var set = new HashSet<int> { 1, 2, 3 };
+            var nodes = Reflect.Elements(new Cursor(set.GetType(), set, null), null).OfType<ValueNode>().ToList();
+
+            Assert.AreEqual(typeof(int), nodes[0].Declared,
+                "Declared = object thì renderer cho nó là row nav phải bấm vào mới thấy số");
+        }
+
+        [Test]
+        public void Members_DropsEngineNativeFields()
+        {
+            var go = new GameObject("probe", typeof(BoxCollider));
+            try
+            {
+                var names = NamesOf(go.GetComponent<BoxCollider>());
+
+                Assert.IsFalse(names.Any(n => n.StartsWith("m_")),
+                    "m_CachedPtr là con trỏ phía C++: đọc ra số vô nghĩa, ghi vào là hỏng object");
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void Methods_DropsTheTwoDangerousObjectMethods_ButKeepsTheUsefulOnes()
+        {
+            var cursor = new Cursor(typeof(Overloaded), new Overloaded(), null);
+            var labels = Reflect.Methods(cursor, null).Select(n => n.Label).ToList();
+
+            Assert.IsFalse(labels.Any(l => l.StartsWith("Finalize")));
+            Assert.IsFalse(labels.Any(l => l.StartsWith("MemberwiseClone")));
+            Assert.IsTrue(labels.Any(l => l.StartsWith("ToString")));
+            Assert.IsTrue(labels.Any(l => l.StartsWith("GetType")));
+        }
+
+        [Test]
+        public void Members_AreGroupedByDeclaringType()
+        {
+            var go = new GameObject("probe", typeof(BoxCollider));
+            try
+            {
+                var cursor = new Cursor(typeof(BoxCollider), go.GetComponent<BoxCollider>(), null);
+                var nodes = Reflect.Members(cursor, null).ToList();
+
+                var headers = nodes.OfType<TextNode>().Select(t => t.Text).ToList();
+                Assert.IsTrue(headers.Any(h => h.Contains("BoxCollider")));
+                Assert.IsTrue(headers.Any(h => h.Contains("Component")),
+                    "member của Unity vẫn hiện, chỉ nằm dưới tiêu đề của lớp khai báo nó");
+
+                // Tiêu đề đầu tiên phải là của chính type, không phải của lớp cha.
+                Assert.IsTrue(((TextNode)nodes[0]).Text.Contains("BoxCollider"));
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void Members_SkipAGroupHeaderWhenThatLevelHasNothingToShow()
+        {
+            var nodes = Reflect.Members(new Cursor(typeof(EmptyEntry), new EmptyEntry(), null), null).ToList();
+
+            Assert.IsFalse(nodes.OfType<TextNode>().Any(t => t.Text.Contains("EmptyEntry")),
+                "lớp không khai member nào thì không được có tiêu đề rỗng");
+        }
+
         private static List<ValueNode> NodesOf(object value)
         {
             var cursor = new Cursor(value.GetType(), value, null);
-            return Reflect.Members(cursor, null).Cast<ValueNode>().ToList();
+            return Reflect.Members(cursor, null).OfType<ValueNode>().ToList();
         }
 
         private static List<string> NamesOf(object value)
