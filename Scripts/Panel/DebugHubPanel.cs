@@ -126,7 +126,9 @@ namespace Hlight.Debug.Hub
             {
                 if (row && row.input && row.input.isFocused) return;
             }
-            if (searchInput && searchInput.isFocused) return;
+            // KHÔNG chặn theo searchInput: nó nằm trong Header, **ngoài** `content`, nên Rebuild() không
+            // đụng tới nó và focus không mất. Chặn ở đây là trang bộ chọn không bao giờ hiện được kết quả
+            // gợi ý (kết quả về từ thread nền đúng lúc người dùng đang gõ).
 
             Refresh();
         }
