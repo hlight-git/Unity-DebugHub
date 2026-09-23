@@ -83,11 +83,42 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
-        public void At_ShowsTheAddressSoItCanBeCopied()
+        public void At_ShowsTheAddressUnderTheTitle_NotAsTheFirstRow()
         {
             panel.ShowFromRoot(BrowsePage.At("Hlight.Debug.Hub.Tests.AddressFixture.Instance", "fixture"));
 
-            Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("AddressFixture.Instance")));
+            var labels = TestPanel.LabelsOf(panel);
+            Assert.IsFalse(labels[0].Contains("Copy address"), "dòng đầu là chỗ đắt nhất trang");
+            StringAssert.Contains("AddressFixture.Instance", TestPanel.SubtitleOf(panel));
+        }
+
+        [Test]
+        public void DrillingIntoAMember_KeepsTheAddressVisible()
+        {
+            panel.ShowFromRoot(BrowsePage.At("Hlight.Debug.Hub.Tests.AddressFixture.Instance", "fixture"));
+            TestPanel.ClickRowContaining(panel, "Box");
+
+            StringAssert.Contains(".Box", TestPanel.SubtitleOf(panel));
+        }
+
+        /// Bug đã sửa: nút Adv chỉ ẩn ở đúng trang gốc Advanced — ở Objects/Duyệt/trang member bấm vào
+        /// là chồng thêm một Advanced nữa lên stack.
+        [Test]
+        public void AdvButton_StaysHidden_AnywhereUnderTheAdvancedRoot()
+        {
+            panel.ShowFromRoot(AdvancedPage.Root());
+            panel.Push(BrowsePage.At("Hlight.Debug.Hub.Tests.AddressFixture.Instance", "fixture"));
+            TestPanel.ClickRowContaining(panel, "Box");
+
+            Assert.IsFalse(((UnityEngine.UI.Button)TestPanel.Field(panel, "advancedButton")).gameObject.activeSelf);
+        }
+
+        [Test]
+        public void AdvButton_ShowsOnCommandPages()
+        {
+            panel.ShowFromRoot(BrowsePage.At("Hlight.Debug.Hub.Tests.AddressFixture.Instance", "fixture"));
+
+            Assert.IsTrue(((UnityEngine.UI.Button)TestPanel.Field(panel, "advancedButton")).gameObject.activeSelf);
         }
 
         /// Root static có Value null — trang Method vẫn phải liệt kê được, không ra chữ "null".

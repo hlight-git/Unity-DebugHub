@@ -135,7 +135,8 @@ namespace Hlight.Debug.Hub
             search: (panel, query) =>
             {
                 if (TryCursor(panel, node, out var cursor)) FilterMembers(panel, cursor, node.Address, query);
-            });
+            },
+            subtitle: node.Address);
         }
 
         /// Thân của một trang member: danh sách giá trị + một row Method ở cuối. Dùng bởi MembersPage

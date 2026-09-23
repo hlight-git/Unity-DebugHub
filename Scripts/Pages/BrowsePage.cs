@@ -74,12 +74,6 @@ namespace Hlight.Debug.Hub
                     return;
                 }
 
-                // Address ở description chứ không ở cột phải như AddCopyRow: nó dài, cột phải cắt mất.
-                panel.AddButton("Copy address", () =>
-                {
-                    GUIUtility.systemCopyBuffer = address;
-                    panel.ShowResult("đã copy address", false);
-                }, address);
                 NodeRenderer.RenderMembers(panel, cursor, address);
 
                 panel.AddButton(Watches.Contains(address) ? "Đã ghim" : "+ Ghim vào Objects", () =>
@@ -94,7 +88,8 @@ namespace Hlight.Debug.Hub
                     panel.AddText($"<color={Palette.BAD}>{error}</color>");
                 else
                     NodeRenderer.FilterMembers(panel, cursor, address, query);
-            });
+            },
+            subtitle: address);
         }
 
         /// Kết quả cũ vẫn hiện trong lúc query mới đang chờ — gõ thêm một chữ không làm list chớp trắng.

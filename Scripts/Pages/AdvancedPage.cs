@@ -12,7 +12,7 @@ namespace Hlight.Debug.Hub
                 panel.AddNavigation("Objects", ObjectsPage.Root(), "Object và giá trị đã ghim.",
                     (Watches.All.Count + Vars.All.Count).ToString());
                 panel.AddNavigation("Duyệt", BrowsePage.Assemblies(), "Tìm type/instance rồi mở ra.");
-            });
+            }, advancedRoot: true);
         }
     }
 }

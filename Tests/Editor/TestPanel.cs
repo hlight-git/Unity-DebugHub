@@ -63,6 +63,13 @@ namespace Hlight.Debug.Hub.Tests
         /// mở chúng ra public chỉ vì test.
         public static object Field(DebugHubPanel panel, string name) => Field(name).GetValue(panel);
 
+        /// Dòng address dưới tiêu đề. Nó nằm trong Header nên không có trong spawnedRows.
+        public static string SubtitleOf(DebugHubPanel panel)
+        {
+            var text = (TMPro.TMP_Text)Field(panel, "subtitle");
+            return text == null || !text.gameObject.activeSelf ? string.Empty : text.text;
+        }
+
         /// Trang bộ chọn lấy gợi ý từ thread nền: dựng lại tới khi điều kiện đúng hoặc quá hạn.
         public static void PumpUntil(DebugHubPanel panel, System.Func<bool> done, float seconds = 3f)
         {

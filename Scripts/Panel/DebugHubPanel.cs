@@ -27,6 +27,8 @@ namespace Hlight.Debug.Hub
         [SerializeField] private Button backgroundButton;
         [SerializeField] private Button backButton;
         [SerializeField] private TMP_Text title;
+        [Tooltip("Dòng address dưới tiêu đề; bấm là copy.")]
+        [SerializeField] private TMP_Text subtitle;
         [SerializeField] private ScrollRect scrollRect;
         [SerializeField] private RectTransform content;
         [SerializeField] private RectTransform window;
@@ -111,6 +113,15 @@ namespace Hlight.Debug.Hub
             });
             searchInput.onValueChanged.AddListener(value => Query = value);
             helpButton.onClick.AddListener(() => Push(HelpPage.Build()));
+            if (subtitle && subtitle.TryGetComponent<Button>(out var copy))
+            {
+                copy.onClick.AddListener(() =>
+                {
+                    if (stack.Count == 0 || string.IsNullOrEmpty(stack.Peek().Subtitle)) return;
+                    GUIUtility.systemCopyBuffer = stack.Peek().Subtitle;
+                    ShowResult("đã copy address", false);
+                });
+            }
             advancedButton.onClick.AddListener(() => Push(AdvancedPage.Root()));
         }
 
@@ -211,7 +222,8 @@ namespace Hlight.Debug.Hub
             title.text = page.Title;
             if (backButton) backButton.gameObject.SetActive(stack.Count > 1);
             if (searchButton) searchButton.gameObject.SetActive(page.Searchable);
-            if (advancedButton) advancedButton.gameObject.SetActive(page.Title != "Advanced");
+            if (advancedButton) advancedButton.gameObject.SetActive(!InAdvanced());
+            ShowSubtitle(page.Subtitle);
 
             // page.Searchable phải được xét ở đây, không chỉ để ẩn cái nút: query sống qua các lần
             // Rebuild, nên một trang nhập tham số mở ra trong lúc còn query sẽ bị thay bằng kết quả
@@ -234,6 +246,36 @@ namespace Hlight.Debug.Hub
                 var scale = canvas ? canvas.scaleFactor : 1f;
                 return Screen.height / Mathf.Max(scale, 0.0001f) * maxScreenHeight;
             }
+        }
+
+        private bool InAdvanced()
+        {
+            foreach (var entry in stack)
+            {
+                if (entry.AdvancedRoot) return true;
+            }
+            return false;
+        }
+
+        private const float SUBTITLE_HEIGHT = 40f;
+
+        private void ShowSubtitle(string address)
+        {
+            if (!subtitle) return;
+            var has = !string.IsNullOrEmpty(address);
+            subtitle.gameObject.SetActive(has);
+            subtitle.text = has ? TailOf(address, 40) : string.Empty;
+
+            // Có dòng phụ thì tiêu đề nhích lên chừa chỗ; không có thì về giữa header như cũ.
+            var rect = title.rectTransform;
+            rect.offsetMin = new Vector2(rect.offsetMin.x, has ? SUBTITLE_HEIGHT : 0f);
+        }
+
+        /// Cắt từ đầu: `…RootScope[0].PlayerSave.Profile` nói được mình đang ở đâu, còn
+        /// `#Harvest.RootScope[0].Player…` thì không.
+        internal static string TailOf(string address, int max)
+        {
+            return address.Length <= max ? address : "…" + address.Substring(address.Length - max + 1);
         }
 
         /// Window cao đúng bằng nội dung, chặn trên bởi MaxWindowHeight (quá thì scroll).
