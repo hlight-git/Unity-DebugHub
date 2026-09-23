@@ -375,6 +375,17 @@ namespace Hlight.Debug.Hub
             var row = spawnedRows[spawnedRows.Count - 1];
             if (!row.more) return;
             row.more.gameObject.SetActive(true);
+
+            // Row input xếp dọc (tên → ô nhập → …): `…` chiếm một hàng riêng mà row vẫn cao bằng
+            // template, nên layout group ép label xuống dưới một dòng và TMP (Truncate) giấu mất tên
+            // field. Nới row đúng bằng phần `…` thêm vào; Reset() trả sizeDelta về template khi tái dùng.
+            if (row.TryGetComponent<VerticalLayoutGroup>(out var column))
+            {
+                var rect = (RectTransform)row.transform;
+                var extra = LayoutUtility.GetPreferredHeight((RectTransform)row.more.transform) + column.spacing;
+                rect.sizeDelta = new Vector2(rect.sizeDelta.x, rect.sizeDelta.y + extra);
+            }
+
             row.more.onClick.RemoveAllListeners();
             row.more.onClick.AddListener(() => Push(ActionsPage.For(node, current, run)));
         }

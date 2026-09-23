@@ -178,18 +178,15 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
-        public void Members_KeepsObsoleteMembers_AndTheirGetterErrorStaysInOneRow()
+        public void Members_SkipObsoleteMembers()
         {
             var go = new GameObject("probe", typeof(BoxCollider));
             try
             {
-                var nodes = NodesOf(go.GetComponent<BoxCollider>());
-                var deprecated = nodes.First(n => n.Label == "rigidbody");
+                var names = NamesOf(go.GetComponent<BoxCollider>());
 
-                // Đọc nó ném NotSupportedException; Address.TryMember bắt lại và Reflect.Read ném tiếp
-                // dưới dạng Exception kèm message — renderer bắt cái đó để ra một dòng lỗi.
-                var thrown = Assert.Throws<System.Exception>(() => deprecated.Get());
-                StringAssert.Contains("deprecated", thrown.Message);
+                Assert.IsFalse(names.Contains("rigidbody"), "[Obsolete] của Unity chỉ ra dòng lỗi deprecated");
+                Assert.IsFalse(NamesOf(new Sample()).Contains("Rotten"));
             }
             finally { Object.DestroyImmediate(go); }
         }

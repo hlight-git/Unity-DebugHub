@@ -29,6 +29,18 @@ namespace Hlight.Debug.Hub.Tests
             Assert.IsNotNull(TestPanel.Rows(panel)[0].toggle);
         }
 
+        /// Bug đã sửa: nút `…` của row input chiếm một hàng riêng mà row không cao thêm — layout group
+        /// ép label thấp hơn một dòng và TMP (Truncate) giấu mất tên field.
+        [Test]
+        public void WritableNumber_KeepsItsLabelVisible_WithTheMoreButton()
+        {
+            Render(Node.Value("Number", () => 1, v => { }));
+
+            var label = TestPanel.Rows(panel)[0].label;
+            Assert.GreaterOrEqual(label.rectTransform.rect.height + 1f, label.preferredHeight,
+                "label bị ép thấp hơn một dòng chữ thì TMP không vẽ gì");
+        }
+
         [Test]
         public void WritableBool_HasMoreButton()
         {

@@ -224,13 +224,16 @@ namespace Hlight.Debug.Hub
             return node;
         }
 
-        /// Ngoại lệ **duy nhất** của "hiện hết": backing field của auto-property. Nó là đúng cùng một ô
-        /// nhớ với property ngay trên nó, chỉ khác cái tên không đọc được — giữ cả hai là mọi
-        /// auto-property ra hai dòng. Field viết tay (`_playerSave`) thì **giữ**: không có gì bảo đảm
-        /// nó bằng property `PlayerSave`.
+        /// Hai ngoại lệ của "hiện hết":
+        /// - backing field của auto-property: đúng cùng một ô nhớ với property ngay trên nó, chỉ khác
+        ///   cái tên không đọc được — giữ cả hai là mọi auto-property ra hai dòng. Field viết tay
+        ///   (`_playerSave`) thì **giữ**: không có gì bảo đảm nó bằng property `PlayerSave`.
+        /// - `[Obsolete]`: mọi Component mang 13 property (`rigidbody`, `camera`, …) đọc là ném
+        ///   "deprecated" — 13 dòng lỗi đỏ ở cuối mỗi trang component mà không ai cần.
         private static bool Generated(MemberInfo member)
         {
             return member.IsDefined(typeof(CompilerGeneratedAttribute), false) ||
+                   member.IsDefined(typeof(ObsoleteAttribute), true) ||
                    member.Name.Contains("k__BackingField");
         }
 

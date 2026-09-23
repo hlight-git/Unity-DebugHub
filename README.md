@@ -288,7 +288,7 @@ Giới hạn có chủ ý:
 
 ### Trang member: hiện hết, không ghi được thì read-only
 
-Mọi field + property, public lẫn private, instance lẫn static, đi hết chuỗi kế thừa (lớp dẫn xuất trước). Ghi được thì là ô sửa, không thì dòng read-only — không có bộ lọc. Ngoại lệ duy nhất: backing field của auto-property (trùng ô nhớ với property). `[Obsolete]` của Unity cũng hiện, đọc ra một dòng lỗi "deprecated".
+Mọi field + property, public lẫn private, instance lẫn static, đi hết chuỗi kế thừa (lớp dẫn xuất trước). Ghi được thì là ô sửa, không thì dòng read-only — không có bộ lọc. Hai ngoại lệ: backing field của auto-property (trùng ô nhớ với property), và `[Obsolete]` (13 property `rigidbody`/`camera`/… của mọi Component đọc là ném "deprecated").
 
 Method nằm sau một row riêng `Method  N ›` ở cuối trang — `RootScope` có 239 method, `Transform` 319, trộn chung là mất dấu giá trị. Method trả `Task`/`ValueTask`/`UniTask` (nhận theo mẫu awaiter, không tham chiếu UniTask) có switch **`Chờ kết quả`** ở trang tham số: bật (mặc định) thì log `Tên xong: kết quả` khi xong.
 
