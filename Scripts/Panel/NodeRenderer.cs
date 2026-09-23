@@ -41,7 +41,7 @@ namespace Hlight.Debug.Hub
             {
                 // Getter của Unity ném khá thường (component đã chết, property obsolete).
                 // Một row lỗi tốt hơn là cả trang không dựng được.
-                panel.AddText($"{label}: <color={Palette.BAD}>{exception.Message}</color>");
+                panel.AddError(label, exception.Message);
                 return;
             }
 

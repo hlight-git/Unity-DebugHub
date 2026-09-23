@@ -59,6 +59,10 @@ namespace Hlight.Debug.Hub.Tests
             Assert.Fail($"không thấy row nào chứa \"{fragment}\"");
         }
 
+        /// Đọc một field private của panel. Test về layout phải xem được `window`/`scrollRect` mà không
+        /// mở chúng ra public chỉ vì test.
+        public static object Field(DebugHubPanel panel, string name) => Field(name).GetValue(panel);
+
         /// Trang bộ chọn lấy gợi ý từ thread nền: dựng lại tới khi điều kiện đúng hoặc quá hạn.
         public static void PumpUntil(DebugHubPanel panel, System.Func<bool> done, float seconds = 3f)
         {

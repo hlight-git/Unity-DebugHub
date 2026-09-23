@@ -30,8 +30,8 @@ namespace Hlight.Debug.Hub
         [SerializeField] private ScrollRect scrollRect;
         [SerializeField] private RectTransform content;
         [SerializeField] private RectTransform window;
-        [Tooltip("Chiều cao tối đa của window; quá thì scroll.")]
-        [SerializeField] private float maxWindowHeight = 1500f;
+        [Tooltip("Phần chiều cao màn hình tối đa mà panel được chiếm; quá thì scroll.")]
+        [SerializeField, Range(0.5f, 1f)] private float maxScreenHeight = 0.85f;
         [Tooltip("Dòng kết quả nổi ở đáy màn hình. Nằm ngoài panel nên vẫn thấy sau khi panel đóng.")]
         [SerializeField] private DebugHubToast toast;
 
@@ -224,7 +224,19 @@ namespace Hlight.Debug.Hub
             // scroll về đầu chuyển sang Show/Push/Pop — Refresh() tự khôi phục vị trí cũ.
         }
 
-        /// Window cao đúng bằng nội dung, chặn trên bởi maxWindowHeight (quá thì scroll).
+        /// Trần theo **tỉ lệ màn hình**, không phải một con số cố định: 1500 px cứng làm panel chỉ dùng
+        /// 62% chiều cao trên máy 1080×2400 và chừa 900 px đen, trong khi danh sách member phải cuộn 5 lần.
+        internal float MaxWindowHeight
+        {
+            get
+            {
+                var canvas = window.GetComponentInParent<Canvas>();
+                var scale = canvas ? canvas.scaleFactor : 1f;
+                return Screen.height / Mathf.Max(scale, 0.0001f) * maxScreenHeight;
+            }
+        }
+
+        /// Window cao đúng bằng nội dung, chặn trên bởi MaxWindowHeight (quá thì scroll).
         private void FitWindowToContent()
         {
             if (!window || !scrollRect) return;
@@ -246,7 +258,7 @@ namespace Hlight.Debug.Hub
             window.anchorMin = new Vector2(window.anchorMin.x, 0.5f);
             window.anchorMax = new Vector2(window.anchorMax.x, 0.5f);
             window.pivot = new Vector2(window.pivot.x, 0.5f);
-            window.sizeDelta = new Vector2(window.sizeDelta.x, Mathf.Min(desired, maxWindowHeight));
+            window.sizeDelta = new Vector2(window.sizeDelta.x, Mathf.Min(desired, MaxWindowHeight));
             window.anchoredPosition = new Vector2(window.anchoredPosition.x, 0f);
         }
 
@@ -343,6 +355,13 @@ namespace Hlight.Debug.Hub
             var inset = (track.rect.height - row.knob.rect.height) * 0.5f;
             var offset = inset + row.knob.rect.width * 0.5f;
             row.knob.anchoredPosition = new Vector2(on ? track.rect.width - offset : offset, 0f);
+        }
+
+        /// Dòng lỗi của **một mục**, không phải của cả trang: có nền row như mọi dòng khác, chỉ khác màu
+        /// chữ. AddText không có nền nên lỗi trôi sát mép, nhìn như lỗi của cả panel.
+        public void AddError(string label, string message)
+        {
+            Spawn(buttonTemplate, $"<color={Palette.BAD}>{label}</color>", message);
         }
 
         public TMP_Text AddText(string content)

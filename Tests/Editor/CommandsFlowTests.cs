@@ -18,7 +18,8 @@ namespace Hlight.Debug.Hub.Tests
     {
         private const string PREFAB_PATH = "Packages/com.hlight.debug-hub/Prefabs/DebugHub.prefab";
         private const string LAST_KEY = "DebugHub.LastCommand";
-        private const float ROW_HEIGHT = 120f;
+        /// 96 px ở canvas rộng 1080 ≈ 44 pt — đúng ngưỡng chạm tối thiểu, không xuống dưới.
+        private const float ROW_HEIGHT = 96f;
 
         private static int lastInt;
         private static bool noArgCalled;

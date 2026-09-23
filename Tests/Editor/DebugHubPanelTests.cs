@@ -103,7 +103,7 @@ namespace Hlight.Debug.Hub.Tests
 
             Assert.Less(shortHeight, 500f, $"one row should not give a {shortHeight} tall window");
             Assert.Less(shortHeight, longHeight, "window must grow with content");
-            Assert.LessOrEqual(longHeight, 1500.5f, $"window must stay within maxWindowHeight, got {longHeight}");
+            Assert.LessOrEqual(longHeight, panel.MaxWindowHeight + 0.5f, $"window must stay within MaxWindowHeight, got {longHeight}");
         }
 
         /// Panel phải co lại, không chỉ nở ra: row của page cũ không được tính vào chiều cao
@@ -327,6 +327,31 @@ namespace Hlight.Debug.Hub.Tests
                 for (var i = 0; i < 40; i++) page.AddButton($"again {i}", () => { });
             }));
             Assert.AreEqual(1f, TestPanel.ScrollOf(panel).verticalNormalizedPosition, 0.001f);
+        }
+
+        /// Trần 1500 cố định là chỗ làm một màn hình chỉ chứa được ~11 dòng. Trần giờ là tỉ lệ màn hình
+        /// (đổi theo máy) — kiểm công thức, không kiểm một con số pixel phụ thuộc cửa sổ Editor.
+        [Test]
+        public void WindowHeight_IsCappedByAShareOfTheScreen_NotAFixedNumber()
+        {
+            panel.ShowFromRoot(new DebugPage("long", page =>
+            {
+                for (var i = 0; i < 200; i++) page.AddButton($"row {i}", () => { });
+            }));
+
+            var window = (RectTransform)TestPanel.Field(panel, "window");
+            Assert.AreEqual(panel.MaxWindowHeight, window.sizeDelta.y, 0.5f);
+            Assert.IsNull(typeof(DebugHubPanel).GetField("maxWindowHeight",
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic),
+                "hai trần cùng tồn tại thì không ai biết cái nào đang thắng");
+        }
+
+        [Test]
+        public void NavRow_HasAMoreButton_SoObjectsCanBePinnedFromTheList()
+        {
+            panel.ShowFromRoot(new DebugPage("t", page => page.AddNavigation("obj", new DebugPage("x", _ => { }))));
+
+            Assert.IsNotNull(TestPanel.Rows(panel)[0].more);
         }
     }
 }

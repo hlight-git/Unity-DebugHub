@@ -31,7 +31,7 @@ namespace Hlight.Debug.Hub
 
                 foreach (var item in broken)
                 {
-                    panel.AddText($"<color={Palette.BAD}>{item.Address}: {item.Error}</color>");
+                    panel.AddError(item.Address, item.Error);
                     var address = item.Address;
                     panel.AddButton("Gỡ", () => { Drop(address); panel.Refresh(); });
                 }
