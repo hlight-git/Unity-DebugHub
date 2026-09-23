@@ -5,47 +5,88 @@ using UnityEngine;
 
 namespace Hlight.Debug.Hub
 {
-    /// Tên → Type, quét mọi assembly đã nạp một lần rồi cache.
+    /// Tên → Type. **Không có index toàn cục**: dựng nó trên project này mất 4142 ms và 135.358
+    /// key, mà bộ chọn ở BrowsePage đã thu hẹp phạm vi theo từng bước nên không ai cần tra cả
+    /// domain nữa.
     ///
-    /// Tồn tại để bỏ hẳn tham số `assembly` của inspect cũ: ô đầu tiên của `inspect.get` gần như
-    /// luôn là "Assembly-CSharp" — một ô bắt gõ mà không mang thông tin.
+    /// `Find` với full name là một tra cứu hash bên trong từng assembly (`Assembly.GetType`), không
+    /// phải quét — 496 lần tra cứu vẫn là micro-giây. Chỉ tên ngắn (không có dấu '.') mới phải quét,
+    /// và kết quả được cache theo tên.
     public static class TypeFinder
     {
-        private static Dictionary<string, List<Type>> index;
+        private static readonly Dictionary<string, Type> resolved = new(StringComparer.Ordinal);
+
+        /// Khoá bằng lock: Suggester gọi Search (→ TypesOf) từ thread nền trong lúc main thread gọi Find.
+        private static readonly Dictionary<Assembly, Type[]> typesOf = new();
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStatics() => index = null;
+        private static void ResetStatics()
+        {
+            resolved.Clear();
+            lock (typesOf) typesOf.Clear();
+        }
 
         public static Type Find(string name)
         {
             if (string.IsNullOrEmpty(name)) return null;
-            Build();
-            if (!index.TryGetValue(name, out var matches)) return null;
-            if (matches.Count == 1) return matches[0];
+            if (resolved.TryGetValue(name, out var cached)) return cached;
 
-            // Short name trùng ở nhiều namespace: chỉ chọn được khi người dùng gõ full name.
-            foreach (var type in matches)
-            {
-                if (type.FullName == name) return type;
-            }
-            return null;
+            var found = Resolve(name);
+            resolved[name] = found;
+            return found;
         }
 
-        public static IReadOnlyList<Type> Search(string fragment, int limit = 50)
+        private static Type Resolve(string name)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var direct = assembly.GetType(name, false);
+                if (direct != null) return direct;
+            }
+
+            // Tên ngắn: không tra cứu được, phải quét. Chỉ xảy ra với address gõ tay — address do
+            // BrowsePage sinh ra luôn mang full name.
+            if (name.IndexOf('.') >= 0) return null;
+
+            Type match = null;
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                foreach (var type in TypesOf(assembly))
+                {
+                    if (type.Name != name) continue;
+                    if (match != null && match != type) return null;   // trùng tên ngắn ở hai namespace
+                    match = type;
+                }
+            }
+            return match;
+        }
+
+        /// Assembly khớp chuỗi con. 496 cái, lọc là micro-giây — đây là bước đầu của bộ chọn.
+        public static IReadOnlyList<Assembly> Assemblies(string fragment)
+        {
+            var found = new List<Assembly>();
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var name = assembly.GetName().Name;
+                if (!string.IsNullOrEmpty(fragment) &&
+                    name.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                found.Add(assembly);
+            }
+            found.Sort((a, b) => string.CompareOrdinal(a.GetName().Name, b.GetName().Name));
+            return found;
+        }
+
+        /// Type trong **một** assembly. Một assembly của game có vài trăm–vài nghìn type, lọc xong
+        /// dưới một mili-giây — khác hẳn 32 ms của bản quét 135k key.
+        public static IReadOnlyList<Type> Search(Assembly assembly, string fragment, int limit = 200)
         {
             var found = new List<Type>();
-            if (string.IsNullOrEmpty(fragment)) return found;
-            Build();
-
-            foreach (var pair in index)
+            foreach (var type in TypesOf(assembly))
             {
                 if (found.Count >= limit) break;
-                if (pair.Key.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) < 0) continue;
-                foreach (var type in pair.Value)
-                {
-                    if (found.Count >= limit) break;
-                    if (!found.Contains(type)) found.Add(type);
-                }
+                if (!string.IsNullOrEmpty(fragment) &&
+                    (type.FullName ?? type.Name).IndexOf(fragment, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                found.Add(type);
             }
             found.Sort((a, b) => string.CompareOrdinal(a.FullName, b.FullName));
             return found;
@@ -74,40 +115,21 @@ namespace Hlight.Debug.Hub
             return null;
         }
 
-        private static void Build()
+        /// Cache theo assembly: một assembly hỏng không được làm chết cả bộ chọn.
+        internal static Type[] TypesOf(Assembly assembly)
         {
-            if (index != null) return;
-            index = new Dictionary<string, List<Type>>(StringComparer.Ordinal);
-
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            lock (typesOf)
             {
+                if (typesOf.TryGetValue(assembly, out var cached)) return cached;
+
                 Type[] types;
-                try
-                {
-                    types = assembly.GetTypes();
-                }
-                catch (ReflectionTypeLoadException exception)
-                {
-                    // Một assembly nạp hỏng không được làm chết cả bảng — lấy phần nạp được.
-                    types = Array.FindAll(exception.Types, type => type != null);
-                }
-                catch (Exception)
-                {
-                    continue;
-                }
+                try { types = assembly.GetTypes(); }
+                catch (ReflectionTypeLoadException exception) { types = Array.FindAll(exception.Types, t => t != null); }
+                catch (Exception) { types = Array.Empty<Type>(); }
 
-                foreach (var type in types)
-                {
-                    Add(type.Name, type);
-                    if (type.FullName != null && type.FullName != type.Name) Add(type.FullName, type);
-                }
+                typesOf[assembly] = types;
+                return types;
             }
-        }
-
-        private static void Add(string key, Type type)
-        {
-            if (!index.TryGetValue(key, out var list)) index[key] = list = new List<Type>();
-            list.Add(type);
         }
     }
 }
