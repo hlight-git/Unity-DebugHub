@@ -5,7 +5,7 @@ namespace Hlight.Debug.Hub
 {
     /// Page mở từ nút `…` của một row giá trị. Một nút một page thay vì rải hai–ba nút nhỏ lên
     /// mỗi row: panel bề ngang điện thoại đã có nhãn + giá trị + switch/field, thêm vùng bấm nữa
-    /// là bấm nhầm. Task 8 thêm `Gán`, Task 19 thêm `Watch` và `Lưu vào $…`.
+    /// là bấm nhầm. Có: Copy giá trị, Gán (reference/null), Ghim/Bỏ ghim, Bỏ biến, Lưu vào $….
     public static class ActionsPage
     {
         public static DebugPage For(ValueNode node, object current, Action<DebugNode, string[]> run)
@@ -29,14 +29,26 @@ namespace Hlight.Debug.Hub
                 if (node.Set != null && !DebugValues.IsInlineValue(node.Declared))
                     panel.AddNavigation("Gán giá trị", AssignPage(node, run));
 
-                if (node.Address != null)
+                // Ghim hai chiều — `Gỡ` ở trang Objects cũng là nút này, không phải một row riêng.
+                // Address gốc `$` không ghim được (biến chết theo domain reload); chính biến `$tên`
+                // thì có `Bỏ biến`.
+                var address = node.Address;
+                if (address != null && !address.StartsWith("$"))
                 {
-                    var watched = Watches.Contains(node.Address);
-                    panel.AddButton(watched ? "Đã watch" : "Watch", () =>
+                    var pinned = Watches.Contains(address);
+                    panel.AddButton(pinned ? "Bỏ ghim" : "Ghim", () =>
                     {
-                        if (watched) { panel.Pop(); return; }
-                        if (!Watches.TryAdd(node.Address, out var error)) panel.ShowResult(error, true);
-                        else panel.ShowResult($"watch {node.Address}", false);
+                        if (pinned) Watches.Remove(address);
+                        else if (!Watches.TryAdd(address, out var error)) { panel.ShowResult(error, true); return; }
+                        else panel.ShowResult($"đã ghim {address}", false);
+                        panel.Pop();
+                    });
+                }
+                else if (address != null && address.IndexOfAny(new[] { '.', '[' }) < 0)
+                {
+                    panel.AddButton("Bỏ biến", () =>
+                    {
+                        Vars.Remove(address.Substring(1));
                         panel.Pop();
                     });
                 }

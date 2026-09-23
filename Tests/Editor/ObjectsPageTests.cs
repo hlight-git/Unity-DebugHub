@@ -84,14 +84,27 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
-        public void DroppingAVariable_RemovesItFromVarsNotFromWatches()
+        public void DroppingAVariable_GoesThroughItsMoreButton()
         {
             Vars.Bind("v", 7);
 
             panel.ShowFromRoot(ObjectsPage.Root());
-            TestPanel.ClickRowContaining(panel, "Gỡ");
+            TestPanel.Rows(panel).First(r => r.label.text.StartsWith("$v")).more.onClick.Invoke();
+            TestPanel.ClickRowContaining(panel, "Bỏ biến");
 
             Assert.AreEqual(0, Vars.All.Count);
+        }
+
+        [Test]
+        public void EachPin_TakesOneRow_NotTwo()
+        {
+            Watches.TryAdd($"{ROOT}.Number", out _);
+            Watches.TryAdd($"{ROOT}.Frozen", out _);
+
+            panel.ShowFromRoot(ObjectsPage.Root());
+
+            Assert.AreEqual(0, TestPanel.LabelsOf(panel).Count(l => l.Trim() == "Gỡ"),
+                "Gỡ nằm trong nút … của chính dòng đó, không phải một row riêng");
         }
 
         [Test]

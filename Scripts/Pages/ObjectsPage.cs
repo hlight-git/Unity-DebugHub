@@ -104,12 +104,9 @@ namespace Hlight.Debug.Hub
         {
             if (items.Count == 0) return;
             panel.AddText($"<b>{title}</b>");
+            // Một ghim một row: `Gỡ` nằm trong nút `…` của chính dòng đó (Bỏ ghim / Bỏ biến).
             foreach (var item in items)
-            {
                 NodeRenderer.Render(panel, item.Node, (node, values) => NodeRenderer.RunInspect(panel, node, values));
-                var address = item.Address;
-                panel.AddButton("Gỡ", () => { Drop(address); panel.Refresh(); });
-            }
         }
 
         /// Một nút Gỡ cho hai kho: `$tên` về Vars, còn lại về Watches.

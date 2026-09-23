@@ -50,7 +50,7 @@ namespace Hlight.Debug.Hub
             }
             if (Address.HasMethodStep(address))
             {
-                error = "Không watch được address có gọi method — trang Watch đọc lại 4 lần/giây.";
+                error = "Không ghim được address có gọi method — trang Objects đọc lại 4 lần/giây.";
                 return false;
             }
             if (Contains(address)) return true;

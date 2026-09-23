@@ -51,30 +51,49 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
-        public void NodeWithAddress_OffersWatch_AndSaysWhenItIsAlreadyWatched()
+        public void NodeWithAddress_OffersPin_ThenUnpin()
         {
             var node = Node.Value("n", () => 1, v => { });
             node.Address = "Hlight.Debug.Hub.Tests.AddressFixture.Instance.Number";
             try
             {
                 panel.ShowFromRoot(ActionsPage.For(node, 1, (n, v) => { }));
-                Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Watch")));
+                TestPanel.ClickRowContaining(panel, "Ghim");
+                Assert.IsTrue(Watches.Contains(node.Address));
 
-                TestPanel.ClickRowContaining(panel, "Watch");
                 panel.ShowFromRoot(ActionsPage.For(node, 1, (n, v) => { }));
-                Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Đã watch")));
+                TestPanel.ClickRowContaining(panel, "Bỏ ghim");
+                Assert.IsFalse(Watches.Contains(node.Address));
             }
             finally { Watches.Remove(node.Address); }
         }
 
         [Test]
-        public void NodeWithoutAddress_DoesNotOfferWatch()
+        public void NodeWithoutAddress_DoesNotOfferPin()
         {
             var node = Node.Value("n", () => 1, v => { });
 
             panel.ShowFromRoot(ActionsPage.For(node, 1, (n, v) => { }));
 
-            Assert.IsFalse(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Watch")));
+            Assert.IsFalse(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Ghim")));
+        }
+
+        [Test]
+        public void Variable_OffersDrop_NotPin()
+        {
+            Vars.Bind("v", 7);
+            try
+            {
+                var node = Node.Value("v", () => 7, null);
+                node.Address = "$v";
+
+                panel.ShowFromRoot(ActionsPage.For(node, 7, (n, v) => { }));
+                Assert.IsFalse(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Ghim")));
+                TestPanel.ClickRowContaining(panel, "Bỏ biến");
+
+                Assert.IsFalse(Vars.TryGet("v", out _));
+            }
+            finally { Vars.Remove("v"); }
         }
 
         [Test]
