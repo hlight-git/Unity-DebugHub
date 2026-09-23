@@ -19,92 +19,10 @@ namespace Hlight.Debug.Hub
         {
             return new DebugPage("Advanced", panel =>
             {
-                panel.AddNavigation("Watch", WatchPage(), "Giá trị đang theo dõi.", Watches.All.Count.ToString());
-                panel.AddNavigation("Types", TypesPage(), "Gõ tên type để mở member static.");
-                panel.AddNavigation("Instances", InstancesPage(), "Object đang sống theo type.");
-                panel.AddNavigation("Vars", VarsPage(), "Biến $ đã lưu.", Vars.All.Count.ToString());
-                panel.AddNavigation("Execute", ExecutePage(), "Đọc/ghi theo address.");
+                panel.AddNavigation("Objects", ObjectsPage.Root(), "Object và giá trị đã ghim.",
+                    (Watches.All.Count + Vars.All.Count).ToString());
+                panel.AddNavigation("Duyệt", InstancesPage(), "Tìm type/instance rồi mở ra.");
             });
-        }
-
-        /// Live: đọc lại 4 lần/giây (panel tự bỏ nhịp khi đang gõ). Chia hai section theo **cùng
-        /// phân loại của renderer**, không có bảng quyết định thứ hai.
-        public static DebugPage WatchPage()
-        {
-            return new DebugPage("Watch", panel =>
-            {
-                var addresses = Watches.All;
-                if (addresses.Count == 0) { panel.AddText("Chưa watch gì. Thêm từ nút … trên một dòng giá trị."); }
-
-                var scalars = new List<(string Address, ValueNode Node)>();
-                var objects = new List<(string Address, ValueNode Node)>();
-
-                foreach (var address in addresses)
-                {
-                    if (!Address.TryResolve(address, out var cursor, out var error))
-                    {
-                        panel.AddText($"<color={Palette.BAD}>{address}: {error}</color>");
-                        var broken = address;
-                        panel.AddButton("Gỡ", () => { Watches.Remove(broken); panel.Refresh(); });
-                        continue;
-                    }
-
-                    // Lỗi phải nổi lên (cùng luật với Reflect.ValueFor): Get nuốt lỗi thì một resolve
-                    // thất bại hiện thành "null" — không phân biệt được với giá trị thật sự null; Set
-                    // nuốt lỗi thì người dùng tưởng đã ghi xong.
-                    var node = new ValueNode
-                    {
-                        Label = Leaf(address),
-                        Description = address,
-                        Declared = cursor.Declared,
-                        Address = address,
-                        Get = () =>
-                        {
-                            if (!Address.TryResolve(address, out var fresh, out var error)) throw new System.Exception(error);
-                            return fresh.Value;
-                        },
-                        Set = cursor.CanWrite
-                            ? value =>
-                            {
-                                if (!Address.TryWrite(address, value, out var error)) throw new System.Exception(error);
-                            }
-                            : null,
-                        Dismiss = DismissMode.Stay,
-                    };
-                    (DebugValues.IsInlineValue(cursor.Declared) ? scalars : objects).Add((address, node));
-                }
-
-                Section(panel, "Giá trị", scalars);
-                Section(panel, "Object", objects);
-            }, live: true);
-        }
-
-        private static void Section(DebugHubPanel panel, string title, List<(string Address, ValueNode Node)> items)
-        {
-            if (items.Count == 0) return;
-            panel.AddText($"<b>{title}</b>");
-            foreach (var item in items)
-            {
-                NodeRenderer.Render(panel, item.Node, (node, values) => NodeRenderer.RunInspect(panel, node, values));
-                var address = item.Address;
-                panel.AddButton("Gỡ", () => { Watches.Remove(address); panel.Refresh(); });
-            }
-        }
-
-        /// Trống cho tới khi gõ ≥ 2 ký tự: index type có hàng chục nghìn dòng, liệt kê hết là vô dụng.
-        public static DebugPage TypesPage()
-        {
-            return new DebugPage("Types",
-                panel => panel.AddText("Bấm Tìm rồi gõ ≥ 2 ký tự tên type."),
-                search: (panel, query) =>
-                {
-                    if (query.Length < 2) { panel.AddText("Gõ ít nhất 2 ký tự."); return; }
-                    foreach (var type in TypeFinder.Search(query))
-                    {
-                        var target = type;
-                        panel.AddNavigation(target.FullName, StaticPage(target));
-                    }
-                });
         }
 
         private static DebugPage StaticPage(System.Type type)
@@ -155,23 +73,6 @@ namespace Hlight.Debug.Hub
                     if (!Watches.TryAdd(address, out var message)) panel.ShowResult(message, true);
                     panel.Refresh();
                 });
-            });
-        }
-
-        public static DebugPage VarsPage()
-        {
-            return new DebugPage("Vars", panel =>
-            {
-                var all = Vars.All;
-                if (all.Count == 0) { panel.AddText("Chưa có biến nào. Lưu từ nút … trên một dòng giá trị."); return; }
-
-                foreach (var pair in all)
-                {
-                    var name = pair.Key;
-                    var value = pair.Value;
-                    panel.AddCopyRow($"${name}", DebugValues.ToText(value), value?.GetType().Name);
-                    panel.AddButton("Gỡ", () => { Vars.Remove(name); panel.Refresh(); });
-                }
             });
         }
 
