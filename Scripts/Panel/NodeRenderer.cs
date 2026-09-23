@@ -131,7 +131,10 @@ namespace Hlight.Debug.Hub
                     });
                 }
             },
-            search: (panel, query) => FilterMembers(panel, node, query));
+            search: (panel, query) =>
+            {
+                if (TryCursor(panel, node, out var cursor)) FilterMembers(panel, cursor, node.Address, query);
+            });
         }
 
         /// Thân của một trang member: danh sách giá trị + một row Method ở cuối. Dùng bởi MembersPage
@@ -149,42 +152,31 @@ namespace Hlight.Debug.Hub
                 Render(panel, child, (n, values) => RunInspect(panel, n, values));
 
             var methods = Reflect.MethodCount(cursor);
-            if (methods == 0) return;
-
-            var node = new ValueNode
-            {
-                Label = "Method",
-                Declared = cursor.Declared,
-                Address = address,
-                Get = () => cursor.Value,
-                Dismiss = DismissMode.Stay,
-            };
-            panel.AddNavigation("Method", MethodsPage(node), null, methods.ToString());
+            if (methods > 0) panel.AddNavigation("Method", MethodsPage(cursor, address), null, methods.ToString());
         }
 
         /// Phần `search` của một trang member: lọc chính danh sách này, không phải tìm command toàn cục.
-        internal static void FilterMembers(DebugHubPanel panel, ValueNode node, string query)
+        internal static void FilterMembers(DebugHubPanel panel, Cursor cursor, string address, string query)
         {
-            if (!TryCursor(panel, node, out var cursor)) return;
             var children = Reflect.IsCollection(cursor.Value)
-                ? Reflect.Elements(cursor, node.Address)
-                : Reflect.Members(cursor, node.Address);
+                ? Reflect.Elements(cursor, address)
+                : Reflect.Members(cursor, address);
             Filter(panel, children, query, "Không có member nào khớp.");
         }
 
-        private static DebugPage MethodsPage(ValueNode node)
+        /// Resolve lại theo address mỗi lần dựng (method gọi lên đúng object đang ở đó, không phải bản
+        /// lúc mở trang); không có address (con của FolderNode) thì dùng cursor đã có. Không đi qua
+        /// TryCursor: root static có Value null mà vẫn có method gọi được.
+        private static DebugPage MethodsPage(Cursor fallback, string address)
         {
-            return new DebugPage($"{node.Label} — method", panel =>
+            Cursor Current() => address != null && Address.TryResolve(address, out var fresh, out _) ? fresh : fallback;
+
+            return new DebugPage("Method", panel =>
             {
-                if (!TryCursor(panel, node, out var cursor)) return;
-                foreach (var child in Reflect.Methods(cursor, node.Address))
+                foreach (var child in Reflect.Methods(Current(), address))
                     Render(panel, child, (n, values) => RunInspect(panel, n, values));
             },
-            search: (panel, query) =>
-            {
-                if (!TryCursor(panel, node, out var cursor)) return;
-                Filter(panel, Reflect.Methods(cursor, node.Address), query, "Không có method nào khớp.");
-            });
+            search: (panel, query) => Filter(panel, Reflect.Methods(Current(), address), query, "Không có method nào khớp."));
         }
 
         private static bool TryCursor(DebugHubPanel panel, ValueNode node, out Cursor cursor)

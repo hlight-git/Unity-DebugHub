@@ -59,6 +59,18 @@ namespace Hlight.Debug.Hub.Tests
             Assert.Fail($"không thấy row nào chứa \"{fragment}\"");
         }
 
+        /// Trang bộ chọn lấy gợi ý từ thread nền: dựng lại tới khi điều kiện đúng hoặc quá hạn.
+        public static void PumpUntil(DebugHubPanel panel, System.Func<bool> done, float seconds = 3f)
+        {
+            var deadline = System.DateTime.UtcNow.AddSeconds(seconds);
+            while (!done() && System.DateTime.UtcNow < deadline)
+            {
+                System.Threading.Thread.Sleep(10);
+                panel.Refresh();
+            }
+            Assert.IsTrue(done(), "quá hạn chờ gợi ý");
+        }
+
         public static ScrollRect ScrollOf(DebugHubPanel panel) => (ScrollRect)Field("scrollRect").GetValue(panel);
 
         public static Button SearchButtonOf(DebugHubPanel panel) => (Button)Field("searchButton").GetValue(panel);

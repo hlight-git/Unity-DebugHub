@@ -95,6 +95,17 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
+        public void ManualAddress_OpensTheMemberListAtThatAddress()
+        {
+            panel.ShowFromRoot(ObjectsPage.Root());
+            TestPanel.ClickRowContaining(panel, "Thêm address");
+            TestPanel.Rows(panel)[0].input.onEndEdit.Invoke(ROOT);
+            TestPanel.ClickRowContaining(panel, "Mở");
+
+            Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Number")));
+        }
+
+        [Test]
         public void Page_IsLive()
         {
             Assert.IsTrue(ObjectsPage.Root().Live);

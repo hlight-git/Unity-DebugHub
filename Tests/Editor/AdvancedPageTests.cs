@@ -37,16 +37,5 @@ namespace Hlight.Debug.Hub.Tests
             Assert.IsTrue(labels.Exists(l => l.Contains("Duyệt")));
             Assert.AreEqual(2, labels.FindAll(l => l.Contains("›") || l.Contains("Objects") || l.Contains("Duyệt")).Count);
         }
-
-        [Test]
-        public void ExecutePage_ReadsAnAddress()
-        {
-            panel.ShowFromRoot(AdvancedPage.ExecutePage());
-            TestPanel.Rows(panel)[0].input.onEndEdit.Invoke($"{ROOT}.Number");
-            TestPanel.ClickRowContaining(panel, "Get");
-
-            Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("1")) ||
-                          panel.LastResult.Contains("1"));
-        }
     }
 }

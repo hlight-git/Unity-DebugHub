@@ -35,7 +35,27 @@ namespace Hlight.Debug.Hub
                     var address = item.Address;
                     panel.AddButton("Gỡ", () => { Drop(address); panel.Refresh(); });
                 }
+
+                panel.AddNavigation("+ Thêm address", ManualPage());
             }, live: true);
+        }
+
+        /// Đường thoát cho thứ bộ chọn không tới được: method generic `Ten<$T>(x)`, hay biểu thức cần
+        /// ngoặc lồng (chia bước qua $var).
+        private static DebugPage ManualPage()
+        {
+            return new DebugPage("Address", panel =>
+            {
+                var typed = string.Empty;
+                // onSubmit trùng onChanged: AddField chỉ nối onEndEdit khi có onSubmit — thiếu nó thì
+                // dán xong bấm Mở ngay không qua onValueChanged vẫn đọc `typed` rỗng.
+                panel.AddField("Address", typeof(string), string.Empty, v => typed = v, v => typed = v);
+                panel.AddPrimary("Mở", () =>
+                {
+                    if (!Address.TryResolve(typed, out _, out var error)) { panel.ShowResult(error, true); return; }
+                    panel.Push(BrowsePage.At(typed, Leaf(typed)));
+                });
+            }, searchable: false);
         }
 
         private static void Sort(string address, bool sessionOnly, List<(string, ValueNode)> scalars,
@@ -92,7 +112,7 @@ namespace Hlight.Debug.Hub
             else Watches.Remove(address);
         }
 
-        internal static string Leaf(string address)
+        private static string Leaf(string address)
         {
             var cut = address.LastIndexOfAny(new[] { '.', '[' });
             return cut < 0 ? address : address.Substring(cut + 1).TrimEnd(']');
