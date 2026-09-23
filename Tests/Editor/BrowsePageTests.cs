@@ -11,13 +11,52 @@ namespace Hlight.Debug.Hub.Tests
         [TearDown] public void TearDown() => TestPanel.Destroy(panel);
 
         [Test]
-        public void Assemblies_AreEmptyUntilTyped_ThenFilter()
+        public void Assemblies_FilterAsYouType()
         {
             panel.ShowFromRoot(BrowsePage.Assemblies());
-            Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Tìm")));
-
             panel.Query = "Hlight.Debug";
-            TestPanel.PumpUntil(panel, () => TestPanel.LabelsOf(panel).Exists(l => l.Contains("Hlight.Debug.Hub")));
+
+            var labels = TestPanel.LabelsOf(panel);
+            Assert.IsTrue(labels.Exists(l => l.Contains("Hlight.Debug.Hub")));
+            Assert.IsFalse(labels.Exists(l => l.Contains("Assembly-CSharp")));
+        }
+
+        [Test]
+        public void Assemblies_ListEverythingWhenNothingIsTyped()
+        {
+            panel.ShowFromRoot(BrowsePage.Assemblies());
+
+            Assert.Greater(TestPanel.LabelsOf(panel).Count, 50,
+                "không biết tên assembly thì phải mò được, không thể bắt gõ đúng mới thấy gì");
+        }
+
+        [Test]
+        public void Assemblies_OfferAGlobalTypeSearch()
+        {
+            panel.ShowFromRoot(BrowsePage.Assemblies());
+
+            Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Mọi assembly")));
+        }
+
+        [Test]
+        public void SearchAll_FindsATypeWithoutKnowingItsAssembly()
+        {
+            var found = TypeFinder.SearchAll("DebugRegistry");
+
+            Assert.IsTrue(System.Linq.Enumerable.Contains(found, typeof(DebugRegistry)));
+        }
+
+        /// UnityEngine.dll chỉ chuyển tiếp type sang các *Module — tìm trong nó không ra Application.
+        [Test]
+        public void SearchAll_ReachesTypesThatUnityEngineOnlyForwards()
+        {
+            Assert.IsTrue(System.Linq.Enumerable.Contains(TypeFinder.SearchAll("UnityEngine.Application"), typeof(Application)));
+        }
+
+        [Test]
+        public void SearchAll_RespectsItsLimit()
+        {
+            Assert.LessOrEqual(TypeFinder.SearchAll("e", limit: 10).Count, 10);
         }
 
         [Test]

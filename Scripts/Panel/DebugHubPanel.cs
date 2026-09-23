@@ -57,6 +57,7 @@ namespace Hlight.Debug.Hub
         private readonly List<DebugHubRow> spawnedRows = new();
         private readonly Dictionary<DebugHubRow, Stack<DebugHubRow>> pool = new();
         private float nextRefresh;
+        private bool refreshLater;
 
         public bool IsOpen => gameObject.activeSelf;
 
@@ -127,7 +128,7 @@ namespace Hlight.Debug.Hub
 
         private void Update()
         {
-            if (!IsOpen || stack.Count == 0 || !stack.Peek().Live) return;
+            if (!IsOpen || stack.Count == 0 || (!stack.Peek().Live && !refreshLater)) return;
             if (Time.unscaledTime < nextRefresh) return;
             nextRefresh = Time.unscaledTime + 0.25f;
 
@@ -141,8 +142,14 @@ namespace Hlight.Debug.Hub
             // đụng tới nó và focus không mất. Chặn ở đây là trang bộ chọn không bao giờ hiện được kết quả
             // gợi ý (kết quả về từ thread nền đúng lúc người dùng đang gõ).
 
+            refreshLater = false;
             Refresh();
         }
+
+        /// Xin **một** nhịp dựng lại ở lượt refresh kế tiếp, cho trang không Live. Trang bộ chọn gọi cái
+        /// này khi còn chờ gợi ý từ thread nền, và thôi gọi khi kết quả đã về — Live 4 lần/giây trên một
+        /// danh sách 170 assembly là ~0,35 s mỗi nhịp, trong khi chỉ lúc chờ mới cần dựng lại.
+        internal void RefreshLater() => refreshLater = true;
 
         /// Mở panel. Đóng panel không xoá stack nên lần mở sau về đúng page đang xem lúc đóng;
         /// <paramref name="root"/> chỉ dùng khi chưa có gì trong stack.

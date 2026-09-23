@@ -273,12 +273,22 @@ namespace Hlight.Debug.Hub.Tests
             try
             {
                 var cursor = new Cursor(typeof(BoxCollider), go.GetComponent<BoxCollider>(), null);
+                // Một lượt khởi động: lần đầu GetMethods/GetParameters của Unity tự cache, đo nó là đo
+                // reflection chứ không đo việc có dựng node hay không. So tương đối, không so số ms —
+                // máy CI chậm thì cả hai cùng chậm.
+                Reflect.MethodCount(cursor);
+                Reflect.Methods(cursor, null).Count();
+
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 var count = Reflect.MethodCount(cursor);
+                var counting = watch.Elapsed.TotalMilliseconds;
+                watch.Restart();
+                Reflect.Methods(cursor, null).Count();
+                var building = watch.Elapsed.TotalMilliseconds;
 
                 Assert.Greater(count, 0);
-                Assert.Less(watch.ElapsedMilliseconds, 3,
-                    "đếm mà dựng cả trăm ActionNode thì mỗi lần mở trang member mất 7ms cho một con số");
+                Assert.Less(counting * 2, building,
+                    $"đếm {counting:0.00}ms vs dựng node {building:0.00}ms — đếm mà dựng cả trăm ActionNode thì mỗi lần mở trang member tốn cho một con số");
             }
             finally { Object.DestroyImmediate(go); }
         }

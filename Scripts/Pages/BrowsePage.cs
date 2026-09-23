@@ -18,15 +18,39 @@ namespace Hlight.Debug.Hub
     /// hạn, và cả hai đều chỉ nối thêm bước vào cùng một chuỗi address.
     public static class BrowsePage
     {
+        /// Chưa gõ gì cũng có đường mò: `Mọi assembly` + các assembly không thuộc Unity/.NET. Lọc tên
+        /// assembly là micro-giây nên làm ngay ở main thread, không qua Suggester.
         public static DebugPage Assemblies()
         {
-            // Mỗi trang một Suggester: dùng chung thì kết quả của trang trước lọt sang trang sau.
-            var suggester = new Suggester<Assembly>(TypeFinder.Assemblies);
-            return new DebugPage("Assembly",
-                panel => panel.AddText("Bấm Tìm rồi gõ tên assembly (ví dụ: Assembly-CSharp, Hlight)."),
-                search: (panel, query) => Suggest(panel, suggester, query, "Không có assembly nào khớp.",
-                    assembly => panel.AddNavigation(assembly.GetName().Name, Types(assembly))),
-                live: true);
+            return new DebugPage("Assembly", panel =>
+            {
+                panel.AddNavigation("Mọi assembly", AnyAssembly(), "Tìm type mà không cần biết assembly.");
+
+                var hidden = 0;
+                foreach (var assembly in TypeFinder.Assemblies(string.Empty))
+                {
+                    var name = assembly.GetName().Name;
+                    if (IsPlatform(name)) { hidden++; continue; }
+                    panel.AddNavigation(name, Types(assembly));
+                }
+                panel.AddText(Palette.Wrap($"Ẩn {hidden} assembly của Unity/.NET — bấm Tìm rồi gõ để thấy.", TextStyle.Note));
+            },
+            search: (panel, query) =>
+            {
+                var found = TypeFinder.Assemblies(query);
+                if (found.Count == 0) { panel.AddText("Không có assembly nào khớp."); return; }
+                foreach (var assembly in found) panel.AddNavigation(assembly.GetName().Name, Types(assembly));
+            });
+        }
+
+        /// Chậm hơn tìm trong một assembly, nhưng chạy trên worker nên không ai thấy — và nó cứu đúng
+        /// trường hợp hay gặp: biết tên type, không biết assembly.
+        private static DebugPage AnyAssembly()
+        {
+            var suggester = new Suggester<Type>(fragment => TypeFinder.SearchAll(fragment));
+            return new DebugPage("Mọi assembly",
+                panel => panel.AddText("Bấm Tìm rồi gõ tên type."),
+                search: (panel, query) => Suggest(panel, suggester, query, "Không có type nào khớp.", type => TypeRow(panel, type)));
         }
 
         public static DebugPage Types(Assembly assembly)
@@ -34,10 +58,31 @@ namespace Hlight.Debug.Hub
             var suggester = new Suggester<Type>(fragment => TypeFinder.Search(assembly, fragment));
             return new DebugPage(assembly.GetName().Name,
                 panel => panel.AddText($"{TypeFinder.TypesOf(assembly).Length} type. Bấm Tìm rồi gõ tên."),
-                search: (panel, query) => Suggest(panel, suggester, query, "Không có type nào khớp.",
-                    type => panel.AddNavigation(type.FullName, Instances(type))),
-                live: true);
+                search: (panel, query) => Suggest(panel, suggester, query, "Không có type nào khớp.", type => TypeRow(panel, type)));
         }
+
+        /// Tên ngắn trên nhãn, full name xuống dòng mô tả: full name trên nhãn thì mọi dòng bắt đầu bằng
+        /// cùng một namespace và bị cắt mất đúng phần khác nhau.
+        private static void TypeRow(DebugHubPanel panel, Type type)
+        {
+            panel.AddNavigation(type.Name, Instances(type), type.FullName);
+        }
+
+        /// Assembly của engine/runtime — ẩn khỏi danh sách mặc định (vẫn tìm được bằng ô Tìm). Chỉ là
+        /// cách sắp xếp chỗ nhìn, không lọc gì khỏi kết quả tìm.
+        private static bool IsPlatform(string name)
+        {
+            foreach (var prefix in PlatformPrefixes)
+            {
+                if (name.StartsWith(prefix, StringComparison.Ordinal)) return true;
+            }
+            return name == "mscorlib" || name == "netstandard";
+        }
+
+        private static readonly string[] PlatformPrefixes =
+        {
+            "System", "Unity", "Mono.", "Microsoft.", "nunit", "Bee.", "JetBrains", "Newtonsoft",
+        };
 
         /// Type nào cũng mở được member static; là UnityEngine.Object thì thêm danh sách instance
         /// đang sống. Không phải Object **không** có nghĩa là không soi được — service C# thuần đi
@@ -97,6 +142,8 @@ namespace Hlight.Debug.Hub
             Action<T> row)
         {
             suggester.Request(query);
+            // Còn chờ thì xin thêm một nhịp dựng lại — trang không Live, kết quả về sẽ không tự hiện.
+            if (suggester.ResultsFor != query) panel.RefreshLater();
             if (suggester.Results.Count == 0)
             {
                 panel.AddText(suggester.ResultsFor != query ? "Đang tìm…" : none);

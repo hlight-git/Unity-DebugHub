@@ -92,6 +92,30 @@ namespace Hlight.Debug.Hub
             return found;
         }
 
+        /// Tìm type trên **mọi** assembly. Đắt (80k type) nên chỉ gọi từ worker của Suggester, và có
+        /// trần kết quả. Đây là đường cho trường hợp thường gặp nhất: biết tên type, không biết nó nằm ở
+        /// assembly nào — `RootScope` ở `Assembly-CSharp` chứ không phải ở "Harvest", `Application` ở
+        /// `UnityEngine.CoreModule` chứ không phải ở `UnityEngine` (assembly đó chỉ chuyển tiếp type,
+        /// `GetTypes()` không trả chúng).
+        public static IReadOnlyList<Type> SearchAll(string fragment, int limit = 100)
+        {
+            var found = new List<Type>();
+            if (string.IsNullOrEmpty(fragment)) return found;
+
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                foreach (var type in TypesOf(assembly))
+                {
+                    if (found.Count >= limit) break;
+                    if ((type.FullName ?? type.Name).IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0)
+                        found.Add(type);
+                }
+                if (found.Count >= limit) break;
+            }
+            found.Sort((a, b) => string.CompareOrdinal(a.FullName, b.FullName));
+            return found;
+        }
+
         /// Ranh giới root/step của address (§9.1): lấy **prefix dài nhất** phân giải được thành một
         /// type, phần còn lại là step. `Game.Board.Slots` với type `Game.Board` → root `Game.Board`,
         /// rest `Slots`. Tra cứu xác định nên không còn trường hợp mơ hồ.
