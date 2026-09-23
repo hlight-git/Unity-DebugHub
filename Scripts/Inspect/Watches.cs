@@ -21,7 +21,7 @@ namespace Hlight.Debug.Hub
                 foreach (var line in PlayerPrefs.GetString(KEY, string.Empty).Split('\n'))
                 {
                     if (string.IsNullOrWhiteSpace(line)) continue;
-                    if (Address.HasMethodStep(line)) continue;
+                    if (line.StartsWith("$") || Address.HasMethodStep(line)) continue;
                     if (!list.Contains(line)) list.Add(line);
                 }
                 return list;
@@ -37,6 +37,15 @@ namespace Hlight.Debug.Hub
             if (string.IsNullOrEmpty(address))
             {
                 error = "Address rỗng.";
+                return false;
+            }
+            // Biến `$` sống trong RAM và chết theo domain reload, còn danh sách này lưu PlayerPrefs — ghim
+            // một address gốc `$` là bảo đảm một dòng đỏ ở lần chạy sau. Nó cũng đã nằm sẵn trong trang
+            // Objects qua Vars, nên ghim thêm chỉ tạo dòng trùng mà `Gỡ` không xoá hết.
+            if (address.StartsWith("$"))
+            {
+                error = "Không ghim được address bắt đầu bằng biến $ — biến chỉ sống trong phiên này. " +
+                        "Dùng một address cố định (ví dụ `@info.save`) nếu muốn giữ lại.";
                 return false;
             }
             if (Address.HasMethodStep(address))

@@ -18,6 +18,29 @@ namespace Hlight.Debug.Hub.Tests
         [TearDown] public void TearDown() => PlayerPrefs.SetString(KEY, backup);
 
         [Test]
+        public void Add_RefusesAnAddressRootedInAVariable()
+        {
+            Vars.Bind("x", 1);
+            try
+            {
+                Assert.IsFalse(Watches.TryAdd("$x.Foo", out var error));
+                StringAssert.Contains("biến", error.ToLowerInvariant());
+                Assert.AreEqual(0, Watches.All.Count);
+            }
+            finally { Vars.Remove("x"); }
+        }
+
+        [Test]
+        public void Load_DropsAStoredVariableAddress()
+        {
+            // Bản lưu từ trước khi có luật này.
+            PlayerPrefs.SetString(KEY, "A.b\n$rootScope.iapControl");
+
+            Assert.AreEqual(1, Watches.All.Count,
+                "biến $ chết theo domain reload — ghim nó là bảo đảm một dòng đỏ ở lần chạy sau");
+        }
+
+        [Test]
         public void Add_StoresAndSurvivesAReadBack()
         {
             Assert.IsTrue(Watches.TryAdd("Hlight.Debug.Hub.Tests.AddressFixture.Instance.Number", out var error), error);
