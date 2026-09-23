@@ -170,19 +170,32 @@ namespace Hlight.Debug.Hub
             // đúng instance/static root đang đứng); không có address (con của FolderNode do game
             // dựng) thì lùi về FullName của type, đủ ổn định cho case đó.
             var owner = address ?? (parent.Value?.GetType() ?? parent.Declared)?.FullName;
-            return new ActionNode
+            var awaitable = Awaitables.IsAwaitable(method.ReturnType);
+            // Dựng node **trước** rồi mới gán Invoke: cờ chờ tra theo node.Key, mà object initializer
+            // không tự tham chiếu được chính cái nó đang khởi tạo.
+            var node = new ActionNode
             {
                 Label = method.Name,
                 Description = DebugLogConsoleName(method.ReturnType),
                 Parameters = descriptors,
                 Key = $"reflect:{owner}.{method.Name}#{parameters.Length}",
                 Dismiss = DismissMode.Stay,
-                Invoke = args =>
-                {
-                    var result = method.Invoke(method.IsStatic ? null : source, args);
-                    if (method.ReturnType != typeof(void)) UnityEngine.Debug.Log(DebugValues.ToText(result));
-                },
+                Awaitable = awaitable,
             };
+            node.Invoke = args =>
+            {
+                var result = method.Invoke(method.IsStatic ? null : source, args);
+                if (method.ReturnType == typeof(void)) return;
+
+                // Gọi một method async rồi in "UniTask" ra màn hình là vô nghĩa — mặc định chờ.
+                if (awaitable && DebugRegistry.AwaitEnabled(node))
+                {
+                    DebugHub.Await(result, method.Name);
+                    return;
+                }
+                UnityEngine.Debug.Log(DebugValues.ToText(result));
+            };
+            return node;
         }
 
         private static ValueNode Element(Cursor parent, string address, string index, string label, object value)

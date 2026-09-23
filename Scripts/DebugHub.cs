@@ -334,6 +334,28 @@ namespace Hlight.Debug.Hub
             CommandsPage.Run(instance.panel, entry, DebugRegistry.ArgumentsOf(line));
         }
 
+        /// Chạy coroutine chờ một awaitable. Ở trên DebugHub vì nó là MonoBehaviour sống suốt phiên —
+        /// node do reflection sinh thì không có chỗ nào để chạy coroutine.
+        ///
+        /// Kết quả về **sau** khi DebugRegistry.Run đã trả nên nó vào console, không vào dòng kết quả
+        /// của lần chạy đó — dòng kết quả bấm được để mở console.
+        internal static void Await(object awaitable, string label)
+        {
+            if (awaitable == null) return;
+            if (!instance)
+            {
+                // Không có hub (EditMode) thì không có chỗ chạy coroutine: in chính object, như lúc tắt chờ.
+                UnityEngine.Debug.Log(DebugValues.ToText(awaitable));
+                return;
+            }
+
+            instance.StartCoroutine(Awaitables.Wait(awaitable, (result, error) =>
+            {
+                if (error != null) UnityEngine.Debug.LogError($"{label}: {error.Message}");
+                else UnityEngine.Debug.Log($"{label} xong: {DebugValues.ToText(result)}");
+            }));
+        }
+
         /// Đẩy một dòng ra dòng kết quả từ ngoài panel.
         public static void Report(string message, bool error)
         {

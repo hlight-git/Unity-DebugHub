@@ -28,6 +28,13 @@ namespace Hlight.Debug.Hub
                     });
                 }
 
+                if (node.Awaitable)
+                {
+                    panel.AddToggle("Chờ kết quả", DebugRegistry.AwaitEnabled(node),
+                        on => DebugRegistry.SetAwait(node, on),
+                        "Tắt thì chỉ gọi rồi thôi, in ra chính object Task/UniTask.");
+                }
+
                 panel.AddPrimary("Run", () => run(node, values));
             }, searchable: false);
         }

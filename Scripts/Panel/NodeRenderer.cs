@@ -78,7 +78,8 @@ namespace Hlight.Debug.Hub
         private static void RenderAction(DebugHubPanel panel, ActionNode node, Action<DebugNode, string[]> run,
             string label)
         {
-            if (node.Parameters.Length == 0)
+            // Awaitable 0 tham số vẫn mở ParamsPage: không thì switch `Chờ kết quả` không tới được.
+            if (node.Parameters.Length == 0 && !node.Awaitable)
             {
                 panel.AddAction(label, () => run(node, Array.Empty<string>()), node.Description);
                 return;

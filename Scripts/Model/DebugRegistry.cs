@@ -28,6 +28,10 @@ namespace Hlight.Debug.Hub
         private static readonly Dictionary<string, string[]> argsByKey = new();
         private static readonly List<string> arguments = new();
 
+        /// Node awaitable mà người dùng đã tắt `Chờ kết quả`. Mặc định **bật**; lưu chiều "tắt" để
+        /// cờ mới không phải migration cho state cũ.
+        private static readonly HashSet<string> noAwait = new();
+
         /// Static giữ nguyên giữa các lần Play khi bật "Enter Play Mode without domain reload":
         /// không clear thì node của lần chạy trước còn nguyên và trỏ vào object đã chết.
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
@@ -35,6 +39,7 @@ namespace Hlight.Debug.Hub
         {
             entries.Clear();
             argsByKey.Clear();
+            noAwait.Clear();
         }
 
         public static IReadOnlyList<Entry> All
@@ -136,6 +141,15 @@ namespace Hlight.Debug.Hub
         }
 
         internal static bool HasArgs(DebugNode node) => node.Key != null && argsByKey.ContainsKey(node.Key);
+
+        internal static bool AwaitEnabled(DebugNode node) => node.Key == null || !noAwait.Contains(node.Key);
+
+        internal static void SetAwait(DebugNode node, bool enabled)
+        {
+            if (node.Key == null) return;
+            if (enabled) noAwait.Remove(node.Key);
+            else noAwait.Add(node.Key);
+        }
 
         #region Địa chỉ
 

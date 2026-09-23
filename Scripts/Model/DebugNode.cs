@@ -72,6 +72,9 @@ namespace Hlight.Debug.Hub
     {
         public DebugParameter[] Parameters = Array.Empty<DebugParameter>();
         public Action<object[]> Invoke;
+
+        /// Kiểu trả về await được — ParamsPage hiện switch `Chờ kết quả`.
+        public bool Awaitable;
     }
 
     /// Có con. Con liệt kê lúc mở (hoặc lúc dựng inline), không giữ sẵn: object có thể chết,
