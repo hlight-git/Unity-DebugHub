@@ -166,13 +166,14 @@ Push trang Help: `DebugHub.Notes` + toàn văn mọi entry trong registry (path,
 
 ### `…` — thao tác trên một `ValueNode`
 
-Mỗi row của `ValueNode` có đúng một nút `…` bên phải, mở page **Thao tác**:
+Mỗi row của `ValueNode` — kể cả row object mở được — có đúng một nút `…` ở cột phải, mở page **Thao tác**:
 
 | Mục | Hiện khi |
 |---|---|
 | `Copy giá trị` | luôn, với giá trị hiển thị được thành text |
 | `Gán giá trị` | `Set != null` **và** giá trị không có editor tại chỗ — bool/enum/số/vector đã sửa ngay trên row rồi |
-| `Watch` | `Address != null`; đã watch rồi thì hiện `Đã watch` |
+| `Ghim` / `Bỏ ghim` | `Address != null` và không bắt đầu bằng `$` |
+| `Bỏ biến` | chính biến `$tên` (trang Objects) |
 | `Lưu vào $…` | `Get()` không null |
 
 Không rải hai–ba nút nhỏ lên mỗi row (bấm nhầm trên bề ngang điện thoại) — một nút mở một page, giống mọi chỗ khác của hub.
@@ -286,13 +287,17 @@ Giới hạn có chủ ý:
 - **Reflect.Elements cắt ở 100 phần tử** + một dòng "còn N…" — collection lớn hoặc `IEnumerable` tự sinh vô hạn không được giết panel.
 - Trang member **hiện hết** (xem mục dưới).
 
-### Trang member: hiện hết, không ghi được thì read-only
+### Trang member: hiện hết thứ dùng được, nhóm theo lớp
 
-Mọi field + property, public lẫn private, instance lẫn static, đi hết chuỗi kế thừa (lớp dẫn xuất trước). Ghi được thì là ô sửa, không thì dòng read-only — không có bộ lọc. Hai ngoại lệ: backing field của auto-property (trùng ô nhớ với property), và `[Obsolete]` (13 property `rigidbody`/`camera`/… của mọi Component đọc là ném "deprecated").
+Mọi field + property, public lẫn private, instance lẫn static, đi hết chuỗi kế thừa. Mỗi lớp khai báo một dòng tiêu đề (`RootScope`, `↑ MonoBehaviour`, …) — member của Unity vẫn hiện, chỉ gom vào khối có tên để mắt bỏ qua được. Ghi được thì là ô sửa, không thì dòng read-only.
 
-Method nằm sau một row riêng `Method  N ›` ở cuối trang — `RootScope` có 239 method, `Transform` 319, trộn chung là mất dấu giá trị. Method trả `Task`/`ValueTask`/`UniTask` (nhận theo mẫu awaiter, không tham chiếu UniTask) có switch **`Chờ kết quả`** ở trang tham số: bật (mặc định) thì log `Tên xong: kết quả` khi xong.
+Bị lọc vì **không dùng được**: `[Obsolete]` (13 property `rigidbody`/`camera`/… của mọi Component đọc là ném "deprecated"), backing field của auto-property (trùng ô nhớ với property), field `m_*` của engine (con trỏ C++).
 
-Lý do bỏ luật cũ "chỉ member lớp cuối": `ProfileEntry` không khai member nào (tất cả ở `DataEntry<T>`), mở ra là trang trống.
+Address đang đứng nằm ở dòng nhỏ dưới tiêu đề — bấm là copy.
+
+Method nằm sau một row riêng `Method  N ›` ở cuối trang (`Transform` có 308). Đủ mọi overload, nhãn kèm kiểu tham số (`Pick(Int32)`, `Pick(String)`). Method trả `Task`/`ValueTask`/`UniTask` (nhận theo mẫu awaiter, không tham chiếu UniTask) có switch **`Chờ kết quả`** ở trang tham số: bật (mặc định) thì log `Tên xong: kết quả` khi xong, bỏ cuộc sau 60 s.
+
+Trang member chưa tự cập nhật — dựng lại tốn ~0,9 ms/row, 4 lần/giây là game khựng. Back ra vào lại để đọc số mới.
 
 ### Objects: address ghim vs biến `$`
 
@@ -305,16 +310,18 @@ Cùng một trang, hai nguồn khác nhau ở chỗ sống bao lâu:
 | Lưu ở đâu | PlayerPrefs (`DebugHub.Watches`), sống qua lần chạy sau | chỉ RAM, xoá lúc domain reload |
 | Dùng để | theo dõi một giá trị đổi theo thời gian thực | truyền đúng **reference** (`$var`) vào tham số/địa chỉ mà text không biểu diễn được, hoặc tham số generic |
 
-**Watch từ chối address chứa bước gọi method** trước khi resolve (xét từng step đã parse, không chỉ tìm dấu ngoặc trong chuỗi — literal của indexer có thể chứa ngoặc) — nếu không, một watch vào `Factory.Spawn()` sẽ gọi nó 4 lần/giây. Luật áp dụng lúc thêm, lúc đọc lại từ PlayerPrefs, và trước mỗi lần resolve để refresh; address có method đã lưu từ trước hiện lỗi kèm nút `Gỡ`, không được thực thi.
+Mỗi dòng một row; gỡ bằng `…` › `Bỏ ghim` / `Bỏ biến`. **Không ghim được address gốc `$`** — biến chết theo domain reload; cửa vào cố định cho game là `@info.scope` / `@info.save`.
+
+**Ghim từ chối address chứa bước gọi method** trước khi resolve (xét từng step đã parse, không chỉ tìm dấu ngoặc trong chuỗi — literal của indexer có thể chứa ngoặc) — nếu không, một watch vào `Factory.Spawn()` sẽ gọi nó 4 lần/giây. Luật áp dụng lúc thêm, lúc đọc lại từ PlayerPrefs, và trước mỗi lần resolve để refresh; address có method đã lưu từ trước hiện lỗi kèm nút `Gỡ`, không được thực thi.
 
 Các đường ghim: nút `…` trên một row giá trị (kể cả scalar không có trang riêng), nút `+ Ghim trang này` ở cuối trang member/phần tử, `+ Ghim vào Objects` ở trang của `Duyệt`.
 
 ### Duyệt
 
-- **Assembly** — bấm `Tìm`, gõ một phần tên (`Assembly-CSharp` — code game nằm ở đây, `Hlight`).
-- **Type** — type trong đúng assembly đó.
+- **Assembly** — có sẵn danh sách (assembly của Unity/.NET ẩn, gõ là thấy). Dòng đầu **`Mọi assembly`**: tìm type mà không cần biết assembly — đường cho `RootScope` (ở `Assembly-CSharp`) hay `UnityEngine.Application` (ở `UnityEngine.CoreModule`; `UnityEngine.dll` chỉ chuyển tiếp type nên tìm trong nó không ra).
+- **Type** — type trong đúng assembly đó; nhãn là tên ngắn, full name ở dòng mô tả.
 - **Instance** — `Member static` luôn có; là `UnityEngine.Object` thì thêm instance đang sống (kể cả inactive), mỗi dòng một address `#Type[i]`.
-- **Trang member** — dòng copy address, danh sách member, `+ Ghim vào Objects`.
+- **Trang member** — danh sách member, `+ Ghim vào Objects`; address ở dòng dưới tiêu đề.
 
 Gợi ý chạy thread nền (debounce 0.15 s) nên gõ không giật. Lý do làm lại:
 
