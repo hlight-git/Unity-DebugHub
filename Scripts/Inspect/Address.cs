@@ -368,7 +368,7 @@ namespace Hlight.Debug.Hub
             {
                 object value;
                 try { value = field.GetValue(field.IsStatic ? null : source); }
-                catch (Exception exception) { error = exception.Message; return false; }
+                catch (Exception exception) { error = (exception.InnerException ?? exception).Message; return false; }
 
                 Action<object> write = null;
                 var writable = !field.IsInitOnly && !field.IsLiteral &&
@@ -395,7 +395,7 @@ namespace Hlight.Debug.Hub
             var getter = property.GetMethod;
             object read;
             try { read = property.GetValue(getter != null && getter.IsStatic ? null : source); }
-            catch (Exception exception) { error = exception.Message; return false; }
+            catch (Exception exception) { error = (exception.InnerException ?? exception).Message; return false; }
 
             Action<object> setter = null;
             var isStatic = getter != null && getter.IsStatic;

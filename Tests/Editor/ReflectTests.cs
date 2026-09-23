@@ -21,44 +21,10 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void Members_SkipsCompilerGeneratedBackingFields()
         {
-            var names = NamesOf(new Sample(), MemberFilter.Default);
+            var names = NamesOf(new Sample());
 
             Assert.IsTrue(names.Contains("Auto"));
             Assert.IsFalse(names.Any(n => n.Contains("k__BackingField")));
-        }
-
-        [Test]
-        public void Members_SkipsObsoleteMembers_SoTheirGetterNeverRuns()
-        {
-            Assert.DoesNotThrow(() => NamesOf(new Sample(), MemberFilter.Default));
-            Assert.IsFalse(NamesOf(new Sample(), MemberFilter.Default).Contains("Rotten"));
-        }
-
-        [Test]
-        public void Members_HidesInheritedUntilAsked()
-        {
-            Assert.IsFalse(NamesOf(new Sample(), MemberFilter.Default).Contains("Inherited"));
-            Assert.IsTrue(NamesOf(new Sample(), MemberFilter.Inherited).Contains("Inherited"));
-        }
-
-        [Test]
-        public void Members_HidesMethodsUntilAsked()
-        {
-            Assert.IsFalse(NamesOf(new Sample(), MemberFilter.Default).Contains("Method"));
-            Assert.IsTrue(NamesOf(new Sample(), MemberFilter.Methods).Contains("Method"));
-        }
-
-        [Test]
-        public void Members_StopsAtMonoBehaviour()
-        {
-            var go = new GameObject("probe", typeof(BoxCollider));
-            try
-            {
-                var names = NamesOf(go.GetComponent<BoxCollider>(), MemberFilter.Default);
-
-                Assert.IsFalse(names.Contains("gameObject"), "đi lên tới Component là ra một rừng member Unity");
-            }
-            finally { Object.DestroyImmediate(go); }
         }
 
         [Test]
@@ -67,7 +33,7 @@ namespace Hlight.Debug.Hub.Tests
             const string root = "Hlight.Debug.Hub.Tests.AddressFixture.Instance";
             Address.TryResolve(root, out var cursor, out _);
 
-            var node = (ValueNode)Reflect.Members(cursor, root, MemberFilter.Default)
+            var node = (ValueNode)Reflect.Members(cursor, root)
                 .First(n => n.Label == "Number");
 
             Assert.AreEqual($"{root}.Number", node.Address);
@@ -80,7 +46,7 @@ namespace Hlight.Debug.Hub.Tests
         {
             const string root = "Hlight.Debug.Hub.Tests.AddressFixture.Instance";
             Address.TryResolve(root, out var cursor, out _);
-            var nodes = Reflect.Members(cursor, root, MemberFilter.Default).Cast<ValueNode>().ToList();
+            var nodes = Reflect.Members(cursor, root).Cast<ValueNode>().ToList();
 
             Assert.IsNull(nodes.First(n => n.Label == "Frozen").Set);
             Assert.IsNotNull(nodes.First(n => n.Label == "Number").Set);
@@ -91,7 +57,7 @@ namespace Hlight.Debug.Hub.Tests
         {
             const string root = "Hlight.Debug.Hub.Tests.AddressFixture.Instance";
             Address.TryResolve(root, out var cursor, out _);
-            var nodes = Reflect.Members(cursor, root, MemberFilter.Default).Cast<ValueNode>().ToList();
+            var nodes = Reflect.Members(cursor, root).Cast<ValueNode>().ToList();
 
             var gone = nodes.First(n => n.Label == "Number");
             gone.Address = "Khong.Co.Gi";
@@ -108,7 +74,7 @@ namespace Hlight.Debug.Hub.Tests
         {
             const string root = "Hlight.Debug.Hub.Tests.AddressFixture.Instance";
             Address.TryResolve(root, out var cursor, out _);
-            var first = (ActionNode)Reflect.Members(cursor, root, MemberFilter.Methods)
+            var first = (ActionNode)Reflect.Methods(cursor, root)
                 .First(n => n.Label == "Doubled");
 
             DebugRegistry.StoreArgs(first, new[] { "21" });
@@ -116,7 +82,7 @@ namespace Hlight.Debug.Hub.Tests
             // "Rebuild": cursor mới, và một lần liệt kê Reflect.Members mới — node là một instance
             // C# khác hẳn `first`, đúng như ParamsPage bị dựng lại từ đầu mỗi lần điều hướng.
             Address.TryResolve(root, out var cursor2, out _);
-            var second = (ActionNode)Reflect.Members(cursor2, root, MemberFilter.Methods)
+            var second = (ActionNode)Reflect.Methods(cursor2, root)
                 .First(n => n.Label == "Doubled");
 
             Assert.AreNotSame(first, second);
@@ -162,10 +128,109 @@ namespace Hlight.Debug.Hub.Tests
             StringAssert.Contains("150", ((TextNode)nodes[^1]).Text);
         }
 
-        private static List<string> NamesOf(object value, MemberFilter filter)
+        /// Hình dạng thật của Harvest.Data.ProfileEntry: lớp dẫn xuất rỗng, mọi member ở lớp cha.
+        private class EntryBase
+        {
+            public int CurrentValue = 1;
+            public string Status { get; set; } = "ok";
+            public readonly int Frozen = 7;
+        }
+        private class EmptyEntry : EntryBase { }
+
+        private class Shadowing : EntryBase
+        {
+            public new int CurrentValue = 99;
+        }
+
+        [Test]
+        public void Members_ShowsInheritedMembers_EvenWhenTheDerivedTypeDeclaresNothing()
+        {
+            var names = NamesOf(new EmptyEntry());
+
+            Assert.IsTrue(names.Contains("CurrentValue"), "lớp dẫn xuất rỗng mà trang vẫn phải có member của lớp cha");
+            Assert.IsTrue(names.Contains("Status"));
+            Assert.IsTrue(names.Contains("Frozen"));
+        }
+
+        [Test]
+        public void Members_MarksWhatCannotBeWritten_InsteadOfHidingIt()
+        {
+            var nodes = NodesOf(new EmptyEntry());
+
+            Assert.IsNull(nodes.First(n => n.Label == "Frozen").Set, "readonly thì read-only, không phải biến mất");
+            Assert.IsNotNull(nodes.First(n => n.Label == "CurrentValue").Set);
+        }
+
+        [Test]
+        public void Members_WalksAllTheWayUpThroughUnityBaseTypes()
+        {
+            var go = new GameObject("probe", typeof(BoxCollider));
+            try
+            {
+                var names = NamesOf(go.GetComponent<BoxCollider>());
+
+                Assert.IsTrue(names.Contains("size"), "member của chính BoxCollider");
+                Assert.IsTrue(names.Contains("enabled"), "của Collider/Behaviour");
+                Assert.IsTrue(names.Contains("gameObject"), "của Component");
+                Assert.IsTrue(names.Contains("hideFlags"), "của Object");
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void Members_KeepsObsoleteMembers_AndTheirGetterErrorStaysInOneRow()
+        {
+            var go = new GameObject("probe", typeof(BoxCollider));
+            try
+            {
+                var nodes = NodesOf(go.GetComponent<BoxCollider>());
+                var deprecated = nodes.First(n => n.Label == "rigidbody");
+
+                // Đọc nó ném NotSupportedException; Address.TryMember bắt lại và Reflect.Read ném tiếp
+                // dưới dạng Exception kèm message — renderer bắt cái đó để ra một dòng lỗi.
+                var thrown = Assert.Throws<System.Exception>(() => deprecated.Get());
+                StringAssert.Contains("deprecated", thrown.Message);
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void Members_DropsCompilerBackingFields_ButKeepsHandWrittenPrivateFields()
+        {
+            var names = NamesOf(AddressFixture.Instance);
+
+            Assert.IsFalse(names.Any(n => n.Contains("k__BackingField")));
+            Assert.IsTrue(names.Contains("Number"), "field viết tay vẫn phải còn");
+        }
+
+        [Test]
+        public void Members_ShowsOneRowPerName_WhenADerivedTypeShadowsABaseMember()
+        {
+            var names = NamesOf(new Shadowing());
+
+            Assert.AreEqual(1, names.Count(n => n == "CurrentValue"),
+                "hai dòng cùng tên mà bấm vào đều ra cái ở lớp dẫn xuất thì dòng thứ hai là dòng nói dối");
+        }
+
+        [Test]
+        public void Methods_AreNotInTheValueList_AndHaveTheirOwnEnumerator()
+        {
+            var cursor = new Cursor(typeof(EmptyEntry), new EmptyEntry(), null);
+
+            Assert.IsFalse(NamesOf(new EmptyEntry()).Contains("ToString"));
+            Assert.IsTrue(Reflect.Methods(cursor, null).Any(n => n.Label == "ToString"));
+            Assert.AreEqual(Reflect.Methods(cursor, null).Count(), Reflect.MethodCount(cursor));
+        }
+
+        private static List<ValueNode> NodesOf(object value)
         {
             var cursor = new Cursor(value.GetType(), value, null);
-            return Reflect.Members(cursor, null, filter).Select(n => n.Label).ToList();
+            return Reflect.Members(cursor, null).Cast<ValueNode>().ToList();
+        }
+
+        private static List<string> NamesOf(object value)
+        {
+            return NodesOf(value).Select(n => n.Label).ToList();
         }
     }
 }

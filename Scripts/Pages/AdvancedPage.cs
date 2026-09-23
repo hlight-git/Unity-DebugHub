@@ -111,9 +111,7 @@ namespace Hlight.Debug.Hub
         {
             return new DebugPage(type.Name, panel =>
             {
-                var cursor = new Cursor(type, null, null);
-                foreach (var node in Reflect.Members(cursor, type.FullName, MemberFilter.Default))
-                    NodeRenderer.Render(panel, node, (n, values) => NodeRenderer.RunInspect(panel, n, values));
+                NodeRenderer.RenderMembers(panel, new Cursor(type, null, null), type.FullName);
             });
         }
 
@@ -151,8 +149,7 @@ namespace Hlight.Debug.Hub
                     panel.AddText($"<color={Palette.BAD}>{error}</color>");
                     return;
                 }
-                foreach (var node in Reflect.Members(cursor, address, MemberFilter.Default))
-                    NodeRenderer.Render(panel, node, (n, values) => NodeRenderer.RunInspect(panel, n, values));
+                NodeRenderer.RenderMembers(panel, cursor, address);
                 panel.AddButton(Watches.Contains(address) ? "Đã watch" : "+ Watch trang này", () =>
                 {
                     if (!Watches.TryAdd(address, out var message)) panel.ShowResult(message, true);

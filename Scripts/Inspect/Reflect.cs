@@ -4,19 +4,9 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using UnityEngine;
-using Object = UnityEngine.Object;
 
 namespace Hlight.Debug.Hub
 {
-    [Flags]
-    public enum MemberFilter
-    {
-        Default = 0,
-        Inherited = 1,
-        Methods = 2,
-        Obsolete = 4,
-    }
-
     /// Nguồn node thứ hai, cạnh DebugRegistry: member của một object thật, sinh lúc mở trang.
     public static class Reflect
     {
@@ -26,41 +16,63 @@ namespace Hlight.Debug.Hub
                                          BindingFlags.NonPublic | BindingFlags.Public |
                                          BindingFlags.DeclaredOnly;
 
-        /// Dừng trước mấy type này khi đi lên: đi tiếp là ra một rừng member của Unity mà không ai
-        /// mở hub để xem.
-        private static readonly HashSet<Type> Stop = new()
-        {
-            typeof(MonoBehaviour), typeof(Behaviour), typeof(Component), typeof(ScriptableObject), typeof(Object),
-        };
-
         public static bool IsCollection(object value) => value is IEnumerable && value is not string;
 
-        public static IEnumerable<DebugNode> Members(Cursor cursor, string address, MemberFilter filter)
+        /// Hiện **hết** field và property, đi hết chuỗi kế thừa, public lẫn private, instance lẫn static.
+        /// Ghi được thì node có Set, không ghi được thì Set = null và renderer ra dòng read-only —
+        /// không có bộ lọc nào nữa.
+        ///
+        /// Lý do bỏ "chỉ member khai báo ở lớp cuối": `Harvest.Data.ProfileEntry` không khai một member
+        /// nào (tất cả ở `DataEntry<T>`), nên luật cũ mở nó ra là một trang trống.
+        ///
+        /// Thứ tự: lớp dẫn xuất trước, lớp cha sau — member của chính object nằm trên đầu, đồ của Unity
+        /// rơi xuống cuối, mà không phải giấu cái gì.
+        public static IEnumerable<DebugNode> Members(Cursor cursor, string address)
         {
             var type = cursor.Value?.GetType() ?? cursor.Declared;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
 
-            for (var level = type; level != null && !Stop.Contains(level); level = level.BaseType)
+            for (var level = type; level != null && level != typeof(object); level = level.BaseType)
             {
                 foreach (var field in level.GetFields(ALL))
                 {
-                    if (Skip(field, filter)) continue;
+                    if (Generated(field) || !seen.Add(field.Name)) continue;
                     yield return ValueFor(cursor, address, field.Name, field.FieldType);
                 }
                 foreach (var property in level.GetProperties(ALL))
                 {
-                    if (Skip(property, filter) || property.GetIndexParameters().Length > 0) continue;
+                    if (Generated(property) || property.GetIndexParameters().Length > 0) continue;
+                    if (!seen.Add(property.Name)) continue;
                     yield return ValueFor(cursor, address, property.Name, property.PropertyType);
                 }
-                if ((filter & MemberFilter.Methods) != 0)
-                {
-                    foreach (var method in level.GetMethods(ALL))
-                    {
-                        if (Skip(method, filter) || method.IsSpecialName) continue;
-                        yield return ActionFor(cursor, address, method);
-                    }
-                }
-                if ((filter & MemberFilter.Inherited) == 0) yield break;
             }
+        }
+
+        /// Method tách khỏi danh sách giá trị. Không phải để giấu: `RootScope` có 239 method và
+        /// `Transform` có 319 — trộn chung thì 72 dòng giá trị chìm mất. Trang member có một row
+        /// `Method (N) ›` mở thẳng sang danh sách đầy đủ này.
+        public static IEnumerable<DebugNode> Methods(Cursor cursor, string address)
+        {
+            var type = cursor.Value?.GetType() ?? cursor.Declared;
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+
+            // Đi tới tận `object` (khác Members): ToString/GetType là method gọi được thật.
+            for (var level = type; level != null; level = level.BaseType)
+            {
+                foreach (var method in level.GetMethods(ALL))
+                {
+                    if (method.IsSpecialName || Generated(method)) continue;
+                    if (!seen.Add($"{method.Name}#{method.GetParameters().Length}")) continue;
+                    yield return ActionFor(cursor, address, method);
+                }
+            }
+        }
+
+        public static int MethodCount(Cursor cursor)
+        {
+            var count = 0;
+            foreach (var _ in Methods(cursor, null)) count++;
+            return count;
         }
 
         public static IEnumerable<DebugNode> Elements(Cursor cursor, string address)
@@ -199,15 +211,14 @@ namespace Hlight.Debug.Hub
             return node;
         }
 
-        private static bool Skip(MemberInfo member, MemberFilter filter)
+        /// Ngoại lệ **duy nhất** của "hiện hết": backing field của auto-property. Nó là đúng cùng một ô
+        /// nhớ với property ngay trên nó, chỉ khác cái tên không đọc được — giữ cả hai là mọi
+        /// auto-property ra hai dòng. Field viết tay (`_playerSave`) thì **giữ**: không có gì bảo đảm
+        /// nó bằng property `PlayerSave`.
+        private static bool Generated(MemberInfo member)
         {
-            // [Obsolete] của Unity ném hoặc log lỗi ngay khi đọc — quên cái này là trang inspect vỡ
-            // ngay lần đầu mở trên một Component.
-            if ((filter & MemberFilter.Obsolete) == 0 && member.IsDefined(typeof(ObsoleteAttribute), true)) return true;
-
-            // Backing field của auto-property: không lọc thì mọi property hiện hai lần.
-            if (member.IsDefined(typeof(CompilerGeneratedAttribute), false)) return true;
-            return member.Name.Contains("k__BackingField");
+            return member.IsDefined(typeof(CompilerGeneratedAttribute), false) ||
+                   member.Name.Contains("k__BackingField");
         }
 
         private static bool Writable(Cursor parent, string name)

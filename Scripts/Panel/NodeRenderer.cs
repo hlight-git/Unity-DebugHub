@@ -115,73 +115,100 @@ namespace Hlight.Debug.Hub
             }, live: node.Live);
         }
 
-        /// Bộ lọc member là state của trang, không phải của node: đổi nó là đổi cách nhìn, không phải
-        /// đổi dữ liệu.
-        private static MemberFilter filter = MemberFilter.Default;
-
-        /// Static giữ nguyên giữa các lần Play khi bật "Enter Play Mode without domain reload":
-        /// không reset thì phiên chạy sau mở trang member ra vẫn còn "Cả member kế thừa"/"Cả method"
-        /// đã bật từ lần chạy trước, không đúng mặc định của trang.
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
-        private static void ResetStatics() => filter = MemberFilter.Default;
-
         private static DebugPage MembersPage(ValueNode node)
         {
             return new DebugPage(node.Label, panel =>
             {
-                object current;
-                try { current = node.Get(); }
-                catch (Exception exception) { panel.AddText($"<color={Palette.BAD}>{exception.Message}</color>"); return; }
-
-                if (IsNull(current)) { panel.AddText("null"); return; }
-
-                var cursor = new Cursor(node.Declared, current, node.Set);
-                var children = Reflect.IsCollection(current)
-                    ? Reflect.Elements(cursor, node.Address)
-                    : Reflect.Members(cursor, node.Address, filter);
-
-                if (!Reflect.IsCollection(current))
-                {
-                    panel.AddToggle("Cả member kế thừa", (filter & MemberFilter.Inherited) != 0,
-                        on => { filter = on ? filter | MemberFilter.Inherited : filter & ~MemberFilter.Inherited; panel.Refresh(); });
-                    panel.AddToggle("Cả method", (filter & MemberFilter.Methods) != 0,
-                        on => { filter = on ? filter | MemberFilter.Methods : filter & ~MemberFilter.Methods; panel.Refresh(); });
-                }
-
-                foreach (var child in children) Render(panel, child, (n, values) => RunInspect(panel, n, values));
+                if (!TryCursor(panel, node, out var cursor)) return;
+                RenderMembers(panel, cursor, node.Address);
 
                 if (node.Address != null)
                 {
-                    panel.AddButton(Watches.Contains(node.Address) ? "Đã watch trang này" : "+ Watch trang này", () =>
+                    panel.AddButton(Watches.Contains(node.Address) ? "Đã ghim" : "+ Ghim trang này", () =>
                     {
                         if (!Watches.TryAdd(node.Address, out var error)) panel.ShowResult(error, true);
                         panel.Refresh();
                     });
                 }
             },
-            // Search ở trang member lọc **danh sách này**, không phải tìm command toàn cục.
+            search: (panel, query) => FilterMembers(panel, node, query));
+        }
+
+        /// Thân của một trang member: danh sách giá trị + một row Method ở cuối. Dùng bởi MembersPage
+        /// (drill từ một row), BrowsePage.At (đứng tại một address) và AdvancedPage.
+        internal static void RenderMembers(DebugHubPanel panel, Cursor cursor, string address)
+        {
+            if (Reflect.IsCollection(cursor.Value))
+            {
+                foreach (var child in Reflect.Elements(cursor, address))
+                    Render(panel, child, (n, values) => RunInspect(panel, n, values));
+                return;
+            }
+
+            foreach (var child in Reflect.Members(cursor, address))
+                Render(panel, child, (n, values) => RunInspect(panel, n, values));
+
+            var methods = Reflect.MethodCount(cursor);
+            if (methods == 0) return;
+
+            var node = new ValueNode
+            {
+                Label = "Method",
+                Declared = cursor.Declared,
+                Address = address,
+                Get = () => cursor.Value,
+                Dismiss = DismissMode.Stay,
+            };
+            panel.AddNavigation("Method", MethodsPage(node), null, methods.ToString());
+        }
+
+        /// Phần `search` của một trang member: lọc chính danh sách này, không phải tìm command toàn cục.
+        internal static void FilterMembers(DebugHubPanel panel, ValueNode node, string query)
+        {
+            if (!TryCursor(panel, node, out var cursor)) return;
+            var children = Reflect.IsCollection(cursor.Value)
+                ? Reflect.Elements(cursor, node.Address)
+                : Reflect.Members(cursor, node.Address);
+            Filter(panel, children, query, "Không có member nào khớp.");
+        }
+
+        private static DebugPage MethodsPage(ValueNode node)
+        {
+            return new DebugPage($"{node.Label} — method", panel =>
+            {
+                if (!TryCursor(panel, node, out var cursor)) return;
+                foreach (var child in Reflect.Methods(cursor, node.Address))
+                    Render(panel, child, (n, values) => RunInspect(panel, n, values));
+            },
             search: (panel, query) =>
             {
-                object current;
-                try { current = node.Get(); }
-                catch (Exception exception) { panel.AddText($"<color={Palette.BAD}>{exception.Message}</color>"); return; }
-                if (IsNull(current)) { panel.AddText("null"); return; }
-
-                var cursor = new Cursor(node.Declared, current, node.Set);
-                var children = Reflect.IsCollection(current)
-                    ? Reflect.Elements(cursor, node.Address)
-                    : Reflect.Members(cursor, node.Address, filter);
-
-                var any = false;
-                foreach (var child in children)
-                {
-                    if (child.Label == null ||
-                        child.Label.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0) continue;
-                    any = true;
-                    Render(panel, child, (n, values) => RunInspect(panel, n, values));
-                }
-                if (!any) panel.AddText("Không có member nào khớp.");
+                if (!TryCursor(panel, node, out var cursor)) return;
+                Filter(panel, Reflect.Methods(cursor, node.Address), query, "Không có method nào khớp.");
             });
+        }
+
+        private static bool TryCursor(DebugHubPanel panel, ValueNode node, out Cursor cursor)
+        {
+            cursor = default;
+            object current;
+            try { current = node.Get(); }
+            catch (Exception exception) { panel.AddText($"<color={Palette.BAD}>{exception.Message}</color>"); return false; }
+            if (IsNull(current)) { panel.AddText("null"); return false; }
+
+            cursor = new Cursor(node.Declared, current, node.Set);
+            return true;
+        }
+
+        private static void Filter(DebugHubPanel panel, IEnumerable<DebugNode> children, string query, string none)
+        {
+            var any = false;
+            foreach (var child in children)
+            {
+                if (child.Label == null || child.Label.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                any = true;
+                Render(panel, child, (n, values) => RunInspect(panel, n, values));
+            }
+            if (!any) panel.AddText(none);
         }
 
         /// Chạy một node do reflection sinh: không ghi LastCommand (không có path để chạy lại).
