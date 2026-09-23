@@ -32,7 +32,10 @@ namespace Hlight.Debug.Hub
         /// Poll `IsCompleted` mỗi frame rồi gọi `GetResult()`. Poll chứ không `OnCompleted`: chạy
         /// tiếp ở main thread là điều kiện để in log và đụng UI, mà `OnCompleted` của một awaiter
         /// bất kỳ không hứa điều đó.
-        public static IEnumerator Wait(object awaitable, Action<object, Exception> done)
+        ///
+        /// Trần mặc định 60 giây: awaitable không bao giờ xong (UniTask chờ một event không tới) thì
+        /// coroutine này poll reflection mỗi frame, mãi mãi, im lặng.
+        public static IEnumerator Wait(object awaitable, Action<object, Exception> done, float timeoutSeconds = 60f)
         {
             object awaiter;
             PropertyInfo completed;
@@ -50,7 +53,16 @@ namespace Hlight.Debug.Hub
                 yield break;
             }
 
-            while (!(bool)completed.GetValue(awaiter)) yield return null;
+            var deadline = UnityEngine.Time.realtimeSinceStartup + timeoutSeconds;
+            while (!(bool)completed.GetValue(awaiter))
+            {
+                if (UnityEngine.Time.realtimeSinceStartup >= deadline)
+                {
+                    done(null, new Exception($"quá hạn {timeoutSeconds}s"));
+                    yield break;
+                }
+                yield return null;
+            }
 
             object value = null;
             Exception failure = null;

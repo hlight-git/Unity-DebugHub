@@ -75,6 +75,20 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(0, suggester.Results.Count);
         }
 
+        [Test]
+        public void ResultsAndQuery_AreReadAsOnePiece()
+        {
+            var suggester = new Suggester<string>(q => new[] { q.ToUpperInvariant() }, 0f);
+            suggester.Request("abc");
+            WaitFor(() => !suggester.Working);
+
+            var snapshot = suggester.Current;
+
+            Assert.AreEqual("abc", snapshot.Query);
+            Assert.AreEqual("ABC", snapshot.Items[0]);
+            Assert.IsFalse(snapshot.Working);
+        }
+
         private static void WaitFor(System.Func<bool> done)
         {
             var deadline = System.DateTime.UtcNow.AddSeconds(3);

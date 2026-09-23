@@ -63,6 +63,19 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
+        public void Wait_GivesUp_WhenTheAwaitableNeverCompletes()
+        {
+            object got = null;
+            System.Exception failed = null;
+            var routine = Awaitables.Wait(new TaskCompletionSource<int>().Task,
+                (r, e) => { got = r; failed = e; }, timeoutSeconds: 0f);
+            while (routine.MoveNext()) { }
+
+            Assert.IsNull(got);
+            StringAssert.Contains("quá hạn", failed.Message);
+        }
+
+        [Test]
         public void ReflectedMethod_IsMarkedAwaitable_WhenItReturnsATask()
         {
             var cursor = new Cursor(typeof(Sample), new Sample(), null);

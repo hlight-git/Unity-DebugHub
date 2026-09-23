@@ -137,19 +137,27 @@ namespace Hlight.Debug.Hub
             subtitle: address);
         }
 
-        /// Kết quả cũ vẫn hiện trong lúc query mới đang chờ — gõ thêm một chữ không làm list chớp trắng.
+        /// Kết quả cũ vẫn hiện trong lúc query mới đang chờ — gõ thêm một chữ không làm list chớp trắng —
+        /// nhưng có một dòng "Đang tìm…" ở đầu để biết list đó chưa phải của chữ vừa gõ.
         private static void Suggest<T>(DebugHubPanel panel, Suggester<T> suggester, string query, string none,
             Action<T> row)
         {
             suggester.Request(query);
+            var snapshot = suggester.Current;    // đọc một lần: query và kết quả phải cùng một bản
+            var pending = snapshot.Query != query;
+
             // Còn chờ thì xin thêm một nhịp dựng lại — trang không Live, kết quả về sẽ không tự hiện.
-            if (suggester.ResultsFor != query) panel.RefreshLater();
-            if (suggester.Results.Count == 0)
+            if (pending)
             {
-                panel.AddText(suggester.ResultsFor != query ? "Đang tìm…" : none);
+                panel.RefreshLater();
+                panel.AddText(Palette.Wrap("Đang tìm…", TextStyle.Note));
+            }
+            if (snapshot.Items.Count == 0)
+            {
+                if (!pending) panel.AddText(none);
                 return;
             }
-            foreach (var item in suggester.Results) row(item);
+            foreach (var item in snapshot.Items) row(item);
         }
     }
 }
