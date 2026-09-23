@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Reflection;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -26,13 +27,20 @@ namespace Hlight.Debug.Hub
             {
                 panel.AddNavigation("Mọi assembly", AnyAssembly(), "Tìm type mà không cần biết assembly.");
 
+                // Code game nằm ở `Assembly-CSharp`. Xếp thuần theo chữ cái thì nó rơi xuống hàng
+                // thứ bảy, sau AdjustSdk/AllIn1SpriteShader/AndroidPlayerBuildProgram — thứ hay cần
+                // nhất lại khó thấy nhất.
                 var hidden = 0;
+                var rest = new List<Assembly>();
                 foreach (var assembly in TypeFinder.Assemblies(string.Empty))
                 {
                     var name = assembly.GetName().Name;
                     if (IsPlatform(name)) { hidden++; continue; }
-                    panel.AddNavigation(name, Types(assembly));
+                    if (name.StartsWith("Assembly-CSharp", StringComparison.Ordinal))
+                        panel.AddNavigation(name, Types(assembly));
+                    else rest.Add(assembly);
                 }
+                foreach (var assembly in rest) panel.AddNavigation(assembly.GetName().Name, Types(assembly));
                 panel.AddText(Palette.Wrap($"Ẩn {hidden} assembly của Unity/.NET — bấm Tìm rồi gõ để thấy.", TextStyle.Note));
             },
             search: (panel, query) =>
@@ -109,6 +117,11 @@ namespace Hlight.Debug.Hub
 
         /// Đứng tại một address: danh sách member (đệ quy bằng cách bấm), dòng address để copy, và
         /// nút ghim vào Objects.
+        ///
+        /// **Cố ý không Live.** Dựng lại một trang member tốn ~1 ms mỗi row — `RootScope` 55 row là
+        /// 58 ms, tức Live 4 lần/giây ngốn 1/4 thời gian chạy của game chỉ để vẽ lại một danh sách.
+        /// Chỗ để ngồi nhìn giá trị đổi là trang `Objects`: nó chỉ có những dòng đã ghim nên nhỏ, và
+        /// nó Live. Trang này là chỗ **duyệt**, mở lại là có số mới.
         public static DebugPage At(string address, string title)
         {
             return new DebugPage(title, panel =>

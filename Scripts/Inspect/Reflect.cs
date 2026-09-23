@@ -79,9 +79,20 @@ namespace Hlight.Debug.Hub
         /// Đếm mà **không dựng node**: bản cũ gọi Methods() rồi bỏ đi, tức dựng vài trăm ActionNode
         /// kèm DebugParameter[], GetTypeReadableName và một Awaitables.IsAwaitable mỗi cái — 7,5 ms
         /// cho mỗi lần mở một trang member, chỉ để in một con số.
+        /// Nhớ theo type: metadata method **không đổi lúc chạy**, mà trang member nào cũng hỏi con
+        /// số này một lần. Không cache thì mỗi lần mở một trang tốn 4,5 ms chỉ để in một con số —
+        /// duyệt hết method và dựng chuỗi chữ ký cho từng cái vẫn là phần đắt, kể cả khi đã thôi
+        /// dựng ActionNode.
+        private static readonly Dictionary<Type, int> methodCounts = new();
+
+        internal static void ClearCaches() => methodCounts.Clear();
+
         public static int MethodCount(Cursor cursor)
         {
             var type = cursor.Value?.GetType() ?? cursor.Declared;
+            if (type == null) return 0;
+            if (methodCounts.TryGetValue(type, out var cached)) return cached;
+
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var count = 0;
 
@@ -92,6 +103,8 @@ namespace Hlight.Debug.Hub
                     if (Keep(method) && seen.Add(Signature(method))) count++;
                 }
             }
+
+            methodCounts[type] = count;
             return count;
         }
 

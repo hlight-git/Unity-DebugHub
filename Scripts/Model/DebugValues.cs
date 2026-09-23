@@ -176,6 +176,19 @@ namespace Hlight.Debug.Hub
         }
 
         /// Giá trị khởi tạo parse được, để mở page nhập liệu ra là bấm Run được luôn.
+        /// Tên kiểu đọc được: `SceneScope&lt;HomeSceneRoot&gt;` chứ không phải `SceneScope`1` — dạng
+        /// backtick-arity của CLR không nói cho ai biết cái gì.
+        public static string TypeName(Type type)
+        {
+            if (type == null) return string.Empty;
+            if (!type.IsGenericType) return type.Name;
+
+            var name = type.Name;
+            var tick = name.IndexOf('`');
+            if (tick >= 0) name = name.Substring(0, tick);
+            return $"{name}<{string.Join(", ", Array.ConvertAll(type.GetGenericArguments(), TypeName))}>";
+        }
+
         public static string DefaultValueFor(Type type)
         {
             if (type == null) return string.Empty;

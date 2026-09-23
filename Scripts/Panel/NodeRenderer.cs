@@ -220,9 +220,9 @@ namespace Hlight.Debug.Hub
         /// Chữ phụ căn phải: đủ để biết bên trong có gì mà không phải mở ra.
         private static string Summary(object value)
         {
-            if (value is ICollection collection) return $"{value.GetType().Name} ({collection.Count})";
+            if (value is ICollection collection) return $"{DebugValues.TypeName(value.GetType())} ({collection.Count})";
             if (value is Object unityObject) return unityObject.name;
-            return value.GetType().Name;
+            return DebugValues.TypeName(value.GetType());
         }
 
         /// Object đã Destroy không `== null` theo nghĩa C#, mà mở vào nó thì mọi getter ném.

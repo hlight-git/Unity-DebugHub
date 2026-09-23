@@ -363,6 +363,16 @@ namespace Hlight.Debug.Hub
         public void AddNavigation(string label, DebugPage page, string description = null, string detail = null)
         {
             var row = Spawn(navTemplate, label, description);
+
+            // Không có mô tả thì nhãn vốn là một dòng: để nó wrap là tên dài vỡ giữa từ
+            // (`AllIn1SpriteShaderAss` / `embly`) và row cao gấp ba. Cắt bằng `…` đọc được hơn hẳn.
+            // Row có mô tả vẫn wrap như cũ, và Reset() trả cờ này về template khi tái dùng row.
+            if (string.IsNullOrEmpty(description) && row.label)
+            {
+                row.label.enableWordWrapping = false;
+                row.label.overflowMode = TextOverflowModes.Ellipsis;
+            }
+
             if (row.detail) row.detail.text = detail;
             row.button.onClick.AddListener(() => Push(page));
         }
@@ -588,6 +598,7 @@ namespace Hlight.Debug.Hub
             {
                 row.label.color = template.label.color;
                 row.label.enableWordWrapping = template.label.enableWordWrapping;
+                row.label.overflowMode = template.label.overflowMode;
                 if (row.label.TryGetComponent<LayoutElement>(out var element) &&
                     template.label.TryGetComponent<LayoutElement>(out var sourceElement))
                     element.preferredHeight = sourceElement.preferredHeight;
