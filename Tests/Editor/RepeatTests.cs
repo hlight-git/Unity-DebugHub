@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Reflection;
 using NUnit.Framework;
 using UnityEngine;
 
@@ -78,6 +79,25 @@ namespace Hlight.Debug.Hub.Tests
             // Root chứ không phải riêng button: BuildRepeatButton() dựng cả prefab DebugHub, chỉ xoá
             // button thì phần còn lại (DebugHub, Entry, Panel, Console...) rò rỉ vào scene test dùng chung.
             finally { Object.DestroyImmediate(button.transform.root.gameObject); }
+        }
+
+        /// Nút một chạm chạy lại lệnh cuối phải cho thấy đó là lệnh gì: icon + tên lá, và nút rộng ra
+        /// vừa đủ tên.
+        [Test]
+        public void RepeatButton_ShowsTheLeafNameNextToItsIcon()
+        {
+            var repeat = TestPanel.BuildRepeatButton();
+            try
+            {
+                repeat.gameObject.SetActive(true);
+                repeat.Present("level.goto 5");
+
+                var label = repeat.GetComponentInChildren<TMPro.TMP_Text>(true);
+                Assert.AreEqual("goto", label.text);
+                Assert.AreEqual(DebugHubIcon.Symbol.Replay, repeat.GetComponentInChildren<DebugHubIcon>(true).symbol);
+                Assert.Greater(((RectTransform)repeat.transform).sizeDelta.x, 92f + label.preferredWidth - 1f);
+            }
+            finally { Object.DestroyImmediate(repeat.transform.root.gameObject); }
         }
     }
 }

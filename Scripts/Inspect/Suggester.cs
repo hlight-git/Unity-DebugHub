@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using UnityEngine;
 
 namespace Hlight.Debug.Hub
 {
@@ -35,17 +34,15 @@ namespace Hlight.Debug.Hub
         }
 
         private readonly Func<string, IReadOnlyList<T>> work;
-        private readonly float debounce;
 
-        private string requested;           // query mới nhất người dùng gõ
         private volatile string running;    // query đang chạy — worker đọc để biết mình còn được nhận không
-        private float dueAt;
         private Snapshot state = new(null, Empty, false);
 
-        public Suggester(Func<string, IReadOnlyList<T>> work, float debounceSeconds = 0.15f)
+        /// Không tự debounce: ô tìm của panel đã chờ người dùng ngừng gõ rồi mới dựng trang (nơi gọi
+        /// Request). Chờ thêm ở đây là trễ thêm trọn một nhịp RefreshLater cho mỗi lần tìm.
+        public Suggester(Func<string, IReadOnlyList<T>> work)
         {
             this.work = work;
-            debounce = debounceSeconds;
         }
 
         /// Một lần đọc ra cả ba — không còn cửa cho cặp "query mới, kết quả cũ".
@@ -62,13 +59,6 @@ namespace Hlight.Debug.Hub
             if (query == now.Query && !now.Working) return;     // đã có kết quả cho đúng query này
             if (query == running && now.Working) return;        // đang chạy đúng query này
 
-            if (query != requested)
-            {
-                requested = query;
-                dueAt = Now + debounce;
-            }
-            if (Now < dueAt) return;
-
             Start(query);
         }
 
@@ -78,22 +68,25 @@ namespace Hlight.Debug.Hub
             // Giữ kết quả cũ hiện tiếp trong lúc chờ (cố ý — gõ thêm một chữ không làm list chớp trắng),
             // chỉ bật cờ Working.
             var now = Current;
-            Volatile.Write(ref state, new Snapshot(now.Query, now.Items, true));
+            var working = new Snapshot(now.Query, now.Items, true);
+            Volatile.Write(ref state, working);
 
             Task.Run(() =>
             {
                 IReadOnlyList<T> computed;
                 try { computed = work(query) ?? Empty; }
-                catch (Exception) { computed = Empty; }      // worker ném thì trang vẫn dựng được
+                catch (Exception exception)
+                {
+                    // Trang vẫn dựng được với danh sách rỗng, nhưng lỗi phải thấy được — không thì nó trông
+                    // y như "không có kết quả". Debug.LogException gọi được từ thread nền.
+                    UnityEngine.Debug.LogException(exception);
+                    computed = Empty;
+                }
 
                 // Chỉ nhận nếu vẫn là query đang chạy: bản chậm về sau không được ghi đè bản mới.
                 // Đúng **một** lệnh ghi — main thread thấy trọn bản mới hoặc trọn bản cũ.
-                if (running == query) Volatile.Write(ref state, new Snapshot(query, computed, false));
+                Interlocked.CompareExchange(ref state, new Snapshot(query, computed, false), working);
             });
         }
-
-        /// Time.realtimeSinceStartup gọi được cả trong EditMode test; Time.unscaledTime thì không
-        /// nhích khi không có player loop.
-        private static float Now => Time.realtimeSinceStartup;
     }
 }

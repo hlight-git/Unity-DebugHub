@@ -26,8 +26,13 @@ namespace Hlight.Debug.Hub.Tests
         {
             panel.ShowFromRoot(BrowsePage.Assemblies());
 
-            Assert.Greater(TestPanel.LabelsOf(panel).Count, 50,
-                "không biết tên assembly thì phải mò được, không thể bắt gõ đúng mới thấy gì");
+            var first = TestPanel.LabelsOf(panel);
+            Assert.LessOrEqual(first.Count, 44, "long lists must not instantiate every assembly at once");
+            Assert.IsTrue(first.Exists(label => label.Contains("Assembly-CSharp")));
+            TestPanel.ClickRowContaining(panel, "Trang tiếp");
+            CollectionAssert.AreNotEqual(first, TestPanel.LabelsOf(panel));
+            TestPanel.ClickRowContaining(panel, "Trang trước");
+            CollectionAssert.AreEqual(first, TestPanel.LabelsOf(panel));
         }
 
         [Test]
@@ -153,11 +158,15 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
-        public void AdvButton_ShowsOnCommandPages()
+        public void AdvButton_ShowsOnlyOnCommandsRoot()
         {
+            panel.ShowFromRoot(CommandsPage.Root());
+            Assert.IsTrue(((UnityEngine.UI.Button)TestPanel.Field(panel, "advancedButton")).gameObject.activeSelf);
+            panel.Push(CommandsPage.Folder(new[] { "info" }, "info"));
+            Assert.IsFalse(((UnityEngine.UI.Button)TestPanel.Field(panel, "advancedButton")).gameObject.activeSelf);
             panel.ShowFromRoot(BrowsePage.At("Hlight.Debug.Hub.Tests.AddressFixture.Instance", "fixture"));
 
-            Assert.IsTrue(((UnityEngine.UI.Button)TestPanel.Field(panel, "advancedButton")).gameObject.activeSelf);
+            Assert.IsFalse(((UnityEngine.UI.Button)TestPanel.Field(panel, "advancedButton")).gameObject.activeSelf);
         }
 
         /// Root static có Value null — trang Method vẫn phải liệt kê được, không ra chữ "null".
@@ -167,6 +176,7 @@ namespace Hlight.Debug.Hub.Tests
             panel.ShowFromRoot(BrowsePage.At("Hlight.Debug.Hub.DebugRegistry", "DebugRegistry"));
             TestPanel.ClickRowContaining(panel, "Method");
 
+            // Method `DebugRegistry.Run` — không phải nút chạy.
             Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.Contains("Run")));
         }
     }

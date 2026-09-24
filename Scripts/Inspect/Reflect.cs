@@ -9,7 +9,7 @@ using UnityEngine;
 namespace Hlight.Debug.Hub
 {
     /// Nguồn node thứ hai, cạnh DebugRegistry: member của một object thật, sinh lúc mở trang.
-    public static class Reflect
+    internal static class Reflect
     {
         public const int ELEMENT_LIMIT = 100;
 
@@ -17,7 +17,21 @@ namespace Hlight.Debug.Hub
                                          BindingFlags.NonPublic | BindingFlags.Public |
                                          BindingFlags.DeclaredOnly;
 
-        public static bool IsCollection(object value) => value is IEnumerable && value is not string;
+        /// Collection thuần: mở ra là danh sách phần tử (mảng, List, Dictionary, HashSet, Queue…).
+        public static bool IsCollection(object value) => value is ICollection || value != null && IsGenericCollection(value.GetType());
+
+        /// Thứ chỉ implement IEnumerable — Transform duyệt con, Animation duyệt state, class tự viết — là
+        /// object có member thật: mở ra trang member, phần tử nằm ở một row riêng.
+        public static bool IsEnumerable(object value) => value is IEnumerable && value is not string;
+
+        private static bool IsGenericCollection(Type type)
+        {
+            foreach (var contract in type.GetInterfaces())
+            {
+                if (contract.IsGenericType && contract.GetGenericTypeDefinition() == typeof(ICollection<>)) return true;
+            }
+            return false;
+        }
 
         /// Hiện **hết** field và property dùng được, đi hết chuỗi kế thừa, public lẫn private, instance
         /// lẫn static. Ghi được thì node có Set, không thì Set = null và renderer ra dòng read-only.
@@ -53,7 +67,7 @@ namespace Hlight.Debug.Hub
                 // Lớp không có gì để hiện thì không có tiêu đề rỗng.
                 if (rows.Count == 0) continue;
 
-                yield return Node.Text(level == type ? level.Name : $"↑ {level.Name}", TextStyle.Note);
+                yield return Node.Text(level == type ? level.Name : $"lớp cha {level.Name}", TextStyle.Note);
                 foreach (var row in rows) yield return row;
             }
         }
@@ -113,12 +127,12 @@ namespace Hlight.Debug.Hub
         /// ra 268 dòng. Cái bị nuốt không có đường nào gọi tới từ UI.
         private static string Signature(MethodInfo method)
         {
-            var builder = new StringBuilder(method.Name).Append('(');
+            var builder = new StringBuilder(method.Name).Append('`').Append(method.GetGenericArguments().Length).Append('(');
             var parameters = method.GetParameters();
             for (var i = 0; i < parameters.Length; i++)
             {
                 if (i > 0) builder.Append(',');
-                builder.Append(parameters[i].ParameterType.Name);
+                builder.Append(parameters[i].ParameterType.AssemblyQualifiedName ?? parameters[i].ParameterType.ToString());
             }
             return builder.Append(')').ToString();
         }
@@ -147,7 +161,8 @@ namespace Hlight.Debug.Hub
                 yield break;
             }
 
-            if (cursor.Value is IList list)
+            // Mảng nhiều chiều cũng là IList nhưng list[i] ném — để nó rơi xuống nhánh IEnumerable.
+            if (cursor.Value is IList list && cursor.Value is not Array { Rank: > 1 })
             {
                 for (var i = 0; i < list.Count && i < ELEMENT_LIMIT; i++)
                     yield return Element(cursor, address, i.ToString(), $"[{i}]", list[i]);
@@ -173,8 +188,7 @@ namespace Hlight.Debug.Hub
 
         private static DebugNode Rest(int count) => Node.Text($"còn {count} phần tử nữa.", TextStyle.Note);
 
-        /// Node đọc/ghi qua **address**, không qua một box bắt được lúc dựng row: callback resolve
-        /// lại trước mỗi lần đọc/ghi nên không bao giờ ghi vào bản copy cũ.
+        /// Ghi luôn qua **address** (resolve lại ngay trước khi ghi) nên không bao giờ ghi vào bản copy cũ.
         private static ValueNode ValueFor(Cursor parent, string address, string name, Type declared)
         {
             var childAddress = address == null ? null : Address.Member(address, name);
@@ -187,18 +201,24 @@ namespace Hlight.Debug.Hub
             };
 
             // Lỗi phải nổi lên, không được nuốt: `Get` nuốt lỗi thì row hiện `null` cho một
-            // property đang ném, và `Set` nuốt lỗi thì người dùng tưởng đã ghi xong. Renderer đã
-            // bắt exception của Get để ra dòng lỗi (§3), còn exception của Set thì DebugRegistry.Run
-            // bắt và đẩy ra dòng kết quả.
+            // property đang ném, và `Set` nuốt lỗi thì người dùng tưởng đã ghi xong. Renderer bắt
+            // exception của Get để ra dòng lỗi, còn exception của Set thì DebugRegistry.Run bắt.
             if (childAddress != null)
             {
-                // Đọc node.Address (không phải childAddress đã capture): test đổi Address sau khi
-                // dựng node phải đổi luôn chỗ Get/Set trỏ tới — đúng như doc comment ở trên hứa
-                // "resolve lại trước mỗi lần đọc/ghi", không phải resolve lại **địa chỉ cũ**.
+                // Lần đọc đầu (renderer dựng row ngay sau đây) đọc từ parent đã resolve cho cả trang:
+                // resolve lại cả chuỗi cho từng row thì gốc `#Type[i]` là một lần quét scene mỗi row, gốc
+                // `@path` là một lần gọi getter của game mỗi row. Lần đọc sau (mở trang con, copy) resolve
+                // lại theo node.Address.
+                var fresh = true;
                 node.Get = () =>
                 {
-                    if (!Address.TryResolve(node.Address, out var fresh, out var error)) throw new Exception(error);
-                    return fresh.Value;
+                    if (fresh)
+                    {
+                        fresh = false;
+                        return Read(parent, name);
+                    }
+                    if (!Address.TryResolve(node.Address, out var resolved, out var error)) throw new Exception(error);
+                    return resolved.Value;
                 };
                 node.Set = Writable(parent, name)
                     ? value =>
@@ -301,7 +321,14 @@ namespace Hlight.Debug.Hub
             if (member.IsDefined(typeof(CompilerGeneratedAttribute), false)) return true;
             if (member.IsDefined(typeof(ObsoleteAttribute), true)) return true;
             if (member.Name.Contains("k__BackingField")) return true;
-            return member is FieldInfo && member.Name.StartsWith("m_", StringComparison.Ordinal);
+            // Explicit interface member (`System.IAsyncResult.AsyncWaitHandle`): tên có '.' nên address
+            // của nó không bao giờ resolve được — mở, copy, ghim đều lỗi. Cùng luật TryIndexer.
+            if (member.Name.IndexOf('.') >= 0) return true;
+            // Chỉ `m_*` của engine/.NET (m_CachedPtr, Int32.m_value): field của game theo quy ước `m_`
+            // vẫn là dữ liệu thật.
+            if (member is not FieldInfo || !member.Name.StartsWith("m_", StringComparison.Ordinal)) return false;
+            var ns = member.DeclaringType?.Namespace ?? string.Empty;
+            return ns.StartsWith("UnityEngine", StringComparison.Ordinal) || ns.StartsWith("System", StringComparison.Ordinal);
         }
 
         private static bool Writable(Cursor parent, string name) => Address.CanWrite(parent, name);

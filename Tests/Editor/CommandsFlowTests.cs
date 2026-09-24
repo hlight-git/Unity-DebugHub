@@ -18,8 +18,8 @@ namespace Hlight.Debug.Hub.Tests
     {
         private const string PREFAB_PATH = "Packages/com.hlight.debug-hub/Prefabs/DebugHub.prefab";
         private const string LAST_KEY = "DebugHub.LastCommand";
-        /// 96 px ở canvas rộng 1080 ≈ 44 pt — đúng ngưỡng chạm tối thiểu, không xuống dưới.
-        private const float ROW_HEIGHT = 96f;
+        /// 132 units ở canvas rộng 1080 tương đương 44 px tại viewport rộng 360.
+        private const float ROW_HEIGHT = 132f;
 
         private static int lastInt;
         private static bool noArgCalled;
@@ -95,10 +95,9 @@ namespace Hlight.Debug.Hub.Tests
                 "row phải có description ở dòng thứ hai. Rows: " + string.Join(" | ", labels));
         }
 
-        /// Số lượng command nằm ở cột phụ căn phải, không ghép vào tên (tên dài ngắn khác nhau thì
-        /// số trôi theo, dò bằng mắt rất mệt).
+        /// Số lượng tách khỏi tên, nằm dưới nhãn để giữ đủ chiều rộng trên mobile.
         [Test]
-        public void FolderRow_ShowsCountInRightAlignedColumn()
+        public void FolderRow_ShowsCountOnTheSameLine()
         {
             panel.Show(CommandsPage.Root());
 
@@ -107,7 +106,38 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual("flowtest", row.label.text, "tên thư mục không được kèm số");
             Assert.IsNotNull(row.detail, "row nav phải có cột chữ phụ");
             Assert.AreEqual("4", row.detail.text);
-            Assert.AreEqual(TextAlignmentOptions.Right, row.detail.alignment);
+            Assert.AreEqual(TextAlignmentOptions.MidlineRight, row.detail.alignment);
+            var labelCorners = new Vector3[4];
+            var detailCorners = new Vector3[4];
+            row.label.rectTransform.GetWorldCorners(labelCorners);
+            row.detail.rectTransform.GetWorldCorners(detailCorners);
+            Assert.Greater(detailCorners[2].y, labelCorners[0].y);
+            Assert.LessOrEqual(labelCorners[2].x, detailCorners[0].x);
+        }
+
+        [Test]
+        public void RootCategoryStar_IsRaycastable_AndMovesCategoryToFavorites()
+        {
+            const string key = "DebugHub.CommandCategoryFavorites";
+            var backup = PlayerPrefs.GetString(key, string.Empty);
+            PlayerPrefs.DeleteKey(key);
+            try
+            {
+                panel.Show(CommandsPage.Root());
+                var row = TestPanel.Rows(panel).First(r => r.label.text == "flowtest");
+                Assert.IsTrue(row.more.gameObject.activeSelf);
+                Assert.IsTrue(row.more.targetGraphic.enabled);
+                Assert.IsTrue(row.more.targetGraphic.raycastTarget);
+
+                row.more.onClick.Invoke();
+
+                Assert.IsTrue(CommandCategoryFavorites.Contains("flowtest"));
+                Assert.IsTrue(TestPanel.LabelsOf(panel).Any(label => label.Contains("Yêu thích")));
+            }
+            finally
+            {
+                PlayerPrefs.SetString(key, backup);
+            }
         }
 
         /// Switch tắt mà không có núm thì chỉ là một thanh trống, nhìn không ra là switch.
@@ -208,7 +238,7 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(TMP_InputField.ContentType.IntegerNumber, input.contentType);
 
             input.text = "7";
-            TestPanel.ClickRowContaining(panel, "Run");
+            TestPanel.ClickRowContaining(panel, "Chạy");
 
             Assert.AreEqual(7, lastInt);
         }
@@ -249,7 +279,7 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual("7", content.GetComponentsInChildren<TMP_InputField>(false).Single().text,
                 "typed value must survive the trip to the choice page");
 
-            TestPanel.ClickRowContaining(panel, "Run");
+            TestPanel.ClickRowContaining(panel, "Chạy");
             Assert.AreEqual(7, lastMixedAmount);
             Assert.AreEqual(LogType.Exception, lastMixedType);
         }
@@ -479,6 +509,25 @@ namespace Hlight.Debug.Hub.Tests
             var title = panel.transform.Find("Window/Header/Title").GetComponent<TMP_Text>();
             Assert.AreEqual("y", title.text,
                 "nhãn '(1 args)' chỉ ở trên row, không được rò vào tiêu đề trang params");
+        }
+
+        /// Trang chọn enum tự back sau khi chọn — nhưng node có Confirms() vừa push trang xác nhận,
+        /// back mù là gỡ luôn trang đó và giá trị không bao giờ được gán.
+        [Test]
+        public void ChoosingAnEnumOnAConfirmingValue_StillAsksBeforeApplying()
+        {
+            var level = LogType.Log;
+            Track(DebugHub.AddValue(null, "choicetest.level", "d", () => level, v => level = v).Confirms());
+            panel.ShowFromRoot(CommandsPage.Root());
+            TestPanel.ClickRowContaining(panel, "choicetest");
+            TestPanel.ClickRowContaining(panel, "level");
+            TestPanel.ClickRowContaining(panel, "Warning");
+
+            Assert.AreEqual(LogType.Log, level, "phải hỏi lại trước khi gán");
+            Assert.IsTrue(TestPanel.LabelsOf(panel).Exists(l => l.StartsWith("Huỷ")), "trang xác nhận phải còn đó");
+
+            TestPanel.ClickRowContaining(panel, "Chạy");
+            Assert.AreEqual(LogType.Warning, level);
         }
     }
 }

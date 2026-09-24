@@ -26,10 +26,12 @@ namespace Hlight.Debug.Hub
 
         private Color normalColor;
         private Coroutine hide;
+        private float baseBottom;
 
         private void Awake()
         {
             normalColor = label.color;
+            baseBottom = ((RectTransform)transform).anchoredPosition.y;
             button.onClick.AddListener(() => Clicked?.Invoke());
         }
 
@@ -44,9 +46,9 @@ namespace Hlight.Debug.Hub
             // SetActive trước khi chạm field: prefab để object này tắt nên Awake chỉ chạy ở đây,
             // và StartCoroutine cũng chỉ chạy được khi object đang bật.
             gameObject.SetActive(true);
+            PositionAboveSafeArea();
 
-            if (characterLimit > 0 && text.Length > characterLimit) text = text.Substring(0, characterLimit) + "…";
-            label.text = text;
+            label.text = Truncate(text, characterLimit);
             label.color = error ? ErrorColor : normalColor;
 
             if (hide != null) StopCoroutine(hide);
@@ -56,12 +58,36 @@ namespace Hlight.Debug.Hub
             if (Application.isPlaying && duration > 0f) hide = StartCoroutine(HideAfterDuration());
         }
 
+        /// Cắt ở giới hạn nhưng không cắt giữa một tag `<…>` (lỗi được tô bằng `<color>`): nửa tag hiện ra
+        /// thành chữ rác. Tag mở mà mất tag đóng thì TMP vẫn hiện đúng.
+        internal static string Truncate(string text, int limit)
+        {
+            if (limit <= 0 || text.Length <= limit) return text;
+            var cut = limit;
+            var open = text.LastIndexOf('<', cut - 1);
+            if (open >= 0 && text.IndexOf('>', open) >= cut) cut = open;
+            if (cut > 0 && char.IsHighSurrogate(text[cut - 1])) cut--;
+            return text.Substring(0, cut) + "…";
+        }
+
         public void Hide()
         {
             if (hide != null) StopCoroutine(hide);
             hide = null;
             gameObject.SetActive(false);
         }
+
+        private void PositionAboveSafeArea()
+        {
+            var rect = (RectTransform)transform;
+            var canvas = GetComponentInParent<Canvas>();
+            var canvasHeight = canvas ? ((RectTransform)canvas.transform).rect.height : Screen.height;
+            rect.anchoredPosition = new Vector2(rect.anchoredPosition.x,
+                baseBottom + SafeBottomInset(canvasHeight, Screen.height, Screen.safeArea.yMin));
+        }
+
+        internal static float SafeBottomInset(float canvasHeight, float screenHeight, float safeAreaYMin) =>
+            safeAreaYMin / Mathf.Max(1f, screenHeight) * canvasHeight;
 
         private IEnumerator HideAfterDuration()
         {

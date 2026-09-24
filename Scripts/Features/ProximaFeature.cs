@@ -1,65 +1,67 @@
+using System;
 using UnityEngine;
+using Object = UnityEngine.Object;
 
 namespace Hlight.Debug.Hub
 {
-    /// Bọc Proxima Inspector. Không cần MonoBehaviour: chỉ tạo một GameObject rồi bật/tắt canvas của nó.
-    /// Toàn bộ phần phụ thuộc Proxima nằm sau define PROXIMA, project không có SDK thì Supported = false
-    /// và root page không hiện toggle.
-    public class ProximaFeature
+    /// Proxima Inspector như một plugin bật/tắt. Tìm bằng tên nên package không tham chiếu Proxima:
+    /// project không cài thì Supported = false và không có row.
+    ///
+    /// Tắt = Destroy cả container. Chỉ ẩn canvas thì server vẫn chạy, máy vẫn mở cho người cùng mạng.
+    internal sealed class ProximaFeature
     {
-        private readonly string password;
+        // ponytail: tên assembly-qualified, tra thẳng không quét domain — chạy lúc boot trên mọi máy.
+        // Stripping Medium/High có thể strip type chỉ được gọi qua reflection; lúc đó thêm link.xml qua
+        // IUnityLinkerProcessor.
+        private static readonly Type Inspector = Type.GetType("Proxima.ProximaInspector, Proxima");
 
-        public ProximaFeature(string password)
-        {
-            this.password = password;
-        }
+        private GameObject container;
 
-#if PROXIMA
-        private Canvas canvas;
+        public static bool Supported => Inspector != null;
 
-        public bool Supported => true;
+        /// Mật khẩu kết nối, mới mỗi phiên: điều khiển máy từ xa thì phải đang nhìn thấy máy.
+        public string Pin { get; } = new System.Random().Next(100000, 1000000).ToString();
 
         public bool Enabled
         {
-            get => canvas && canvas.enabled;
+            get => container;
             set
             {
-                if (canvas)
+                if (value == Enabled) return;
+                if (!value)
                 {
-                    canvas.enabled = value;
+                    Object.Destroy(container);
+                    container = null;
                     return;
                 }
-                if (!value) return;
 
-                // Đăng ký command trước khi Run(): Proxima publish danh sách command lúc chạy,
-                // đăng ký sau thì lệnh exec không xuất hiện ở phía remote.
-                Proxima.ProximaInspector.RegisterCommands<ProximaFeature>();
-
-                var container = new GameObject("ProximaContainer");
-                var inspector = container.AddComponent<Proxima.ProximaInspector>();
-                inspector.DisplayName = Application.productName;
-                inspector.Password = password;
-                inspector.InstantiateConnectUI = true;
-                inspector.Run();
-                canvas = container.GetComponentInChildren<Canvas>();
+                container = new GameObject("ProximaContainer");
+                Object.DontDestroyOnLoad(container);
+                try
+                {
+                    var inspector = container.AddComponent(Inspector);
+                    Set(inspector, "DisplayName", Application.productName);
+                    Set(inspector, "Password", Pin);
+                    Set(inspector, "InstantiateConnectUI", true);
+                    Inspector.GetMethod("Run", Type.EmptyTypes).Invoke(inspector, null);
+                }
+                catch
+                {
+                    // Member bị đổi tên/strip: container còn sống thì Enabled báo bật mà không có server nào.
+                    Object.Destroy(container);
+                    container = null;
+                    throw;
+                }
             }
         }
 
-        /// Chạy qua registry của hub, không phải của IDC: cheat không còn đăng ký vào IDC nên
-        /// DebugLogConsole.ExecuteCommand ở đây sẽ không thấy command nào của game.
-        [Proxima.ProximaCommand("Custom", "exec")]
-        public static void ExecuteCommandInDebugConsole(string command)
+        private static void Set(object target, string name, object value)
         {
-            DebugHub.Execute(command);
-        }
-#else
-        public bool Supported => false;
+            var property = Inspector.GetProperty(name);
+            if (property != null) { property.SetValue(target, value); return; }
 
-        public bool Enabled
-        {
-            get => false;
-            set { }
+            var field = Inspector.GetField(name) ?? throw new MissingMemberException(Inspector.FullName, name);
+            field.SetValue(target, value);
         }
-#endif
     }
 }

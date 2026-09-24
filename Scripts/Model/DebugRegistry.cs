@@ -9,12 +9,11 @@ namespace Hlight.Debug.Hub
 {
     /// Storage node của hub. IDC ở lại làm log window và parser giá trị; cái gì hiện lên panel
     /// thì hub tự giữ để có description, hình thái, owner — thứ ConsoleMethodInfo không chứa được.
-    public static class DebugRegistry
+    internal static class DebugRegistry
     {
         private const string LAST_KEY = "DebugHub.LastCommand";
-        private const string ERROR_COLOR = "#E5484D";
 
-        public sealed class Entry
+        internal sealed class Entry
         {
             public string Path;          // nguyên văn lúc đăng ký, để hiển thị
             public string Lookup;        // ToLowerInvariant, để tra cứu
@@ -87,17 +86,24 @@ namespace Hlight.Debug.Hub
                 if (!sameShape && !exclusive) continue;
 
                 // LogError chứ không throw: một cheat không có quyền làm sập game. Vẫn trả node
-                // hợp lệ (chưa đăng ký) để .Stays()/.Defaults() nối tiếp không NRE.
+                // (chưa đăng ký) để .Stays() nối tiếp không NRE; bỏ Key để .Defaults() không ghi đè
+                // tham số của node đang giữ đúng key đó.
                 UnityEngine.Debug.LogError($"[DebugHub] '{path}' đụng một node đã đăng ký " +
                                            $"({entry.Node.Key} vs {node.Key}). Bỏ qua lần đăng ký này.");
+                node.Key = null;
                 return node;
             }
 
-            // Địa chỉ `@path` của ValueNode đăng ký: nhờ nó mà nút … trên một row cheat watch được
-            // (§9.4). Không gán ở đây thì `@economy.coin` chỉ resolve được khi gõ tay ở Execute.
+            // Địa chỉ `@path` của ValueNode đăng ký: nhờ nó mà nút … trên một row cheat ghim được.
+            // Không gán ở đây thì `@economy.coin` chỉ resolve được khi gõ tay.
             if (node is ValueNode registered) registered.Address = "@" + lookup;
 
-            entries.Add(new Entry { Path = path, Lookup = lookup, Node = node, Owner = owner, Owned = owner });
+            // ReferenceEquals chứ không `owner` (bool): owner đã Destroy thì `(bool)owner` = false, node
+            // bị coi là "không có owner" và sống mãi.
+            entries.Add(new Entry
+            {
+                Path = path, Lookup = lookup, Node = node, Owner = owner, Owned = !ReferenceEquals(owner, null),
+            });
             return node;
         }
 
@@ -228,7 +234,12 @@ namespace Hlight.Debug.Hub
         {
             if (values == null || values.Length == 0)
             {
-                message = DebugValues.ToText(value.Get());
+                try { message = DebugValues.ToText(value.Get()); }
+                catch (Exception exception)
+                {
+                    message = exception.Unwrap().Message;
+                    return false;
+                }
                 return true;
             }
             if (value.Set == null)
@@ -253,14 +264,24 @@ namespace Hlight.Debug.Hub
             {
                 if (captured.Length > 0) captured.Append('\n');
                 if (type == LogType.Log || type == LogType.Warning) captured.Append(condition);
-                else captured.Append("<color=").Append(ERROR_COLOR).Append('>').Append(condition).Append("</color>");
+                else captured.Append("<color=").Append(Palette.BAD).Append('>').Append(condition).Append("</color>");
             };
+
+            // Build tắt log của Unity (com.hlight.logging dưới PRODUCTION) thì không có log nào để bắt —
+            // bật tạm trong lúc lệnh chạy, xong trả lại như cũ.
+            var logger = UnityEngine.Debug.unityLogger;
+            var logEnabled = logger.logEnabled;
+            logger.logEnabled = true;
 
             Exception failure = null;
             Application.logMessageReceived += capture;
             try { run(); }
-            catch (Exception exception) { failure = exception.InnerException ?? exception; }
-            finally { Application.logMessageReceived -= capture; }
+            catch (Exception exception) { failure = exception.Unwrap(); }
+            finally
+            {
+                Application.logMessageReceived -= capture;
+                logger.logEnabled = logEnabled;
+            }
 
             if (failure != null)
             {
@@ -299,8 +320,8 @@ namespace Hlight.Debug.Hub
         /// thì nhãn của nó đứng im tới lần bật/tắt sau.
         internal static event Action LastCommandChanged;
 
-        /// Chạy bằng một dòng lệnh: "level.goto 5". Đường cho Proxima (exec từ xa) và cho ô nhập
-        /// lệnh của console. Tách tham số bằng FetchArgumentsFromCommand nên quote xử lý y như console.
+        /// Chạy bằng một dòng lệnh: "level.goto 5". Đường cho nút repeat và ô nhập lệnh của console.
+        /// Tách tham số bằng FetchArgumentsFromCommand nên quote xử lý y như console.
         internal static bool Execute(string line, out string message)
         {
             var values = ArgumentsOf(line);
@@ -315,8 +336,24 @@ namespace Hlight.Debug.Hub
                 return false;
             }
 
+            return RunEntry(entry, values, out message);
+        }
+
+        /// Một đường chạy duy nhất cho node đã đăng ký — panel, Execute và nút repeat đều qua đây nên
+        /// luật ghi lệnh cuối chỉ có một bản: ActionNode chạy xong là ghi (kể cả 0 tham số), ValueNode
+        /// chỉ ghi khi gán, đọc thì không.
+        internal static bool RunEntry(Entry entry, string[] values, out string message)
+        {
+            // Trang Params/Xác nhận giữ entry qua lần đóng panel; owner bị Destroy (đổi scene) trong lúc
+            // đó thì delegate trỏ vào object đã chết — ném MissingReference, hoặc tệ hơn, ghi vào state
+            // của scope cũ rồi báo thành công.
+            if (!entry.Alive)
+            {
+                message = "command đã bị gỡ (owner không còn).";
+                return false;
+            }
             var ok = Run(entry.Node, values, out message);
-            if (ok && values.Length > 0) RecordParsed(entry, values);
+            if (ok && (entry.Node is ActionNode || values.Length > 0)) Record(entry, values);
             return ok;
         }
 
@@ -359,7 +396,9 @@ namespace Hlight.Debug.Hub
             return arguments.Count > 0 ? arguments[0] : string.Empty;
         }
 
-        private static void RecordParsed(Entry entry, string[] values)
+        /// Parse lại đúng như lúc chạy (có `$var`) rồi mới mã hoá: reference thì RecordLastCommand xoá bản
+        /// lưu thay vì để nút repeat trỏ vào lệnh trước đó.
+        private static void Record(Entry entry, string[] values)
         {
             var types = entry.Node is ActionNode action
                 ? Array.ConvertAll(action.Parameters, p => p.Type)
@@ -367,7 +406,9 @@ namespace Hlight.Debug.Hub
             var parsed = new object[values.Length];
             for (var i = 0; i < values.Length; i++)
             {
-                if (!DebugValues.TryParse(values[i], types[i], out parsed[i], out _)) return;
+                if (DebugValues.TryParse(values[i], types[i], out parsed[i], out _, allowVars: true)) continue;
+                ClearLastCommand();
+                return;
             }
             RecordLastCommand(entry.Path, entry.Node, parsed);
         }

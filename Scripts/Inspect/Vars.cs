@@ -11,7 +11,7 @@ namespace Hlight.Debug.Hub
     /// truyền tham số generic.
     ///
     /// Chỉ nằm trong RAM vì nó giữ object sống.
-    public static class Vars
+    internal static class Vars
     {
         private static readonly Dictionary<string, object> bound = new();
 

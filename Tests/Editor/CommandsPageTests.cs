@@ -60,23 +60,7 @@ namespace Hlight.Debug.Hub.Tests
             StringAssert.Contains("(2 args)", CommandsPage.LabelOf(two, siblings));
         }
 
-        [Test]
-        public void Shorten_CutsLongDescriptionAtWordBoundary()
-        {
-            var description = new string('a', 40) + " " + new string('b', 80);
 
-            var shortened = CommandsPage.Shorten(description);
-
-            Assert.Less(shortened.Length, description.Length);
-            StringAssert.EndsWith("…", shortened);
-            Assert.IsFalse(shortened.Contains(new string('b', 80)), "phần dư phải bị cắt");
-        }
-
-        [Test]
-        public void Shorten_LeavesShortDescriptionAlone()
-        {
-            Assert.AreEqual(DESCRIPTION, CommandsPage.Shorten(DESCRIPTION));
-        }
 
         [Test]
         public void Contains_MatchesOnlyNodesUnderPrefixWithSegmentLeft()

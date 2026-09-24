@@ -1,4 +1,6 @@
+using System;
 using System.Collections;
+using System.Reflection;
 using IngameDebugConsole;
 using UnityEngine;
 using UnityEngine.UI;
@@ -14,16 +16,15 @@ namespace Hlight.Debug.Hub
 
         private Canvas inGameDebugConsoleCanvas;
 
-        /// Đẩy vào từ DebugHub.Awake() (chạy trước nhờ DefaultExecutionOrder(-100)): Proxima dùng
-        /// chung password với xác thực hub nên DebugHub vẫn là nơi khởi tạo, console chỉ đăng ký command.
-        internal ProximaFeature proxima;
-
         /// Console đang hiện hay không. Lần bật đầu tiên mới instantiate prefab console.
         public bool Enabled
         {
             get => inGameDebugConsoleCanvas && inGameDebugConsoleCanvas.enabled;
             set
             {
+                // Build tắt log của Unity (com.hlight.logging dưới PRODUCTION) thì cửa sổ log trống trơn.
+                // ponytail: bật lại cho hết phiên, không tắt lại khi đóng — chỉ máy tester mới tới được đây.
+                if (value) UnityEngine.Debug.unityLogger.logEnabled = true;
                 if (inGameDebugConsoleCanvas)
                 {
                     inGameDebugConsoleCanvas.enabled = value;
@@ -34,7 +35,7 @@ namespace Hlight.Debug.Hub
                 var prefab = Resources.Load<Canvas>(resourcePath);
                 if (prefab == null)
                 {
-                    // Ví dụ khi build PRODUCTION: RenameFolderOnBuild đã đổi tên folder Resources.
+                    // Ví dụ khi build có DISABLE_DEBUG_HUB: RenameFolderOnBuild đã đổi tên folder Resources.
                     UnityEngine.Debug.LogError($"Console prefab not found in Resources at \"{resourcePath}\".");
                     return;
                 }
@@ -54,12 +55,14 @@ namespace Hlight.Debug.Hub
             if (AutoEnable) Enabled = true;
         }
 
-        private void Awake()
+        /// DebugHub gọi sau khi chắc mình là bản duy nhất — xem DebugHub.Awake.
+        internal void Initialize()
         {
             // Command duy nhất còn đăng ký vào IDC: cầu để ô nhập lệnh của console vẫn chạy được
             // command của hub sau khi hub thôi dùng registry của IDC. VD: hub "level.goto 5".
+            // Overload không có `out` tự log lỗi — gõ sai trong console phải thấy vì sao.
             DebugLogConsole.AddCommand<string>("hub", "Chạy một command của Debug Hub, VD: hub \"level.goto 5\".",
-                line => DebugHub.Execute(line, out _));
+                line => DebugHub.Execute(line));
 
             // Đọc/ghi dữ liệu thì Stays(): kết quả hiện ở dòng kết quả, người ta còn tra tiếp chứ
             // không phải chạy một lần rồi ra nhìn game.
@@ -79,20 +82,34 @@ namespace Hlight.Debug.Hub
             DebugHub.Add<float, float>(this, "time.skip", "Tua nhanh sec giây với time scale speed.", FastForward)
                 .Defaults("1", "100");
 
-            DebugHub.Notes.Add("Inspect nằm ở nút Adv: Types/Instances để mở object, … trên một dòng để Watch hoặc lưu $var.");
+            DebugHub.Notes.Add("Nút công cụ ở Commands gốc: Objects xem mục đã ghim, Duyệt để tìm type/instance; " +
+                               "nút … trên một dòng để ghim hoặc lưu vào $biến.");
 
-            // Debugger của SDK là UI riêng: hub còn hiện thì che mất, phải bấm được vào nó.
-#if MAX_SDK
-            DebugHub.Add(this, "sdk.max", "Mở mediation debugger của MAX.", ShowMaxDebugger).HidesHub();
-#endif
-#if USE_ADMOB
-            DebugHub.Add(this, "sdk.admob", "Mở ad inspector của AdMob.", ShowAdMobDebugger).HidesHub();
-#endif
+            // Debugger của SDK là UI riêng: hub còn hiện thì che mất, phải bấm được vào nó. Tra bằng tên nên
+            // package không tham chiếu SDK nào — project không cài SDK đó thì không có row. FlattenHierarchy vì
+            // MaxSdk khai method static ở lớp cha theo platform (MaxSdkUnityEditor/Android/iOS).
+            const BindingFlags STATIC = BindingFlags.Public | BindingFlags.Static | BindingFlags.FlattenHierarchy;
+            var maxDebugger = Type.GetType("MaxSdk, MaxSdk.Scripts")
+                ?.GetMethod("ShowMediationDebugger", STATIC, null, Type.EmptyTypes, null);
+            if (maxDebugger != null)
+                DebugHub.Add(this, "sdk.max", "Mở mediation debugger của MAX.", () => maxDebugger.Invoke(null, null))
+                    .HidesHub();
+
+            var adInspector = Array.Find(
+                Type.GetType("GoogleMobileAds.Api.MobileAds, GoogleMobileAds")?.GetMethods(STATIC) ?? Array.Empty<MethodInfo>(),
+                method => method.Name == "OpenAdInspector" && method.GetParameters().Length == 1);
+            if (adInspector != null)
+                DebugHub.Add(this, "sdk.admob", "Mở ad inspector của AdMob.",
+                    () => adInspector.Invoke(null, new object[] { AdInspectorClosed })).HidesHub();
 
             DebugHub.AddValue(this, "console.show", "Hiện cửa sổ log.", () => Enabled, value => Enabled = value);
             DebugHub.AddValue(this, "console.auto", "Tự bật console ở lần chạy sau.", () => AutoEnable, value => AutoEnable = value);
-            if (proxima.Supported)
-                DebugHub.AddValue(this, "console.proxima", "Bật Proxima Inspector.", () => proxima.Enabled, v => proxima.Enabled = v);
+            if (ProximaFeature.Supported)
+            {
+                var proxima = new ProximaFeature();
+                DebugHub.AddValue(this, "console.proxima", $"Bật Proxima Inspector. PIN kết nối: {proxima.Pin}",
+                    () => proxima.Enabled, v => proxima.Enabled = v);
+            }
 
             DebugHub.AddValue(this, "hub.repeat", "Nút chạy lại lệnh cuối.", () => repeat.Enabled, v => repeat.Enabled = v);
             DebugHub.Add(this, "hub.hide", "Ẩn hub để nhìn game — gọi lại bằng lắc / gõ 4 góc.", () => { }).HidesHub();
@@ -118,7 +135,7 @@ namespace Hlight.Debug.Hub
             }
             else
             {
-                UnityEngine.Debug.LogError("Key doesn't exist!");
+                UnityEngine.Debug.LogError($"Không có key \"{key}\".");
             }
         }
 
@@ -131,75 +148,52 @@ namespace Hlight.Debug.Hub
         void SetPlayerPrefsValue(string key, int value)
         {
             PlayerPrefs.SetInt(key, value);
-            UnityEngine.Debug.Log($"PlayerPrefs int \"{key}\": - {value}");
+            UnityEngine.Debug.Log($"PlayerPrefs int \"{key}\": {value}");
         }
 
         void SetPlayerPrefsValue(string key, float value)
         {
             PlayerPrefs.SetFloat(key, value);
-            UnityEngine.Debug.Log($"PlayerPrefs float \"{key}\": - {value}");
+            UnityEngine.Debug.Log($"PlayerPrefs float \"{key}\": {value}");
         }
-        
-        
-        
+
         void SetTimeScale(float speed)
         {
             Time.timeScale = speed;
-            UnityEngine.Debug.Log("Current time scale: " + Time.timeScale);
+            UnityEngine.Debug.Log("Time scale: " + Time.timeScale);
         }
 
-        Coroutine timeSkip;
+        private Coroutine timeSkip;
+        private float timeScaleBeforeSkip;
+
+        /// Tua sec giây game ở time scale speed, xong trả về time scale lúc trước. Chờ bằng giờ thật: game
+        /// pause giữa chừng thì giờ game đứng im và time scale kẹt ở speed mãi.
         void FastForward(float sec, float speed)
         {
-            if (timeSkip != null)
-            {
-                StopCoroutine(timeSkip);
-                timeSkip = null;
-            }
+            if (timeSkip != null) StopCoroutine(timeSkip);
+            else timeScaleBeforeSkip = Time.timeScale;
 
             Time.timeScale = speed;
-
-            timeSkip = StartCoroutine(Routine(sec, () =>
-            {
-                Time.timeScale = 1;
-                timeSkip = null;
-                UnityEngine.Debug.Log($"Skipped {sec}s!");
-            }));
-            return;
-            
-            IEnumerator Routine(float sec, System.Action callback)
-            {
-                yield return new WaitForSeconds(sec);
-                callback?.Invoke();
-            }
+            timeSkip = StartCoroutine(RestoreTimeScale(sec / Mathf.Max(Time.timeScale, 0.01f), sec));
         }
+
+        private IEnumerator RestoreTimeScale(float realSeconds, float skipped)
+        {
+            yield return new WaitForSecondsRealtime(realSeconds);
+            Time.timeScale = timeScaleBeforeSkip;
+            timeSkip = null;
+            UnityEngine.Debug.Log($"Đã tua {skipped}s.");
+        }
+
+        /// SDK đòi Action&lt;AdInspectorError&gt;; Action&lt;object&gt; vào được nhờ Action contravariant, nên khỏi
+        /// tham chiếu kiểu lỗi của SDK.
+        private static readonly Action<object> AdInspectorClosed = error =>
+        {
+            if (error == null) return;
+            var message = error.GetType().GetMethod("GetMessage", Type.EmptyTypes)?.Invoke(error, null) ?? error;
+            UnityEngine.Debug.LogError($"Ad Inspector: {message}");
+        };
 
         #endregion
-        
-        #if MAX_SDK
-        public void ShowMaxDebugger()
-        {
-            MaxSdk.ShowMediationDebugger();
-        }
-        #endif
-        
-        #if USE_ADMOB
-        public void ShowAdMobDebugger()
-        {
-            GoogleMobileAds.Api.MobileAds.OpenAdInspector(err =>
-                {
-                    if (err != null)
-                    {
-                        UnityEngine.Debug.LogError(
-                            $"Ad Inspector failed: {err.GetMessage()} " +
-                            $"Code: {err.GetCode()}"
-                        );
-                        return;
-                    }
-
-                    UnityEngine.Debug.Log("Ad Inspector closed");
-                });
-        }
-        #endif
     }
 }

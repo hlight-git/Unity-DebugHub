@@ -10,7 +10,7 @@ namespace Hlight.Debug.Hub.Tests
         {
             var callingThread = Thread.CurrentThread.ManagedThreadId;
             var workerThread = 0;
-            var suggester = new Suggester<string>(q => { workerThread = Thread.CurrentThread.ManagedThreadId; return new[] { q }; }, 0f);
+            var suggester = new Suggester<string>(q => { workerThread = Thread.CurrentThread.ManagedThreadId; return new[] { q }; });
 
             suggester.Request("a");
             WaitFor(() => !suggester.Working);
@@ -21,7 +21,7 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void Results_MatchTheLastQueryThatFinished()
         {
-            var suggester = new Suggester<string>(q => new[] { q.ToUpperInvariant() }, 0f);
+            var suggester = new Suggester<string>(q => new[] { q.ToUpperInvariant() });
 
             suggester.Request("abc");
             WaitFor(() => !suggester.Working);
@@ -38,7 +38,7 @@ namespace Hlight.Debug.Hub.Tests
             {
                 if (q == "slow") gate.Wait(2000);
                 return new[] { q };
-            }, 0f);
+            });
 
             suggester.Request("slow");
             suggester.Request("fast");
@@ -53,7 +53,7 @@ namespace Hlight.Debug.Hub.Tests
         public void RepeatingTheSameQuery_DoesNotRunTheWorkAgain()
         {
             var runs = 0;
-            var suggester = new Suggester<string>(q => { Interlocked.Increment(ref runs); return new[] { q }; }, 0f);
+            var suggester = new Suggester<string>(q => { Interlocked.Increment(ref runs); return new[] { q }; });
 
             suggester.Request("a");
             WaitFor(() => !suggester.Working);
@@ -67,7 +67,9 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void AThrowingWorker_DoesNotEscape_AndLeavesAnEmptyResult()
         {
-            var suggester = new Suggester<string>(q => throw new System.Exception("bùm"), 0f);
+            var suggester = new Suggester<string>(q => throw new System.Exception("bùm"));
+            // Lỗi của worker được log (từ thread nền) — thứ cần kiểm ở đây là nó không thoát ra ngoài.
+            UnityEngine.TestTools.LogAssert.ignoreFailingMessages = true;
 
             Assert.DoesNotThrow(() => suggester.Request("a"));
             WaitFor(() => !suggester.Working);
@@ -78,7 +80,7 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void ResultsAndQuery_AreReadAsOnePiece()
         {
-            var suggester = new Suggester<string>(q => new[] { q.ToUpperInvariant() }, 0f);
+            var suggester = new Suggester<string>(q => new[] { q.ToUpperInvariant() });
             suggester.Request("abc");
             WaitFor(() => !suggester.Working);
 

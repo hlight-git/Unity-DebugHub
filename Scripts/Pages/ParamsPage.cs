@@ -7,7 +7,7 @@ namespace Hlight.Debug.Hub
     /// Giá trị nằm ở DebugRegistry.ArgsByKey chứ không phải trong closure: page được dựng lại mỗi
     /// lần điều hướng (kể cả khi back từ page chọn enum) nên để trong closure là mất cái vừa nhập,
     /// và giữ ở registry thì lần sau vào không phải gõ lại.
-    public static class ParamsPage
+    internal static class ParamsPage
     {
         public static DebugPage For(ActionNode node, Action<DebugNode, string[]> run)
         {
@@ -25,7 +25,7 @@ namespace Hlight.Debug.Hub
                     {
                         values[index] = value;
                         DebugRegistry.StoreArgs(node, values);
-                    });
+                    }, allowVars: true);
                 }
 
                 if (node.Awaitable)
@@ -35,7 +35,16 @@ namespace Hlight.Debug.Hub
                         "Tắt thì chỉ gọi rồi thôi, in ra chính object Task/UniTask.");
                 }
 
-                panel.AddPrimary("Run", () => run(node, values));
+                panel.AddPrimary("Chạy", () =>
+                {
+                    for (var i = 0; i < values.Length; i++)
+                    {
+                        if (DebugValues.TryParse(values[i], node.Parameters[i].Type, out _, out var error, allowVars: true)) continue;
+                        panel.ShowResult($"{node.Parameters[i].Name}: {error}", true);
+                        return;
+                    }
+                    run(node, (string[])values.Clone());
+                });
             }, searchable: false);
         }
     }

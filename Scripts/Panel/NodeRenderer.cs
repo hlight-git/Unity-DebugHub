@@ -10,8 +10,8 @@ namespace Hlight.Debug.Hub
     /// trang member của inspect và trang Watch đều đi qua đây — nếu không, cây quyết định
     /// khó nhất của package sẽ tồn tại hai bản.
     ///
-    /// Xét từ trên xuống theo đúng thứ tự bảng §3 của spec.
-    public static class NodeRenderer
+    /// Xét từ trên xuống theo đúng thứ tự bảng "Row suy từ node" trong README.
+    internal static class NodeRenderer
     {
         /// <paramref name="label"/> ghi đè chữ hiện trên row (mặc định <see cref="DebugNode.Label"/> —
         /// chỉ segment cuối). CommandsPage.SearchAll dùng để hiện full path thay vì tên lá, không thì
@@ -41,11 +41,14 @@ namespace Hlight.Debug.Hub
             {
                 // Getter của Unity ném khá thường (component đã chết, property obsolete).
                 // Một row lỗi tốt hơn là cả trang không dựng được.
-                panel.AddError(label, exception.Message);
+                panel.AddError(label, exception.Unwrap().Message);
                 return;
             }
 
-            if (IsNull(current))
+            // string/int? đang null mà có setter vẫn là ô nhập: null là một giá trị hợp lệ của chúng.
+            var nullIsAValue = node.Set != null &&
+                               (node.Declared == typeof(string) || Nullable.GetUnderlyingType(node.Declared) != null);
+            if (IsNull(current) && !nullIsAValue)
             {
                 // Vẫn dựng row có nút … : một field object đang null chính là chỗ hay cần `Gán`
                 // nhất, và địa chỉ của nó watch được như thường.
@@ -105,7 +108,7 @@ namespace Hlight.Debug.Hub
         private static void RenderText(DebugHubPanel panel, TextNode node)
         {
             var label = panel.AddText(Palette.Wrap(node.Text, node.Style));
-            if (node.Style == TextStyle.Table) label.enableWordWrapping = false;
+            if (node.Style == TextStyle.Table) label.textWrappingMode = TMPro.TextWrappingModes.NoWrap;
         }
 
         internal static DebugPage FolderPage(FolderNode node, Action<DebugNode, string[]> run)
@@ -113,6 +116,18 @@ namespace Hlight.Debug.Hub
             return new DebugPage(node.Label, panel =>
             {
                 foreach (var child in node.Children()) Render(panel, child, run);
+            }, search: (panel, query) =>
+            {
+                var matches = new List<DebugNode>();
+                foreach (var child in node.Children())
+                {
+                    var label = child is TextNode text ? text.Text : child.Label;
+                    if ((!string.IsNullOrEmpty(label) && label.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0) ||
+                        (!string.IsNullOrEmpty(child.Description) && child.Description.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0))
+                        matches.Add(child);
+                }
+                if (matches.Count == 0) panel.AddText("Không có mục nào khớp trong trang này.");
+                else panel.AddPaged(matches, child => Render(panel, child, run));
             }, live: node.Live);
         }
 
@@ -122,15 +137,7 @@ namespace Hlight.Debug.Hub
             {
                 if (!TryCursor(panel, node, out var cursor)) return;
                 RenderMembers(panel, cursor, node.Address);
-
-                if (node.Address != null)
-                {
-                    panel.AddButton(Watches.Contains(node.Address) ? "Đã ghim" : "+ Ghim trang này", () =>
-                    {
-                        if (!Watches.TryAdd(node.Address, out var error)) panel.ShowResult(error, true);
-                        panel.Refresh();
-                    });
-                }
+                if (node.Address != null) AddPinToggle(panel, node.Address);
             },
             search: (panel, query) =>
             {
@@ -145,16 +152,39 @@ namespace Hlight.Debug.Hub
         {
             if (Reflect.IsCollection(cursor.Value))
             {
-                foreach (var child in Reflect.Elements(cursor, address))
-                    Render(panel, child, (n, values) => RunInspect(panel, n, values));
+                RenderElements(panel, cursor, address);
                 return;
             }
 
             foreach (var child in Reflect.Members(cursor, address))
                 Render(panel, child, (n, values) => RunInspect(panel, n, values));
 
+            if (Reflect.IsEnumerable(cursor.Value))
+                panel.AddNavigation("Phần tử", new DebugPage("Phần tử", page => RenderElements(page, cursor, address),
+                    search: (page, query) => Filter(page, Reflect.Elements(cursor, address), query, "Không có phần tử nào khớp.")));
+
             var methods = Reflect.MethodCount(cursor);
             if (methods > 0) panel.AddNavigation("Method", MethodsPage(cursor, address), null, methods.ToString());
+        }
+
+        private static void RenderElements(DebugHubPanel panel, Cursor cursor, string address)
+        {
+            panel.AddPaged(new List<DebugNode>(Reflect.Elements(cursor, address)),
+                child => Render(panel, child, (n, values) => RunInspect(panel, n, values)));
+        }
+
+        /// Ghim hai chiều ở cuối trang member: đã ghim thì bấm là bỏ ghim. Address không ghim được
+        /// (gốc `$`, có gọi method) thì không có nút, thay vì một nút bấm ra lỗi.
+        internal static void AddPinToggle(DebugHubPanel panel, string address)
+        {
+            if (!Watches.CanPin(address)) return;
+            var pinned = Watches.Contains(address);
+            panel.AddButton(pinned ? "Bỏ ghim" : "+ Ghim vào Objects", () =>
+            {
+                if (pinned) Watches.Remove(address);
+                else if (!Watches.TryAdd(address, out var error)) panel.ShowResult(error, true);
+                panel.Refresh();
+            });
         }
 
         /// Phần `search` của một trang member: lọc chính danh sách này, không phải tìm command toàn cục.
@@ -175,8 +205,8 @@ namespace Hlight.Debug.Hub
 
             return new DebugPage("Method", panel =>
             {
-                foreach (var child in Reflect.Methods(Current(), address))
-                    Render(panel, child, (n, values) => RunInspect(panel, n, values));
+                panel.AddPaged(new List<DebugNode>(Reflect.Methods(Current(), address)),
+                    child => Render(panel, child, (n, values) => RunInspect(panel, n, values)));
             },
             search: (panel, query) => Filter(panel, Reflect.Methods(Current(), address), query, "Không có method nào khớp."));
         }
@@ -195,14 +225,14 @@ namespace Hlight.Debug.Hub
 
         private static void Filter(DebugHubPanel panel, IEnumerable<DebugNode> children, string query, string none)
         {
-            var any = false;
+            var matches = new List<DebugNode>();
             foreach (var child in children)
             {
                 if (child.Label == null || child.Label.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0) continue;
-                any = true;
-                Render(panel, child, (n, values) => RunInspect(panel, n, values));
+                matches.Add(child);
             }
-            if (!any) panel.AddText(none);
+            if (matches.Count == 0) panel.AddText(none);
+            else panel.AddPaged(matches, child => Render(panel, child, (n, values) => RunInspect(panel, n, values)));
         }
 
         /// Chạy một node do reflection sinh: không ghi LastCommand (không có path để chạy lại).
@@ -212,9 +242,28 @@ namespace Hlight.Debug.Hub
         /// nuốt lỗi.
         internal static void RunInspect(DebugHubPanel panel, DebugNode node, string[] values)
         {
+            if (node.Confirm)
+            {
+                var snapshot = (string[])values.Clone();
+                panel.Push(new DebugPage(node.Label, page =>
+                {
+                    page.AddText($"Xác nhận: <b>{node.Label} {string.Join(" ", snapshot)}</b>");
+                    page.AddPrimary("Chạy", () => { page.Pop(); RunInspectNow(page, node, snapshot); });
+                    page.AddButton("Huỷ", page.Pop);
+                }, searchable: false));
+                return;
+            }
+            RunInspectNow(panel, node, values);
+        }
+
+        private static void RunInspectNow(DebugHubPanel panel, DebugNode node, string[] values)
+        {
             var ok = DebugRegistry.Run(node, values, out var message);
             if (!ok || (node.ShowsResult && !string.IsNullOrEmpty(message))) panel.ShowResult(message, !ok);
             else panel.HideResult();
+            if (!ok) return;
+            if (node.Dismiss == DismissMode.HideHub) DebugHub.Visible = false;
+            if (node.Dismiss != DismissMode.Stay) panel.Close();
         }
 
         /// Chữ phụ căn phải: đủ để biết bên trong có gì mà không phải mở ra.

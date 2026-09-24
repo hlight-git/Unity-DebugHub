@@ -10,46 +10,69 @@ namespace Hlight.Debug.Hub
     /// thành bộ chọn của `Duyệt` (BrowsePage), và "Ghim" từ đó đẩy address vào đây.
     ///
     /// Khác biệt thật duy nhất giữa hai nguồn: biến `$` chết khi domain reload, nên nó được ghi rõ.
-    public static class ObjectsPage
+    internal static class ObjectsPage
     {
         public static DebugPage Root()
         {
-            return new DebugPage("Objects", panel =>
-            {
-                var scalars = new List<(string Address, ValueNode Node)>();
-                var objects = new List<(string Address, ValueNode Node)>();
-                var broken = new List<(string Address, string Error)>();
-
-                foreach (var address in Watches.All) Sort(address, false, scalars, objects, broken);
-                foreach (var pair in Vars.All) Sort($"${pair.Key}", true, scalars, objects, broken);
-
-                if (scalars.Count == 0 && objects.Count == 0 && broken.Count == 0)
-                    panel.AddText("Chưa ghim gì. Mở `Duyệt` để tìm object, hoặc dùng nút … trên một dòng giá trị.");
-
-                Section(panel, "Giá trị", scalars);
-                Section(panel, "Object", objects);
-
-                foreach (var item in broken)
-                {
-                    panel.AddError(item.Address, item.Error);
-                    var address = item.Address;
-                    panel.AddButton("Gỡ", () => { Drop(address); panel.Refresh(); });
-                }
-
-                panel.AddNavigation("+ Thêm address", ManualPage());
-            }, live: true);
+            return new DebugPage("Objects", panel => Build(panel, string.Empty),
+                search: Build);
         }
 
+        private static void Build(DebugHubPanel panel, string query)
+        {
+            var scalars = new List<(string Address, ValueNode Node)>();
+            var objects = new List<(string Address, ValueNode Node)>();
+            var broken = new List<(string Address, string Error)>();
+
+            foreach (var address in Watches.All)
+                if (Matches(address, query)) Sort(address, false, scalars, objects, broken);
+            foreach (var pair in Vars.All)
+                if (Matches($"${pair.Key}", query)) Sort($"${pair.Key}", true, scalars, objects, broken);
+
+            if (string.IsNullOrEmpty(query))
+            {
+                panel.AddNavigation("Tìm object", BrowsePage.Assemblies(),
+                    "Chọn type hoặc instance, rồi bấm Ghim để đưa vào đây.");
+                panel.AddNavigation("Nhập address…", ManualPage(),
+                    "Dành cho address bạn đã biết; ví dụ #Namespace.Type[0].member");
+            }
+
+            if (scalars.Count == 0 && objects.Count == 0 && broken.Count == 0)
+                panel.AddText(string.IsNullOrEmpty(query)
+                    ? "Chưa có mục đã ghim."
+                    : "Không có object hoặc giá trị nào khớp.");
+
+            Section(panel, "Giá trị", scalars);
+            Section(panel, "Object", objects);
+
+            foreach (var item in broken)
+            {
+                panel.AddError(item.Address, item.Error);
+                var address = item.Address;
+                panel.AddButton("Gỡ", () => { Drop(address); panel.Refresh(); });
+            }
+
+            if (scalars.Count + objects.Count + broken.Count > 0 && string.IsNullOrEmpty(query))
+                panel.AddButton("Làm mới giá trị", panel.Refresh);
+        }
+
+        private static bool Matches(string address, string query) =>
+            address.IndexOf(query, System.StringComparison.OrdinalIgnoreCase) >= 0;
+
         /// Đường thoát cho thứ bộ chọn không tới được: method generic `Ten<$T>(x)`, hay biểu thức cần
-        /// ngoặc lồng (chia bước qua $var).
+        /// ngoặc lồng (chia bước qua $var). Chỉ **mở** — chính hai loại đó không ghim được; address ghim
+        /// được thì trang mở ra có nút ghim ở cuối.
         private static DebugPage ManualPage()
         {
+            var typed = string.Empty;
             return new DebugPage("Address", panel =>
             {
-                var typed = string.Empty;
+                panel.AddText("Nhập đường dẫn đầy đủ. Ví dụ:\n" +
+                    $"<color={Palette.DIM}>#Game.Player[0].inventory</color>\n" +
+                    $"<color={Palette.DIM}>Namespace.StaticType.Member</color>");
                 // onSubmit trùng onChanged: AddField chỉ nối onEndEdit khi có onSubmit — thiếu nó thì
                 // dán xong bấm Mở ngay không qua onValueChanged vẫn đọc `typed` rỗng.
-                panel.AddField("Address", typeof(string), string.Empty, v => typed = v, v => typed = v);
+                panel.AddField("Address", typeof(string), typed, v => typed = v, v => typed = v);
                 panel.AddPrimary("Mở", () =>
                 {
                     if (!Address.TryResolve(typed, out _, out var error)) { panel.ShowResult(error, true); return; }
@@ -67,9 +90,9 @@ namespace Hlight.Debug.Hub
                 return;
             }
 
-            // Lần đọc **đầu tiên** (renderer dựng row ngay sau đây) dùng lại giá trị vừa resolve: trang
-            // Live dựng lại 4 lần/giây, resolve hai lần mỗi nhịp là nhân đôi mọi getter. Lần đọc sau đó
-            // (trang member mở từ row này) resolve lại, không bám bản cũ.
+            // Lần đọc **đầu tiên** (renderer dựng row ngay sau đây) dùng lại giá trị vừa resolve, nên
+            // mỗi lần dựng danh sách chỉ resolve một lần. Lần đọc sau (trang member mở từ row này)
+            // resolve lại, không bám bản cũ.
             //
             // Lỗi phải nổi lên (cùng luật với Reflect.ValueFor): Get nuốt lỗi thì một resolve thất bại
             // hiện thành "null" — không phân biệt được với giá trị thật sự null; Set nuốt lỗi thì người

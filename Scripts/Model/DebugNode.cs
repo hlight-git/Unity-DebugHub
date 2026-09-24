@@ -63,7 +63,7 @@ namespace Hlight.Debug.Hub
         public Func<object> Get;
         public Action<object> Set;
 
-        /// Địa chỉ resolve lại được, cho Watch (Task 17). null = không watch được.
+        /// Địa chỉ resolve lại được, để ghim vào Objects. null = không ghim được.
         public string Address;
     }
 

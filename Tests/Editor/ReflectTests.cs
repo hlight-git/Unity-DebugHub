@@ -59,7 +59,9 @@ namespace Hlight.Debug.Hub.Tests
             Address.TryResolve(root, out var cursor, out _);
             var nodes = Reflect.Members(cursor, root).OfType<ValueNode>().ToList();
 
+            // Lần đọc đầu lấy từ parent đã resolve cho cả trang; lần sau mới resolve lại theo address.
             var gone = nodes.First(n => n.Label == "Number");
+            gone.Get();
             gone.Address = "Khong.Co.Gi";
             Assert.Throws<System.Exception>(() => gone.Get());
         }
@@ -376,9 +378,81 @@ namespace Hlight.Debug.Hub.Tests
             return Reflect.Members(cursor, null).OfType<ValueNode>().ToList();
         }
 
+        private class GenericOverloads
+        {
+            public void Pick(List<int> values) { }
+            public void Pick(List<string> values) { }
+        }
+
+        [Test]
+        public void Methods_PreservesOverloadsWithDifferentGenericArguments()
+        {
+            var nodes = Reflect.Methods(new Cursor(typeof(GenericOverloads), new GenericOverloads(), null), null)
+                .Where(node => node.Label.StartsWith("Pick")).ToArray();
+            Assert.AreEqual(2, nodes.Length);
+            Assert.AreNotEqual(nodes[0].Key, nodes[1].Key);
+        }
+
         private static List<string> NamesOf(object value)
         {
             return NodesOf(value).Select(n => n.Label).ToList();
+        }
+
+        private class OwnPrefix { public int m_Score = 3; }
+
+        [Test]
+        public void Members_KeepGameFieldsThatHappenToStartWithM()
+        {
+            CollectionAssert.Contains(NamesOf(new OwnPrefix()), "m_Score",
+                "chỉ field m_* của engine là con trỏ C++; field của game theo quy ước m_ vẫn phải hiện");
+        }
+
+        [Test]
+        public void Elements_OfAnArray_CanBeWritten()
+        {
+            const string root = "Hlight.Debug.Hub.Tests.AddressFixture.Instance.Numbers";
+            Address.TryResolve(root, out var cursor, out _);
+
+            Reflect.Elements(cursor, root).OfType<ValueNode>().ToList()[1].Set(99);
+
+            Assert.AreEqual(99, AddressFixture.Instance.Numbers[1]);
+        }
+
+        [Test]
+        public void Members_DoNotCloneTheRenderersMaterial()
+        {
+            var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            try
+            {
+                var renderer = go.GetComponent<MeshRenderer>();
+                var shared = renderer.sharedMaterial;
+                var nodes = NodesOf(renderer);
+
+                foreach (var node in nodes)
+                {
+                    try { node.Get(); }
+                    catch (System.Exception) { }
+                }
+
+                Assert.AreSame(shared, renderer.sharedMaterial, "đọc `material` là tạo bản sao gắn vĩnh viễn vào renderer");
+                Assert.Throws<System.Exception>(() => nodes.First(n => n.Label == "material").Get());
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
+
+        /// Dựng trang member rồi hiện nó = một lần resolve address, không phải một lần cho mỗi row.
+        [Test]
+        public void Members_WithAnAddress_ReadFromTheParentResolvedForThePage()
+        {
+            const string root = "Hlight.Debug.Hub.Tests.AddressFixture.Tracked";
+            AddressFixture.TrackedReads = 0;
+            Address.TryResolve(root, out var cursor, out _);
+
+            var nodes = Reflect.Members(cursor, root).OfType<ValueNode>().ToList();
+            foreach (var node in nodes.Where(n => n.Label == "Number" || n.Label == "Name")) node.Get();
+
+            Assert.AreEqual(1, AddressFixture.TrackedReads,
+                "mỗi row resolve lại từ gốc = gốc `#Type[i]` quét scene một lần cho mỗi row");
         }
     }
 }

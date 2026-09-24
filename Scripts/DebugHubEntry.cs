@@ -23,8 +23,12 @@ namespace Hlight.Debug.Hub
 
         private void Awake()
         {
-            button.onClick.AddListener(() => Clicked?.Invoke());
+            button.onClick.AddListener(() =>
+            {
+                if (!floatingBubble.SuppressClick) Clicked?.Invoke();
+            });
             floatingBubble.DragStateChanged += value => button.enabled = !value;
+            floatingBubble.Dismissed += () => DebugHub.Visible = false;
         }
     }
 }

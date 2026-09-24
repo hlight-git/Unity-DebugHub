@@ -4,7 +4,7 @@ using UnityEngine;
 
 namespace Hlight.Debug.Hub.Tests
 {
-    /// Hợp đồng §4 của spec: kiểu nào parse được, kiểu nào có editor tại chỗ, và
+    /// Hợp đồng của DebugValues: kiểu nào parse được, kiểu nào có editor tại chỗ, và
     /// ToText phải quay lại đúng giá trị cũ qua parser của IDC.
     public class DebugValuesTests
     {
@@ -181,6 +181,36 @@ namespace Hlight.Debug.Hub.Tests
             Assert.IsNotNull(parsed);
             Assert.IsInstanceOf<Vector3>(parsed);
         }
+
+        [Test]
+        public void Nullable_ParsesNullOrTheUnderlyingValue()
+        {
+            Assert.IsTrue(DebugValues.IsInlineValue(typeof(int?)));
+            Assert.IsTrue(DebugValues.TryParse(string.Empty, typeof(int?), out var empty, out _));
+            Assert.IsNull(empty);
+            Assert.IsTrue(DebugValues.TryParse("null", typeof(int?), out var none, out _));
+            Assert.IsNull(none);
+            Assert.IsTrue(DebugValues.TryParse("7", typeof(int?), out var seven, out _));
+            Assert.AreEqual(7, seven);
+            Assert.IsFalse(DebugValues.TryParse("x", typeof(int?), out _, out _));
+        }
+
+        [Test]
+        public void Nullable_RoundTripsAsACommandArgument()
+        {
+            Assert.IsTrue(DebugValues.TryToArgument(null, typeof(int?), out var text));
+            Assert.IsTrue(DebugValues.TryParse(DebugLogConsoleUnquote(text), typeof(int?), out var back, out _));
+            Assert.IsNull(back);
+        }
+
+        [Test]
+        public void DoubleDollar_IsALiteralDollar_NotAVariable()
+        {
+            Assert.IsTrue(DebugValues.TryParse("$$100", typeof(string), out var value, out var error, allowVars: true), error);
+            Assert.AreEqual("$100", value);
+        }
+
+        private static string DebugLogConsoleUnquote(string text) => text.Trim('"');
 
         private static void AssertRoundTrip(object value, Type type)
         {

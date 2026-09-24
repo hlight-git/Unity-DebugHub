@@ -9,6 +9,11 @@ namespace Hlight.Debug.Hub
     {
         private const BindingFlags ALL = BindingFlags.Static | BindingFlags.Instance | BindingFlags.NonPublic | BindingFlags.Public;
 
+        /// Chỉ bóc TargetInvocationException — cái vỏ mà Invoke bọc quanh lỗi thật. Bóc mọi
+        /// InnerException là đánh mất chính lỗi được ném mỗi khi nó có cause.
+        public static Exception Unwrap(this Exception exception) =>
+            exception is TargetInvocationException { InnerException: { } inner } ? inner : exception;
+
         /// Method/indexer virtual bị override thì base type và derived type đều "declare" một
         /// MethodInfo riêng cho cùng một slot — GetBaseDefinition() trỏ về cùng khai báo gốc, dùng
         /// để lọc bản ở base type ra, tránh báo "nhiều overload" giả cho một method chỉ bị override.
@@ -57,20 +62,26 @@ namespace Hlight.Debug.Hub
             return null;
         }
 
-        /// GetProperty() không trả về property non-public của class cha, nên phải tự đi lên.
+        /// GetProperty() không trả về property non-public của class cha, nên phải tự đi lên. Chỉ property
+        /// không có tham số: indexer đi đường `[...]`, và GetProperty("Item") ném AmbiguousMatchException
+        /// khi type có nhiều indexer.
         public static PropertyInfo GetPropertyRecursive(this Type type, string name, BindingFlags bindingFlags = ALL)
         {
-            var propertyInfo = type.GetProperty(name, bindingFlags | BindingFlags.DeclaredOnly);
+            var propertyInfo = PlainProperty(type, name, bindingFlags);
             if (propertyInfo != null) return propertyInfo;
             if (type.BaseType != null) return type.BaseType.GetPropertyRecursive(name, bindingFlags);
 
             foreach (var parent in InheritedInterfaces(type))
             {
-                var inherited = parent.GetProperty(name, bindingFlags | BindingFlags.DeclaredOnly);
+                var inherited = PlainProperty(parent, name, bindingFlags);
                 if (inherited != null) return inherited;
             }
             return null;
         }
+
+        private static PropertyInfo PlainProperty(Type type, string name, BindingFlags bindingFlags) =>
+            Array.Find(type.GetProperties(bindingFlags | BindingFlags.DeclaredOnly),
+                property => property.Name == name && property.GetIndexParameters().Length == 0);
 
         /// Interface không có BaseType, member kế thừa của nó nằm ở các interface cha — kể cả member
         /// **static** (kiểu `Zego.IGlobalService&lt;T&gt;.Global` mà `IAdService` kế thừa). Đi bằng

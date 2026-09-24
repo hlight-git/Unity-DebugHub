@@ -80,5 +80,49 @@ namespace Hlight.Debug.Hub.Tests
 
             Assert.IsFalse(TestPanel.SearchButtonOf(panel).gameObject.activeSelf);
         }
+
+        [Test]
+        public void CategorySearch_StaysInsideItsBranch_IncludingDescendants()
+        {
+            registered.Add(DebugHub.Add(null, "scope.coins.add", "needle", () => { }));
+            registered.Add(DebugHub.Add(null, "scope.coins.reset", "needle", () => { }));
+            registered.Add(DebugHub.Add(null, "scope.other.reset", "needle", () => { }));
+            registered.Add(DebugHub.Add(null, "scope.coinsExtra.reset", "needle", () => { }));
+            panel.ShowFromRoot(CommandsPage.Folder(new[] { "scope", "coins" }, "coins"));
+            panel.Query = "needle";
+            var labels = TestPanel.LabelsOf(panel);
+            Assert.AreEqual(2, labels.Count);
+            Assert.IsTrue(labels.TrueForAll(label => label.Contains("scope.coins.")));
+            panel.Query = "other";
+            Assert.IsFalse(TestPanel.LabelsOf(panel).Exists(label => label.Contains("scope.other")));
+        }
+
+        [Test]
+        public void PagesWithoutSearch_DoNotOfferSearchOrFallBackToRegistry()
+        {
+            registered.Add(DebugHub.Add(null, "unexpected.command", "needle", () => { }));
+            panel.ShowFromRoot(new DebugPage("plain", p => p.AddText("local content")));
+            Assert.IsFalse(TestPanel.SearchButtonOf(panel).gameObject.activeSelf);
+            panel.Query = "needle";
+            CollectionAssert.AreEqual(new[] { "local content" }, TestPanel.LabelsOf(panel));
+            panel.ShowFromRoot(AdvancedPage.Root());
+            Assert.IsFalse(TestPanel.SearchButtonOf(panel).gameObject.activeSelf);
+            panel.ShowFromRoot(HelpPage.Build());
+            Assert.IsFalse(TestPanel.SearchButtonOf(panel).gameObject.activeSelf);
+        }
+
+        [Test]
+        public void DynamicFolderSearch_FiltersItsChildren_AndKeepsItsRunCallback()
+        {
+            var ran = false;
+            var child = new ActionNode { Label = "needle", Invoke = _ => { } };
+            var folder = new FolderNode { Label = "folder", Children = () => new DebugNode[]
+                { child, new ActionNode { Label = "unrelated" } } };
+            panel.ShowFromRoot(NodeRenderer.FolderPage(folder, (node, args) => ran = node == child));
+            panel.Query = "needle";
+            Assert.AreEqual(1, TestPanel.Rows(panel).Count);
+            TestPanel.Rows(panel)[0].button.onClick.Invoke();
+            Assert.IsTrue(ran);
+        }
     }
 }

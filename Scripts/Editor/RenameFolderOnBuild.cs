@@ -7,7 +7,7 @@ using UnityEditor.Build.Reporting;
 namespace Hlight.Debug.Hub.Editor
 {
     /// Folder Resources luôn bị đưa vào build, nên cách duy nhất để loại nó ra là đổi tên trước khi
-    /// build rồi đổi lại sau. Chỉ làm khi build PRODUCTION.
+    /// build rồi đổi lại sau. Chỉ làm khi build có DISABLE_DEBUG_HUB.
     public class RenameFolderOnBuild : IPreprocessBuildWithReport, IPostprocessBuildWithReport
     {
         /// Dựng danh sách lúc cần thay vì trong static initializer: static init có thể chạy trước khi
@@ -24,20 +24,18 @@ namespace Hlight.Debug.Hub.Editor
                 };
             }
 
-#if PROXIMA
             yield return new Request
             {
                 original = "Assets/Proxima/Resources",
                 onBuild = "Assets/Proxima/Resources-NotIncludeInBuild"
             };
-#endif
         }
 
         public int callbackOrder => 0;
 
         public void OnPreprocessBuild(BuildReport report)
         {
-#if PRODUCTION
+#if DISABLE_DEBUG_HUB
             foreach (var request in GetRequests())
             {
                 TryRename(request, false);
@@ -47,7 +45,7 @@ namespace Hlight.Debug.Hub.Editor
 
         public void OnPostprocessBuild(BuildReport report)
         {
-#if PRODUCTION
+#if DISABLE_DEBUG_HUB
             RecoverOriginalName();
 #endif
         }

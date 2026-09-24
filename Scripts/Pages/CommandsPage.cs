@@ -9,15 +9,16 @@ namespace Hlight.Debug.Hub
     ///
     /// Page dựng từ **prefix**, không giữ sẵn danh sách: panel giữ stack khi đóng nên page sống rất
     /// lâu, giữ danh sách thì mở lại có thể dựng row cho node đã rụng (owner bị Destroy).
-    public static class CommandsPage
+    internal static class CommandsPage
     {
-        private const int DESCRIPTION_LIMIT = 90;
-
         public static DebugPage Root() => Folder(Array.Empty<string>(), "Commands");
 
         internal static DebugPage Folder(string[] prefix, string title)
         {
-            return new DebugPage(title, panel => BuildFolder(panel, prefix));
+            return new DebugPage(title, panel => BuildFolder(panel, prefix),
+                (panel, query) => SearchFolder(panel, query, prefix),
+                subtitle: prefix.Length == 0 ? null : "Commands › " + string.Join(" › ", prefix),
+                showTools: prefix.Length == 0);
         }
 
         private static void BuildFolder(DebugHubPanel panel, string[] prefix)
@@ -36,8 +37,33 @@ namespace Hlight.Debug.Hub
                 folders[folder] = count + 1;
             }
 
-            foreach (var folder in folders)
-                panel.AddNavigation(folder.Key, Folder(Concat(prefix, folder.Key), folder.Key), null, folder.Value.ToString());
+            if (prefix.Length == 0)
+            {
+                var rendered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                var favoriteCategories = CommandCategoryFavorites.All;
+                var hasFavorite = false;
+                foreach (var category in favoriteCategories)
+                {
+                    if (!folders.TryGetValue(category, out var count)) continue;
+                    if (!hasFavorite) panel.AddText($"<color={Palette.FAVORITE}><b>Yêu thích</b></color>");
+                    hasFavorite = true;
+                    AddRootCategory(panel, category, count, true);
+                    rendered.Add(category);
+                }
+                if (hasFavorite && rendered.Count < folders.Count)
+                    panel.AddText($"<color={Palette.MUTED}><b>Tất cả</b></color>");
+                foreach (var folder in folders)
+                {
+                    if (rendered.Contains(folder.Key)) continue;
+                    AddRootCategory(panel, folder.Key, folder.Value, false);
+                }
+            }
+            else
+            {
+                foreach (var folder in folders)
+                    panel.AddNavigation(folder.Key, Folder(Concat(prefix, folder.Key), folder.Key), null,
+                        folder.Value.ToString());
+            }
 
             foreach (var leaf in leaves)
             {
@@ -46,21 +72,20 @@ namespace Hlight.Debug.Hub
                     LabelOf(entry, leaves));
             }
 
-            if (folders.Count == 0 && leaves.Count == 0) panel.AddText("No command registered.");
+            if (folders.Count == 0 && leaves.Count == 0) panel.AddText("Chưa có command nào.");
         }
 
-        /// Tìm toàn registry — cái panel gọi khi page không tự khai Search. Quét path + description,
-        /// **không** gọi Children của folder động: delegate đó là code của game.
-        internal static void SearchAll(DebugHubPanel panel, string query)
+        /// Chỉ tìm trong nhánh đang mở. Không gọi Children của folder động khi tìm registry.
+        private static void SearchFolder(DebugHubPanel panel, string query, string[] prefix)
         {
             var matches = new List<DebugRegistry.Entry>();
             foreach (var entry in DebugRegistry.All)
             {
-                if (Matches(entry, query)) matches.Add(entry);
+                if (Contains(Segments(entry), prefix) && Matches(entry, query)) matches.Add(entry);
             }
             if (matches.Count == 0) { panel.AddText("Không có command nào khớp."); return; }
 
-            foreach (var match in matches)
+            panel.AddPaged(matches, match =>
             {
                 var entry = match;
                 // Full path qua tham số label của Render, KHÔNG ghi vào entry.Node.Label: node đó
@@ -68,7 +93,19 @@ namespace Hlight.Debug.Hub
                 // rò rỉ full path vào tiêu đề trang sau, mất luôn tên lá.
                 NodeRenderer.Render(panel, entry.Node, (node, values) => Dispatch(panel, entry, node, values),
                     entry.Path);
-            }
+            });
+        }
+
+        private static void AddRootCategory(DebugHubPanel panel, string category, int count, bool favorite)
+        {
+            panel.AddNavigation(category, Folder(new[] { category }, category), null, count.ToString());
+            // Đặc/rỗng chứ không chỉ khác màu: phân biệt được cả khi không nhìn ra màu.
+            panel.AttachTrailingAction(favorite ? DebugHubIcon.Symbol.StarFilled : DebugHubIcon.Symbol.Star,
+                Palette.ToColor(favorite ? Palette.FAVORITE : Palette.MUTED), () =>
+                {
+                    CommandCategoryFavorites.Toggle(category);
+                    panel.Refresh();
+                });
         }
 
         /// Callback của một leaf đi xuống **cả cây con** của nó: mở một FolderNode do game đăng ký rồi
@@ -84,9 +121,7 @@ namespace Hlight.Debug.Hub
 
             // Node con do game dựng trong AddFolder: không có path nên không vào LastCommand và không
             // có gì để echo ngoài log của chính nó.
-            var ok = DebugRegistry.Run(node, values, out var message);
-            if (!ok || (node.ShowsResult && !string.IsNullOrEmpty(message))) panel.ShowResult(message, !ok);
-            else panel.HideResult();
+            NodeRenderer.RunInspect(panel, node, values);
         }
 
         /// Cửa vào: node có Confirm thì hỏi trước.
@@ -112,7 +147,7 @@ namespace Hlight.Debug.Hub
 
         internal static void RunNow(DebugHubPanel panel, DebugRegistry.Entry entry, string[] values)
         {
-            var ok = DebugRegistry.Run(entry.Node, values, out var message);
+            var ok = DebugRegistry.RunEntry(entry, values, out var message);
 
             // Lỗi thì luôn hiện. Còn lại chỉ hiện khi node là loại cần đọc kết quả và thật sự có in
             // ra gì: "> view.fps true" hay log của luồng load level nổi giữa màn hình chỉ là rác.
@@ -122,7 +157,6 @@ namespace Hlight.Debug.Hub
             else panel.HideResult();
 
             if (!ok) return;
-            RecordLast(entry, values);
 
             switch (entry.Node.Dismiss)
             {
@@ -139,33 +173,13 @@ namespace Hlight.Debug.Hub
             }
         }
 
-        /// Ghi lại dòng lệnh cho nút repeat, đối xứng với <see cref="DebugRegistry.Execute"/>: parse
-        /// lại giá trị đã chạy thành công (không nối thô chuỗi nhập) rồi giao cho registry mã hoá.
-        private static void RecordLast(DebugRegistry.Entry entry, string[] values)
-        {
-            var types = entry.Node is ActionNode action
-                ? Array.ConvertAll(action.Parameters, p => p.Type)
-                : new[] { ((ValueNode)entry.Node).Declared };
-
-            var parsed = new object[values.Length];
-            for (var i = 0; i < values.Length; i++)
-            {
-                if (!DebugValues.TryParse(values[i], types[i], out parsed[i], out _, allowVars: true)) return;
-            }
-            DebugRegistry.RecordLastCommand(entry.Path, entry.Node, parsed);
-        }
-
         #region Label
 
         /// Tên hiện trên row: segment cuối (full path ở trang Search đi qua tham số label của
         /// NodeRenderer.Render trực tiếp bằng entry.Path — xem SearchAll, không qua đây). Overload
         /// trùng path trong cùng một thư mục thì thêm số tham số, không thì hai row giống nhau y hệt.
-        /// Description do panel format.
-        ///
-        /// ponytail: bản cũ còn cắt bớt description dài (Shorten) trước khi đưa vào row — giữ lại hàm
-        /// đó bên dưới cho test, nhưng không gọi ở đây nữa: NodeRenderer.Render không nhận description
-        /// riêng cho row, mà node.Description còn bị ParamsPage/ActionsPage đọc lại nguyên văn ở trang
-        /// sau — cắt ở đây là cắt luôn cả trang đó. Row dài thì tự wrap (GrowRowsToLabel lo phần cao).
+        /// Description do panel format, không cắt: ParamsPage/ActionsPage đọc lại nguyên văn node.Description,
+        /// row dài thì tự wrap (GrowRowsToLabel lo phần cao).
         internal static string LabelOf(DebugRegistry.Entry entry, IReadOnlyList<DebugRegistry.Entry> siblings)
         {
             var name = LastSegment(entry);
@@ -190,16 +204,6 @@ namespace Hlight.Debug.Hub
         {
             var segments = Segments(entry);
             return segments.Length > 0 ? segments[segments.Length - 1] : entry.Path;
-        }
-
-        /// Description dài thì cắt ở khoảng trắng gần nhất — toàn văn nằm ở page Help.
-        internal static string Shorten(string description)
-        {
-            if (description.Length <= DESCRIPTION_LIMIT) return description;
-
-            var cut = description.LastIndexOf(' ', DESCRIPTION_LIMIT);
-            if (cut < DESCRIPTION_LIMIT / 2) cut = DESCRIPTION_LIMIT;
-            return description.Substring(0, cut) + "…";
         }
 
         #endregion

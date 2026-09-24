@@ -9,7 +9,7 @@ namespace Hlight.Debug.Hub
     /// đếm ký tự là cắt được chính xác.
     ///
     /// Hàm thuần — test bằng assert chuỗi, không cần dựng UI.
-    public static class DebugTable
+    internal static class DebugTable
     {
         public const string MONO = "<mspace=0.55em>";
         private const int GAP = 2;

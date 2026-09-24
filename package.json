@@ -1,8 +1,8 @@
 {
     "name": "com.hlight.debug-hub",
-    "version": "1.0.0",
+    "version": "2.0.0",
     "displayName": "Hlight Debug Hub",
-    "description": "In-game debug hub for Hlight Unity projects: console, cheat commands by category, and diagnostics behind a password gate.",
+    "description": "In-game debug hub for Hlight Unity projects: cheat command tree, reflection inspector and log console behind a password gate.",
     "unity": "6000.0",
     "dependencies": {
         "com.unity.ugui": "2.0.0"

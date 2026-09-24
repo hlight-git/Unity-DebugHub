@@ -12,7 +12,7 @@ namespace Hlight.Debug.Hub
     /// tham chiếu UniTask hay bất cứ gì.
     ///
     /// Ngoài phạm vi: `IEnumerator` (coroutine Unity) không theo mẫu này.
-    public static class Awaitables
+    internal static class Awaitables
     {
         private const BindingFlags PUBLIC = BindingFlags.Public | BindingFlags.Instance;
 
@@ -49,13 +49,21 @@ namespace Hlight.Debug.Hub
             }
             catch (Exception exception)
             {
-                done(null, exception.InnerException ?? exception);
+                done(null, exception.Unwrap());
                 yield break;
             }
 
             var deadline = UnityEngine.Time.realtimeSinceStartup + timeoutSeconds;
-            while (!(bool)completed.GetValue(awaiter))
+            while (true)
             {
+                // yield không nằm trong try được, nên đọc IsCompleted qua một hàm riêng: getter ném thì
+                // `done` vẫn phải được gọi, không để coroutine chết im lặng.
+                if (!TryIsCompleted(completed, awaiter, out var isDone, out var readFailure))
+                {
+                    done(null, readFailure);
+                    yield break;
+                }
+                if (isDone) break;
                 if (UnityEngine.Time.realtimeSinceStartup >= deadline)
                 {
                     done(null, new Exception($"quá hạn {timeoutSeconds}s"));
@@ -67,9 +75,18 @@ namespace Hlight.Debug.Hub
             object value = null;
             Exception failure = null;
             try { value = result.Invoke(awaiter, null); }
-            catch (Exception exception) { failure = exception.InnerException ?? exception; }
+            catch (Exception exception) { failure = exception.Unwrap(); }
 
             done(value, failure);
+        }
+
+        private static bool TryIsCompleted(PropertyInfo completed, object awaiter, out bool isDone, out Exception failure)
+        {
+            failure = null;
+            isDone = false;
+            try { isDone = (bool)completed.GetValue(awaiter); }
+            catch (Exception exception) { failure = exception.Unwrap(); }
+            return failure == null;
         }
     }
 }

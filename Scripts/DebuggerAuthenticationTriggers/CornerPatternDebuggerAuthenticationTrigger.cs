@@ -36,37 +36,16 @@ namespace Hlight.Debug.Hub
 
         int validatedStepCount;
 
-        (Vector2 min, Vector2 max)? GetScreenPositionAnchors(ScreenPosition screenPosition) => screenPosition switch
+        /// Góc = 20% mỗi chiều. Tính thẳng, không duyệt Enum.GetValues: hàm này chạy mỗi frame người chơi
+        /// đang giữ tay (bản store, chưa mở khoá), GetValues là một mảng + boxing mỗi lần.
+        static ScreenPosition GetScreenPosition(Vector2 position)
         {
-            ScreenPosition.TopLeft => (new(0, .8f), new(.2f, 1)),
-            ScreenPosition.TopRight => (new(.8f, .8f), new(1, 1)),
-            ScreenPosition.BotLeft => (new(0, 0), new(.2f, .2f)),
-            ScreenPosition.BotRight => (new(.8f, 0), new(1, .2f)),
-            _ => null,
-        };
-
-        ScreenPosition GetScreenPosition(Vector2 position)
-        {
-            Vector2 screenSize = new(Screen.width, Screen.height);
-
-            foreach (ScreenPosition screenPosition in System.Enum.GetValues(typeof(ScreenPosition)))
-            {
-                (Vector2 min, Vector2 max)? anchors = GetScreenPositionAnchors(screenPosition);
-
-                if (!anchors.HasValue)
-                {
-                    continue;
-                }
-
-                if (position.x > screenSize.x * anchors.Value.min.x &&
-                    position.x < screenSize.x * anchors.Value.max.x &&
-                    position.y > screenSize.y * anchors.Value.min.y &&
-                    position.y < screenSize.y * anchors.Value.max.y)
-                {
-                    return screenPosition;
-                }
-            }
-
+            var x = position.x / Screen.width;
+            var y = position.y / Screen.height;
+            var left = x < .2f;
+            var right = x > .8f;
+            if (y > .8f) return left ? ScreenPosition.TopLeft : right ? ScreenPosition.TopRight : ScreenPosition.Unknown;
+            if (y < .2f) return left ? ScreenPosition.BotLeft : right ? ScreenPosition.BotRight : ScreenPosition.Unknown;
             return ScreenPosition.Unknown;
         }
 

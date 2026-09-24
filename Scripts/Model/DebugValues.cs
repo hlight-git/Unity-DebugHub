@@ -12,7 +12,7 @@ namespace Hlight.Debug.Hub
     ///
     /// Phải tự giữ bảng vì `DebugLogConsole.parseFunctions` là private, còn `ParseArgument` trả false
     /// lẫn lộn giữa "sai cú pháp" với "không hỗ trợ kiểu".
-    public static class DebugValues
+    internal static class DebugValues
     {
         /// Đúng bảng parser của IDC (DebugLogConsole.parseFunctions) — sửa ở đây khi submodule đổi.
         private static readonly HashSet<Type> Parseable = new()
@@ -49,6 +49,7 @@ namespace Hlight.Debug.Hub
         public static bool CanParse(Type type)
         {
             if (type == null) return false;
+            type = Nullable.GetUnderlyingType(type) ?? type;
             if (Parseable.Contains(type) || type.IsEnum) return true;
             if (typeof(Component).IsAssignableFrom(type)) return true;
             var element = ElementTypeOf(type);
@@ -61,6 +62,7 @@ namespace Hlight.Debug.Hub
         public static bool IsInlineValue(Type type)
         {
             if (type == null) return false;
+            type = Nullable.GetUnderlyingType(type) ?? type;
             if (type.IsEnum) return true;
             return Parseable.Contains(type) && type != typeof(GameObject);
         }
@@ -105,6 +107,8 @@ namespace Hlight.Debug.Hub
             if (ElementTypeOf(declared) != null && typeof(Object).IsAssignableFrom(ElementTypeOf(declared))) return false;
 
             var raw = ToText(value);
+            // Execute đọc `$x` là biến: chuỗi thật bắt đầu bằng `$` phải lưu thành `$$x`.
+            if (value is string && raw.StartsWith("$")) raw = "$" + raw;
 
             // Bọc quote chỉ cứu được khoảng trắng. Chuỗi chứa chính dấu `"`, xuống dòng hay tab thì
             // FetchArgumentsFromCommand không tách lại đúng, mà nó không có escape — từ chối hẳn còn
@@ -122,7 +126,7 @@ namespace Hlight.Debug.Hub
         ///
         /// allowVars = true chỉ ở page nhập tham số, page Gán và Execute. **Không** bật cho ô nhập
         /// tại chỗ của kiểu số: bật là mất bàn phím số trên điện thoại, đổi lấy một khả năng vô
-        /// nghĩa (biến chứa số quy về đúng con số đó). Task 16 nối phần resolve `$var` vào đây.
+        /// nghĩa (biến chứa số quy về đúng con số đó). `$$` = một dấu `$` thật, không phải biến.
         public static bool TryParse(string text, Type declared, out object value, out string error,
             bool allowVars = false)
         {
@@ -134,7 +138,8 @@ namespace Hlight.Debug.Hub
                 return false;
             }
 
-            if (allowVars && !string.IsNullOrEmpty(text) && text.StartsWith("$"))
+            if (allowVars && text != null && text.StartsWith("$$")) text = text.Substring(1);
+            else if (allowVars && !string.IsNullOrEmpty(text) && text.StartsWith("$"))
             {
                 var name = text.Substring(1);
                 if (!Vars.TryGet(name, out var bound))
@@ -156,6 +161,14 @@ namespace Hlight.Debug.Hub
                 return true;
             }
 
+            // int?/bool?…: rỗng hoặc "null" là null, còn lại parse theo kiểu bên trong.
+            var underlying = Nullable.GetUnderlyingType(declared);
+            if (underlying != null)
+            {
+                if (string.IsNullOrEmpty(text) || text == "null") return true;
+                declared = underlying;
+            }
+
             var nullable = !declared.IsValueType;
             if (nullable && declared != typeof(string) && text == "null") return true;
 
@@ -175,7 +188,6 @@ namespace Hlight.Debug.Hub
             return true;
         }
 
-        /// Giá trị khởi tạo parse được, để mở page nhập liệu ra là bấm Run được luôn.
         /// Tên kiểu đọc được: `SceneScope&lt;HomeSceneRoot&gt;` chứ không phải `SceneScope`1` — dạng
         /// backtick-arity của CLR không nói cho ai biết cái gì.
         public static string TypeName(Type type)
@@ -189,9 +201,10 @@ namespace Hlight.Debug.Hub
             return $"{name}<{string.Join(", ", Array.ConvertAll(type.GetGenericArguments(), TypeName))}>";
         }
 
+        /// Giá trị khởi tạo parse được, để mở page nhập liệu ra là bấm Run được luôn. int? → rỗng (null).
         public static string DefaultValueFor(Type type)
         {
-            if (type == null) return string.Empty;
+            if (type == null || Nullable.GetUnderlyingType(type) != null) return string.Empty;
             if (type == typeof(bool)) return "false";
             if (type.IsEnum)
             {
@@ -200,11 +213,8 @@ namespace Hlight.Debug.Hub
             }
             if (type == typeof(string) || type == typeof(char)) return string.Empty;
 
-            // VectorParts là bảng đủ để trả lời "có nhiều thành phần không" — tra bằng KEY, không
-            // cần dựng instance thật để hỏi. Trước đây gọi Activator.CreateInstance(type) trước khi
-            // biết type có an toàn để dựng không: với GameObject, cái này thật sự tạo và bỏ rơi một
-            // GameObject rỗng vào scene đang chạy; với Transform/Component/interface/abstract type
-            // thì ném exception ngay (không có constructor không tham số công khai).
+            // Chỉ dựng instance cho kiểu trong VectorParts: Activator.CreateInstance(GameObject) thật sự
+            // tạo một GameObject rỗng trong scene, còn Component/interface/abstract thì ném.
             if (VectorParts.ContainsKey(type))
                 return ToText(Activator.CreateInstance(type));
 

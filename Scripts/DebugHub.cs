@@ -19,10 +19,13 @@ namespace Hlight.Debug.Hub
     [DefaultExecutionOrder(-100)]
     public class DebugHub : MonoBehaviour
     {
+        /// Cùng key và giá trị với bản trước: máy đã mở khoá thì vẫn mở.
         private const string AUTHENTICATION_KEY = "DebugHub.AuthenticationState";
+        private const int AUTHENTICATED = 2;
+
         private static DebugHub instance;
 
-        private enum AuthenticationState { None, Processing , Success }
+        [Tooltip("Password để mở hub. Để trống thì không mở được.")]
         [SerializeField] private string password;
         [SerializeField] private DebugHubEntry entry;
         [SerializeField] private DebugHubPanel panel;
@@ -31,14 +34,16 @@ namespace Hlight.Debug.Hub
         [SerializeField] private TMP_InputField authenticationInputField;
         [SerializeField] private NetworkReachabilityAuthenticationBypass networkReachabilityAuthenticationBypass;
 
-        private ProximaFeature proxima;
-
         /// Mọi trigger trong danh sách đều được hỏi mỗi frame, bất kể platform/editor window — mỗi
         /// trigger tự biết đọc input của nó có sẵn hay không (không có touchscreen/keyboard thì tự
         /// trả false), nên không cần chọn trước một cách theo nền tảng. Thêm cách trigger mới chỉ
         /// cần viết class con của DebuggerAuthenticationTrigger rồi kéo component vào đây, không
         /// cần sửa file này.
         [SerializeField] private DebuggerAuthenticationTrigger[] triggers;
+
+        private bool unlocked;
+        private bool askingPassword;
+        private Func<bool> triggerPerformed;
 
         /// Dev note hiện ở page Help.
         public static List<string> Notes { get; } = new();
@@ -60,7 +65,7 @@ namespace Hlight.Debug.Hub
 
                 if (value)
                 {
-                    if (instance.CurrentAuthenticationState != AuthenticationState.Success) return;
+                    if (!instance.Unlocked) return;
                     instance.entry.Activating = true;
                     instance.repeat.Refresh();
                     return;
@@ -84,44 +89,33 @@ namespace Hlight.Debug.Hub
             instance = null;
         }
 
-        private AuthenticationState cachedCurrentAuthenticationState;
-        private AuthenticationState CurrentAuthenticationState
+        private bool Unlocked
         {
             get
             {
 #if ALWAYS_ENABLE_INGAME_DEBUGGER
-                return AuthenticationState.Success;
+                return true;
 #else
-                return cachedCurrentAuthenticationState;
-#endif
-            }
-            set
-            {
-#if !ALWAYS_ENABLE_INGAME_DEBUGGER
-                cachedCurrentAuthenticationState = value;
-                if (value != AuthenticationState.Processing)
-                {
-                    PlayerPrefs.SetInt(AUTHENTICATION_KEY, (int)value);
-                }
+                return unlocked;
 #endif
             }
         }
 
         /// Trigger có RequiresAlreadyAuthenticated (ví dụ lắc) chỉ được hỏi khi đã xác thực rồi —
         /// không phải một cách để mở khoá lần đầu, chỉ để gọi lại entry đã ẩn cho tiện.
-        internal static bool AnyTriggerPerformed(IEnumerable<DebuggerAuthenticationTrigger> triggers, bool authenticated)
+        internal static bool AnyTriggerPerformed(IReadOnlyList<DebuggerAuthenticationTrigger> triggers, bool authenticated)
         {
-            foreach (var trigger in triggers)
+            for (var i = 0; i < triggers.Count; i++)
             {
-                if (trigger.RequiresAlreadyAuthenticated && !authenticated) continue;
-                if (trigger.IsPerformedTriggerAction()) return true;
+                if (triggers[i].RequiresAlreadyAuthenticated && !authenticated) continue;
+                if (triggers[i].IsPerformedTriggerAction()) return true;
             }
             return false;
         }
 
         private void Awake()
         {
-#if !PRODUCTION
+#if !DISABLE_DEBUG_HUB
             if (instance)
 #endif
             {
@@ -129,44 +123,49 @@ namespace Hlight.Debug.Hub
                 return;
             }
 
-            console.TryEnableConsole();
             DontDestroyOnLoad(this);
             instance = this;
-            proxima = new ProximaFeature(password);
-            // Đẩy vào console TRƯỚC khi Awake() của nó chạy (DebugHub có DefaultExecutionOrder(-100)
-            // nên luôn chạy trước): console.proxima cần sẵn để đăng ký command "console.proxima".
-            console.proxima = proxima;
+            // Đăng ký command từ đây chứ không từ Awake của console: bản bị huỷ ngay trên kia (trùng hoặc
+            // DISABLE_DEBUG_HUB) thì không đăng ký gì.
+            console.Initialize();
+            console.TryEnableConsole();
+            repeat.Initialize();
             entry.Clicked += OpenCommandTree;
             // Kết quả dài bị cắt ở dòng nổi; toàn văn kèm stack trace nằm ở log window.
             panel.ResultClicked += () => console.Enabled = true;
             authenticationInputField.onEndEdit.AddListener(OnAuthenticationInputFieldSubmitted);
+            // Tạo một lần: lambda tạo trong Update là một lần cấp phát mỗi frame trên máy mọi người chơi.
+            triggerPerformed = () => AnyTriggerPerformed(triggers, Unlocked);
+            unlocked = PlayerPrefs.GetInt(AUTHENTICATION_KEY) == AUTHENTICATED;
 
-            cachedCurrentAuthenticationState = (AuthenticationState)PlayerPrefs.GetInt(AUTHENTICATION_KEY);
+#if !ALWAYS_ENABLE_INGAME_DEBUGGER
+            if (string.IsNullOrEmpty(password))
+                UnityEngine.Debug.LogError("[DebugHub] Chưa điền password (Inspector của component DebugHub) — hub không mở được.");
+#endif
 
             // EditMode test không tick player loop nên coroutine không bao giờ resume sau yield, và test
-            // không được bắn network request thật — chỉ start khi Play thật (giống DestroyRow bên DebugHubPanel).
-            if (Application.isPlaying && CurrentAuthenticationState != AuthenticationState.Success)
+            // không được bắn network request thật — chỉ start khi Play thật.
+            //
+            // Chỉ build development: hub nằm cả trong bản store, mà ở đó mọi máy người chơi chưa mở khoá sẽ
+            // gửi request tới checkUrls (thường là IP nội bộ) mỗi lần mở app — iOS hỏi quyền mạng cục bộ, và
+            // mạng nào tình cờ có máy ở IP đó là mở khoá luôn.
+            if (Application.isPlaying && UnityEngine.Debug.isDebugBuild && !Unlocked)
             {
                 StartCoroutine(networkReachabilityAuthenticationBypass.Check(reachable =>
                 {
                     if (!reachable) return;
-                    if (CurrentAuthenticationState == AuthenticationState.Processing) AcceptAuthentication();
-                    else CurrentAuthenticationState = AuthenticationState.Success;
+                    if (askingPassword) AcceptAuthentication();
+                    else Remember();
                 }));
             }
         }
 
+        // Bản trùng bị Destroy trong Awake chưa Initialize: `-=` handler chưa đăng ký là no-op.
+        private void OnDestroy() => repeat.Release();
+
         private void Update()
         {
-            var authenticated = CurrentAuthenticationState == AuthenticationState.Success;
-            var action = DecideAction(
-                panel.IsOpen,
-                entry.Activating,
-                CurrentAuthenticationState == AuthenticationState.Processing,
-                authenticated,
-                () => AnyTriggerPerformed(triggers, authenticated));
-
-            switch (action)
+            switch (DecideAction(panel.IsOpen, entry.Activating, askingPassword, Unlocked, triggerPerformed))
             {
                 case DebugHubAction.ShowEntry:
                     // Qua Visible chứ không set entry.Activating trực tiếp: nút repeat sống ngoài
@@ -175,7 +174,8 @@ namespace Hlight.Debug.Hub
                     break;
 
                 case DebugHubAction.AskPassword:
-                    CurrentAuthenticationState = AuthenticationState.Processing;
+                    askingPassword = true;
+                    authenticationInputField.text = string.Empty;
                     authenticationInputField.gameObject.SetActive(true);
                     StartCoroutine(FocusNextFrame(authenticationInputField));
                     break;
@@ -207,25 +207,36 @@ namespace Hlight.Debug.Hub
 
         private void OnAuthenticationInputFieldSubmitted(string input)
         {
-            if (input != password)
+            // Tắt ô nhập cũng bắn onEndEdit — cờ này chặn lần bắn thứ hai.
+            if (!askingPassword) return;
+            if (!string.IsNullOrEmpty(password) && input == password)
             {
-                CurrentAuthenticationState = AuthenticationState.None;
-                authenticationInputField.gameObject.SetActive(false);
+                AcceptAuthentication();
                 return;
             }
-            AcceptAuthentication();
+            askingPassword = false;
+            authenticationInputField.gameObject.SetActive(false);
+            if (!string.IsNullOrEmpty(input)) panel.ShowResult("Sai mật khẩu.", true);
         }
 
         private void AcceptAuthentication()
         {
-            Destroy(authenticationInputField.gameObject);
-            CurrentAuthenticationState = AuthenticationState.Success;
+            askingPassword = false;
+            authenticationInputField.text = string.Empty;
+            authenticationInputField.gameObject.SetActive(false);
+            Remember();
             Visible = true;
+        }
+
+        private void Remember()
+        {
+            unlocked = true;
+            PlayerPrefs.SetInt(AUTHENTICATION_KEY, AUTHENTICATED);
         }
 
         /// Gốc panel là cây command thẳng — không còn trang menu trung gian "Debug Hub". Các row cũ
         /// của trang đó đều đã có chỗ riêng: Help ở nút "?" header, Console/Auto/Proxima là command
-        /// console.*, "Show entry button" là command hub.entry (ConsoleController.Awake()).
+        /// console.*, "Show entry button" là command hub.entry (ConsoleController.Initialize()).
         private void OpenCommandTree()
         {
             panel.Show(CommandsPage.Root());
@@ -323,15 +334,27 @@ namespace Hlight.Debug.Hub
 
         public static void Remove(DebugNode node) => DebugRegistry.Remove(node);
 
-        /// Lệnh này có Confirms() không — nút repeat hỏi trước khi chạy.
-        public static bool NeedsConfirm(string line) => DebugRegistry.Find(line, out var entry) && entry.Node.Confirm;
-
-        /// Mở panel ngay tại trang xác nhận của lệnh này.
-        public static void OpenConfirm(string line)
+        /// Nút repeat: chạy lại dòng lệnh qua đúng luồng của panel — xác nhận, dòng kết quả, Dismiss, ghi
+        /// lệnh cuối. Command đã mất đăng ký thì xoá bản lưu, nút tự ẩn.
+        internal static void Repeat(string line)
         {
-            if (!instance || !DebugRegistry.Find(line, out var entry)) return;
+            if (!instance) return;
+            if (!DebugRegistry.Find(line, out var entry))
+            {
+                instance.panel.ShowResult($"Không còn command '{line}'.", true);
+                DebugRegistry.ClearLastCommand();
+                return;
+            }
+
+            var values = DebugRegistry.ArgumentsOf(line);
+            if (!entry.Node.Confirm)
+            {
+                CommandsPage.RunNow(instance.panel, entry, values);
+                return;
+            }
+            // Một chạm chạy thẳng `save.wipe` là tai nạn chờ sẵn: mở panel tới trang xác nhận.
             instance.panel.Show(CommandsPage.Root());
-            CommandsPage.Run(instance.panel, entry, DebugRegistry.ArgumentsOf(line));
+            CommandsPage.Run(instance.panel, entry, values);
         }
 
         /// Chạy coroutine chờ một awaitable. Ở trên DebugHub vì nó là MonoBehaviour sống suốt phiên —
@@ -354,12 +377,6 @@ namespace Hlight.Debug.Hub
                 if (error != null) UnityEngine.Debug.LogError($"{label}: {error.Message}");
                 else UnityEngine.Debug.Log($"{label} xong: {DebugValues.ToText(result)}");
             }));
-        }
-
-        /// Đẩy một dòng ra dòng kết quả từ ngoài panel.
-        public static void Report(string message, bool error)
-        {
-            if (instance) instance.panel.ShowResult(message, error);
         }
 
         public static bool Execute(string line, out string message) => DebugRegistry.Execute(line, out message);

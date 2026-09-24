@@ -353,5 +353,214 @@ namespace Hlight.Debug.Hub.Tests
 
             Assert.IsNotNull(TestPanel.Rows(panel)[0].more);
         }
+
+        [Test]
+        public void Navigation_RestoresSearchAndScroll_WithoutFilteringTheChild()
+        {
+            panel.ShowFromRoot(new DebugPage("parent", p => p.AddText("all"), (p, q) =>
+            {
+                for (var i = 0; i < 40; i++) p.AddButton(q + i, () => { });
+            }));
+            panel.Query = "needle";
+            TestPanel.ScrollOf(panel).verticalNormalizedPosition = 0.3f;
+            panel.Show(default);
+            Assert.AreEqual("needle", panel.Query, "showing an already open panel preserves its current state");
+            panel.Push(new DebugPage("child", p => p.AddText("child content"), searchable: false));
+            Assert.AreEqual(string.Empty, panel.Query);
+            Assert.IsFalse(((TMP_InputField)TestPanel.Field(panel, "searchInput")).gameObject.activeSelf);
+            panel.Pop();
+            Assert.AreEqual("needle", panel.Query);
+            Assert.AreEqual(0.3f, TestPanel.ScrollOf(panel).verticalNormalizedPosition, 0.001f);
+            Assert.IsTrue(((TMP_InputField)TestPanel.Field(panel, "searchInput")).gameObject.activeSelf);
+            panel.Close();
+            panel.Show(default);
+            Assert.AreEqual("needle", panel.Query);
+            Assert.AreEqual(0.3f, TestPanel.ScrollOf(panel).verticalNormalizedPosition, 0.001f);
+        }
+
+        [Test]
+        public void Query_BeforeOpening_DoesNotThrow_AndNewRootClearsOldSearch()
+        {
+            Assert.DoesNotThrow(() => panel.Query = "old");
+            panel.ShowFromRoot(new DebugPage("root", p => p.AddText("content")));
+            Assert.AreEqual(string.Empty, panel.Query);
+            CollectionAssert.AreEqual(new[] { "content" }, TestPanel.LabelsOf(panel));
+        }
+
+        [Test]
+        public void Paging_KeepsEveryItemReachable_AndRestoresPageAfterBack()
+        {
+            var items = new string[93];
+            for (var i = 0; i < items.Length; i++) items[i] = "item " + i;
+            panel.ShowFromRoot(new DebugPage("paged", p => p.AddPaged(items, item => p.AddText(item)),
+                (p, q) => p.AddPaged(new[] { "filtered" }, item => p.AddText(item))));
+            Assert.AreEqual(42, TestPanel.Rows(panel).Count);
+            TestPanel.ClickRowContaining(panel, "Trang tiếp");
+            StringAssert.Contains("41–80 / 93", TestPanel.Rows(panel)[0].label.text);
+            panel.Push(new DebugPage("child", p => p.AddText("child")));
+            panel.Pop();
+            StringAssert.Contains("41–80 / 93", TestPanel.Rows(panel)[0].label.text);
+            TestPanel.ClickRowContaining(panel, "Trang tiếp");
+            Assert.IsTrue(TestPanel.LabelsOf(panel).Contains("item 92"));
+            Assert.IsFalse(TestPanel.LabelsOf(panel).Contains("Trang tiếp ›"));
+            panel.Query = "filter";
+            CollectionAssert.AreEqual(new[] { "filtered" }, TestPanel.LabelsOf(panel));
+        }
+
+        [Test]
+        public void Field_SubmitsOnlyChanges_AndReportsInvalidValues()
+        {
+            var writes = 0;
+            panel.ShowFromRoot(new DebugPage("field", p => p.AddField("number", typeof(int), "1", null, _ => writes++)));
+            var input = TestPanel.Rows(panel)[0].input;
+            input.onEndEdit.Invoke("1");
+            Assert.AreEqual(0, writes);
+            input.onEndEdit.Invoke("bad");
+            Assert.AreEqual(0, writes);
+            StringAssert.Contains("number", panel.LastResult);
+            input.onEndEdit.Invoke("2");
+            input.onEndEdit.Invoke("2");
+            Assert.AreEqual(1, writes);
+            panel.Close();
+            input.onEndEdit.Invoke("3");
+            Assert.AreEqual(1, writes, "pooled fields must release their submit callbacks on close");
+        }
+
+        [Test]
+        public void ShortNavigationDetail_SharesOneLine_AndPoolRestoresHeight()
+        {
+            panel.ShowFromRoot(new DebugPage("wide", p => p.AddNavigation("long name", default)));
+            var height = ((RectTransform)TestPanel.Rows(panel)[0].transform).rect.height;
+            panel.ShowFromRoot(new DebugPage("detail", p => p.AddNavigation("name", default, detail: "42")));
+            var row = TestPanel.Rows(panel)[0];
+            Assert.AreEqual(height, ((RectTransform)row.transform).rect.height, 0.5f);
+            var labelCorners = new Vector3[4];
+            var valueCorners = new Vector3[4];
+            row.label.rectTransform.GetWorldCorners(labelCorners);
+            row.detail.rectTransform.GetWorldCorners(valueCorners);
+            Assert.Greater(valueCorners[2].y, labelCorners[0].y);
+            Assert.LessOrEqual(labelCorners[2].x, valueCorners[0].x);
+            panel.ShowFromRoot(new DebugPage("plain", p => p.AddNavigation("short", default)));
+            Assert.AreEqual(height, ((RectTransform)TestPanel.Rows(panel)[0].transform).rect.height, 0.5f);
+        }
+
+        [Test]
+        public void MobileTypographyAndControls_DoNotShrinkToDesktopDensity()
+        {
+            panel.ShowFromRoot(new DebugPage("mobile", p =>
+            {
+                p.AddButton("Readable action", () => { });
+                p.AddField("Amount", typeof(int), "123", _ => { });
+            }));
+            const float phoneScale = 360f / 1080f;
+            var rows = TestPanel.Rows(panel);
+            Assert.GreaterOrEqual(rows[0].label.fontSize * phoneScale, 18f);
+            Assert.GreaterOrEqual(((RectTransform)rows[0].transform).rect.height * phoneScale, 44f);
+            Assert.GreaterOrEqual(rows[1].input.textComponent.fontSize * phoneScale, 18f);
+            Assert.LessOrEqual(((RectTransform)rows[1].transform).rect.height, 240f,
+                "larger type must not bring back excessive field padding");
+            Assert.GreaterOrEqual(((RectTransform)rows[1].input.transform).rect.height * phoneScale, 44f);
+            var close = (Button)TestPanel.Field(panel, "closeButton");
+            Assert.GreaterOrEqual(((RectTransform)close.transform).rect.width * phoneScale, 44f);
+        }
+
+        [Test]
+        public void Toast_RemainsReadableOnAPhone_WithoutBecomingATallOverlay()
+        {
+            const float phoneScale = 360f / 1080f;
+            var toast = (DebugHubToast)TestPanel.Field(panel, "toast");
+            var label = toast.GetComponentInChildren<TMP_Text>(true);
+            Assert.GreaterOrEqual(label.fontSize * phoneScale, 16f);
+            Assert.LessOrEqual(((RectTransform)toast.transform).rect.height * phoneScale, 96f);
+        }
+
+        [Test]
+        public void HeaderIcons_RenderAndShareTheTitleRow()
+        {
+            panel.ShowFromRoot(CommandsPage.Root());
+            Canvas.ForceUpdateCanvases();
+            var title = (TMP_Text)TestPanel.Field(panel, "title");
+            var titleCorners = new Vector3[4];
+            title.rectTransform.GetWorldCorners(titleCorners);
+            foreach (var name in new[] { "searchButton", "advancedButton" })
+            {
+                var button = (Button)TestPanel.Field(panel, name);
+                var icon = button.GetComponentInChildren<DebugHubIcon>();
+                Assert.IsNotNull(icon);
+                Assert.IsFalse(icon.raycastTarget);
+                Assert.Greater(icon.canvasRenderer.GetMesh().vertexCount, 0, "icon must produce visible geometry");
+                var corners = new Vector3[4];
+                ((RectTransform)button.transform).GetWorldCorners(corners);
+                Assert.GreaterOrEqual(corners[0].x, titleCorners[2].x);
+                Assert.AreEqual(titleCorners[0].y, corners[0].y, 1f);
+            }
+        }
+
+        [Test]
+        public void Scrollbar_AppearsForOverflow_DrivesScroll_AndHidesForShortPages()
+        {
+            panel.ShowFromRoot(new DebugPage("long", p =>
+            {
+                for (var i = 0; i < 60; i++) p.AddButton("row " + i, () => { });
+            }));
+            Canvas.ForceUpdateCanvases();
+            var scroll = TestPanel.ScrollOf(panel);
+            Assert.AreEqual(ScrollRect.MovementType.Elastic, scroll.movementType);
+            var bar = scroll.verticalScrollbar;
+            Assert.IsNotNull(bar);
+            Assert.IsTrue(bar.gameObject.activeSelf);
+            Assert.Less(bar.size, 1f);
+            Assert.GreaterOrEqual(((RectTransform)bar.transform).rect.width, 40f);
+            var hitGraphic = bar.GetComponent<Graphic>();
+            var canvas = bar.GetComponentInParent<Canvas>();
+            var effectiveHitWidth = (((RectTransform)bar.transform).rect.width +
+                hitGraphic.raycastPadding.x + hitGraphic.raycastPadding.z) * canvas.scaleFactor;
+            Assert.GreaterOrEqual(effectiveHitWidth, 44f,
+                "scrollbar can look thin, but its real finger target must remain at least 44 px");
+            bar.value = 0f;
+            Assert.AreEqual(0f, scroll.verticalNormalizedPosition, 0.001f);
+            bar.value = 1f;
+            Assert.AreEqual(1f, scroll.verticalNormalizedPosition, 0.001f);
+            panel.ShowFromRoot(new DebugPage("short", p => p.AddText("short")));
+            Canvas.ForceUpdateCanvases();
+            Assert.IsFalse(bar.gameObject.activeSelf);
+        }
+
+        [Test]
+        public void Search_LeavesTitleVisible_AndUsesItsOwnHeaderRow()
+        {
+            panel.ShowFromRoot(CommandsPage.Root());
+            panel.OpenSearch();
+            var heading = (TMP_Text)TestPanel.Field(panel, "title");
+            var input = (TMP_InputField)TestPanel.Field(panel, "searchInput");
+            Assert.IsTrue(heading.gameObject.activeSelf);
+            Assert.IsTrue(input.gameObject.activeSelf);
+            var titleCorners = new Vector3[4];
+            var searchCorners = new Vector3[4];
+            heading.rectTransform.GetWorldCorners(titleCorners);
+            ((RectTransform)input.transform).GetWorldCorners(searchCorners);
+            Assert.LessOrEqual(searchCorners[1].y, titleCorners[0].y, "search must not cover the page title");
+            panel.CloseSearch();
+            Assert.IsFalse(input.gameObject.activeSelf);
+        }
+
+        [Test]
+        public void EditableValue_KeepsMoreBesideLabel_InOneOpaqueCard()
+        {
+            panel.ShowFromRoot(new DebugPage("fields", p => NodeRenderer.Render(p,
+                Node.Value("tag", () => "Untagged", _ => { }), (_, _) => { })));
+            var row = TestPanel.Rows(panel)[0];
+            Assert.IsNull(row.GetComponent<VerticalLayoutGroup>());
+            Assert.AreEqual(1f, row.GetComponent<Image>().color.a);
+            var label = new Vector3[4];
+            var more = new Vector3[4];
+            row.label.rectTransform.GetWorldCorners(label);
+            ((RectTransform)row.more.transform).GetWorldCorners(more);
+            Assert.LessOrEqual(label[2].x, more[0].x, "label must not overlap its more button");
+            Assert.Greater(more[2].y, label[0].y, "more belongs beside the label, not below the input");
+            var inputCorners = new Vector3[4];
+            ((RectTransform)row.input.transform).GetWorldCorners(inputCorners);
+            Assert.LessOrEqual(inputCorners[2].x, more[0].x, "the actions target must not intercept text editing");
+        }
     }
 }

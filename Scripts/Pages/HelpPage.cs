@@ -5,23 +5,21 @@ using IngameDebugConsole;
 
 namespace Hlight.Debug.Hub
 {
-    public static class HelpPage
+    internal static class HelpPage
     {
-        public static DebugPage Build() => new DebugPage("Help", panel => panel.AddText(BuildText()));
+        public static DebugPage Build() => new DebugPage("Trợ giúp", panel => panel.AddText(BuildText()));
 
         private static string BuildText()
         {
             var builder = new StringBuilder();
-            builder.Append("<b>Dev note:</b>");
+            builder.Append("<b>Ghi chú:</b>");
             foreach (var note in DebugHub.Notes)
             {
                 builder.Append("\n  + ").Append(note);
             }
 
-            // Toàn văn description ở đây — CommandsPage không còn cắt ngắn description nữa (xem
-            // ponytail comment ở CommandsPage.LabelOf), nhưng trang này vẫn là chỗ đọc hết mọi
-            // command trong một khối text, không phải dò từng row.
-            builder.Append("\n\n<b>Available commands:</b>");
+            // Trang này là chỗ đọc hết mọi command trong một khối text, không phải dò từng row.
+            builder.Append("\n\n<b>Command:</b>");
             var entries = new List<DebugRegistry.Entry>(DebugRegistry.All);
             entries.Sort((left, right) => string.Compare(left.Path, right.Path, StringComparison.OrdinalIgnoreCase));
 
@@ -30,7 +28,7 @@ namespace Hlight.Debug.Hub
                 builder.Append("\n  - ").Append(entry.Path);
                 AppendShape(builder, entry.Node);
                 if (!string.IsNullOrEmpty(entry.Node.Description))
-                    builder.Append("  <color=#7A828C>").Append(entry.Node.Description).Append("</color>");
+                    builder.Append("  <color=").Append(Palette.DIM).Append('>').Append(entry.Node.Description).Append("</color>");
             }
             return builder.ToString();
         }

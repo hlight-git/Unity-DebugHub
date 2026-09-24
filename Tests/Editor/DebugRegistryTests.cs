@@ -35,6 +35,22 @@ namespace Hlight.Debug.Hub.Tests
             PlayerPrefs.SetString(LAST_KEY, lastBackup);
         }
 
+        /// Trang Params/Xác nhận giữ entry qua lần đóng panel: owner chết trong lúc đó thì bấm Chạy không
+        /// được gọi delegate của object đã bị Destroy.
+        [Test]
+        public void RunEntry_RefusesAnEntryWhoseOwnerWasDestroyed()
+        {
+            var owner = new GameObject("owner");
+            var ran = false;
+            Track(DebugHub.Add(owner, "deadtest.run", "d", () => ran = true));
+            Assert.IsTrue(DebugRegistry.Find("deadtest.run", out var entry));
+            Object.DestroyImmediate(owner);
+
+            Assert.IsFalse(DebugRegistry.RunEntry(entry, System.Array.Empty<string>(), out var message));
+            Assert.IsFalse(ran);
+            StringAssert.Contains("gỡ", message);
+        }
+
         private T Track<T>(T node) where T : DebugNode
         {
             registered.Add(node);
@@ -173,6 +189,97 @@ namespace Hlight.Debug.Hub.Tests
 
             var second = Track(DebugHub.Add<int>(null, "time.repeat", "d", TakeLevel).Defaults("7"));
             Assert.AreEqual(new[] { "7" }, DebugRegistry.ArgsFor(second));
+        }
+
+        [Test]
+        public void Run_ReportsTheThrownException_NotItsCause()
+        {
+            var node = Track(DebugHub.Add(null, "wrap.boom", "d",
+                () => throw new System.InvalidOperationException("ngoài", new System.ArgumentException("trong"))));
+
+            // Unity log cả chuỗi inner exception thành nhiều dòng; thứ cần kiểm là message trả về.
+            LogAssert.ignoreFailingMessages = true;
+            Assert.IsFalse(DebugRegistry.Run(node, new string[0], out var message));
+            StringAssert.Contains("ngoài", message);
+        }
+
+        [Test]
+        public void Run_CapturesLogs_EvenWhenUnityLoggingIsSilenced()
+        {
+            var node = Track(DebugHub.Add(null, "quiet.log", "d", () => UnityEngine.Debug.Log("vẫn thấy")));
+            var logger = UnityEngine.Debug.unityLogger;
+            logger.logEnabled = false;
+            try
+            {
+                Assert.IsTrue(DebugRegistry.Run(node, new string[0], out var message));
+                StringAssert.Contains("vẫn thấy", message);
+                Assert.IsFalse(logger.logEnabled, "chạy xong phải trả logger về như cũ");
+            }
+            finally { logger.logEnabled = true; }
+        }
+
+        [Test]
+        public void OwnerDestroyedBeforeRegistering_DoesNotMakeTheNodeImmortal()
+        {
+            var owner = new GameObject("dead owner");
+            Object.DestroyImmediate(owner);
+
+            DebugHub.Add(owner, "ghost.cmd", "d", () => { });
+
+            Assert.AreEqual(0, CountOf("ghost.cmd"));
+        }
+
+        [Test]
+        public void Defaults_OnARejectedDuplicate_DoesNotTouchTheRegisteredNode()
+        {
+            var kept = Track(DebugHub.Add<int>(null, "dup.args", "d", TakeLevel));
+
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("dup.args"));
+            DebugHub.Add<int>(null, "dup.args", "d", TakeLevel).Defaults("99");
+
+            CollectionAssert.AreNotEqual(new[] { "99" }, DebugRegistry.ArgsFor(kept));
+        }
+
+        [Test]
+        public void Execute_RecordsZeroArgumentCommands_LikeThePanelDoes()
+        {
+            Track(DebugHub.Add(null, "level.next", "d", () => { }));
+
+            Assert.IsTrue(DebugHub.Execute("level.next", out _));
+
+            Assert.AreEqual("level.next", DebugRegistry.LastCommand);
+        }
+
+        [Test]
+        public void Execute_ReadingAValue_IsNotRecorded()
+        {
+            Track(DebugHub.Add<int>(null, "level.goto", "d", TakeLevel));
+            Track(DebugHub.AddValue(null, "view.fps", "d", () => flag, v => flag = v));
+            DebugHub.Execute("level.goto 5", out _);
+
+            DebugHub.Execute("view.fps", out _);
+
+            Assert.AreEqual("level.goto 5", DebugRegistry.LastCommand);
+        }
+
+        [Test]
+        public void Execute_WithAVariableArgument_ClearsTheStaleLastCommand()
+        {
+            Track(DebugHub.Add<int>(null, "level.goto", "d", TakeLevel));
+            Track(DebugHub.Add<GameObject>(null, "pick.go", "d", _ => { }));
+            DebugHub.Execute("level.goto 5", out _);
+            var go = new GameObject("var target");
+            Vars.Bind("g", go);
+            try
+            {
+                Assert.IsTrue(DebugHub.Execute("pick.go $g", out _));
+                Assert.IsEmpty(DebugRegistry.LastCommand, "reference không ghi lại được — xoá, không giữ lệnh cũ");
+            }
+            finally
+            {
+                Vars.Remove("g");
+                Object.DestroyImmediate(go);
+            }
         }
 
         private static int CountOf(string path)

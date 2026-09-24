@@ -17,7 +17,7 @@ namespace Hlight.Debug.Hub
     ///
     /// Bước sau bước Instance **không** thuộc trang này: trang member hiện có đã đệ quy không giới
     /// hạn, và cả hai đều chỉ nối thêm bước vào cùng một chuỗi address.
-    public static class BrowsePage
+    internal static class BrowsePage
     {
         /// Chưa gõ gì cũng có đường mò: `Mọi assembly` + các assembly không thuộc Unity/.NET. Lọc tên
         /// assembly là micro-giây nên làm ngay ở main thread, không qua Suggester.
@@ -31,23 +31,25 @@ namespace Hlight.Debug.Hub
                 // thứ bảy, sau AdjustSdk/AllIn1SpriteShader/AndroidPlayerBuildProgram — thứ hay cần
                 // nhất lại khó thấy nhất.
                 var hidden = 0;
+                var preferred = new List<Assembly>();
                 var rest = new List<Assembly>();
                 foreach (var assembly in TypeFinder.Assemblies(string.Empty))
                 {
                     var name = assembly.GetName().Name;
                     if (IsPlatform(name)) { hidden++; continue; }
                     if (name.StartsWith("Assembly-CSharp", StringComparison.Ordinal))
-                        panel.AddNavigation(name, Types(assembly));
+                        preferred.Add(assembly);
                     else rest.Add(assembly);
                 }
-                foreach (var assembly in rest) panel.AddNavigation(assembly.GetName().Name, Types(assembly));
+                preferred.AddRange(rest);
+                panel.AddPaged(preferred, assembly => panel.AddNavigation(assembly.GetName().Name, Types(assembly)));
                 panel.AddText(Palette.Wrap($"Ẩn {hidden} assembly của Unity/.NET — bấm Tìm rồi gõ để thấy.", TextStyle.Note));
             },
             search: (panel, query) =>
             {
                 var found = TypeFinder.Assemblies(query);
                 if (found.Count == 0) { panel.AddText("Không có assembly nào khớp."); return; }
-                foreach (var assembly in found) panel.AddNavigation(assembly.GetName().Name, Types(assembly));
+                panel.AddPaged(found, assembly => panel.AddNavigation(assembly.GetName().Name, Types(assembly)));
             });
         }
 
@@ -58,7 +60,8 @@ namespace Hlight.Debug.Hub
             var suggester = new Suggester<Type>(fragment => TypeFinder.SearchAll(fragment));
             return new DebugPage("Mọi assembly",
                 panel => panel.AddText("Bấm Tìm rồi gõ tên type."),
-                search: (panel, query) => Suggest(panel, suggester, query, "Không có type nào khớp.", type => TypeRow(panel, type)));
+                search: (panel, query) => Suggest(panel, suggester, query, "Không có type nào khớp.",
+                    type => TypeRow(panel, type), TypeFinder.SEARCH_ALL_LIMIT));
         }
 
         public static DebugPage Types(Assembly assembly)
@@ -66,7 +69,8 @@ namespace Hlight.Debug.Hub
             var suggester = new Suggester<Type>(fragment => TypeFinder.Search(assembly, fragment));
             return new DebugPage(assembly.GetName().Name,
                 panel => panel.AddText($"{TypeFinder.TypesOf(assembly).Length} type. Bấm Tìm rồi gõ tên."),
-                search: (panel, query) => Suggest(panel, suggester, query, "Không có type nào khớp.", type => TypeRow(panel, type)));
+                search: (panel, query) => Suggest(panel, suggester, query, "Không có type nào khớp.",
+                    type => TypeRow(panel, type), TypeFinder.SEARCH_LIMIT));
         }
 
         /// Tên ngắn trên nhãn, full name xuống dòng mô tả: full name trên nhãn thì mọi dòng bắt đầu bằng
@@ -104,14 +108,17 @@ namespace Hlight.Debug.Hub
                 // Generic chưa đóng (Singleton<T>) không có instance nào để tìm — FindObjectsByType ném.
                 if (!typeof(Object).IsAssignableFrom(type) || type.ContainsGenericParameters) return;
 
-                var found = Object.FindObjectsByType(type, FindObjectsInactive.Include, FindObjectsSortMode.None);
+                var found = Address.LiveInstances(type);
                 if (found.Length == 0) { panel.AddText("Không có instance nào đang sống."); return; }
 
-                for (var i = 0; i < found.Length; i++)
+                // Phân trang: Transform/GameObject có hàng nghìn instance, ~1 ms mỗi row.
+                var indices = new int[found.Length];
+                for (var i = 0; i < indices.Length; i++) indices[i] = i;
+                panel.AddPaged(indices, i =>
                 {
                     var address = $"#{type.FullName}[{i}]";
                     panel.AddNavigation(found[i].name, At(address, found[i].name), address);
-                }
+                });
             });
         }
 
@@ -120,8 +127,7 @@ namespace Hlight.Debug.Hub
         ///
         /// **Cố ý không Live.** Dựng lại một trang member tốn ~1 ms mỗi row — `RootScope` 55 row là
         /// 58 ms, tức Live 4 lần/giây ngốn 1/4 thời gian chạy của game chỉ để vẽ lại một danh sách.
-        /// Chỗ để ngồi nhìn giá trị đổi là trang `Objects`: nó chỉ có những dòng đã ghim nên nhỏ, và
-        /// nó Live. Trang này là chỗ **duyệt**, mở lại là có số mới.
+        /// Mở lại, hoặc ghim rồi bấm Làm mới ở Objects, là có số mới.
         public static DebugPage At(string address, string title)
         {
             return new DebugPage(title, panel =>
@@ -133,12 +139,7 @@ namespace Hlight.Debug.Hub
                 }
 
                 NodeRenderer.RenderMembers(panel, cursor, address);
-
-                panel.AddButton(Watches.Contains(address) ? "Đã ghim" : "+ Ghim vào Objects", () =>
-                {
-                    if (!Watches.TryAdd(address, out var message)) panel.ShowResult(message, true);
-                    panel.Refresh();
-                });
+                NodeRenderer.AddPinToggle(panel, address);
             },
             search: (panel, query) =>
             {
@@ -153,7 +154,7 @@ namespace Hlight.Debug.Hub
         /// Kết quả cũ vẫn hiện trong lúc query mới đang chờ — gõ thêm một chữ không làm list chớp trắng —
         /// nhưng có một dòng "Đang tìm…" ở đầu để biết list đó chưa phải của chữ vừa gõ.
         private static void Suggest<T>(DebugHubPanel panel, Suggester<T> suggester, string query, string none,
-            Action<T> row)
+            Action<T> row, int limit)
         {
             suggester.Request(query);
             var snapshot = suggester.Current;    // đọc một lần: query và kết quả phải cùng một bản
@@ -170,7 +171,9 @@ namespace Hlight.Debug.Hub
                 if (!pending) panel.AddText(none);
                 return;
             }
-            foreach (var item in snapshot.Items) row(item);
+            if (snapshot.Items.Count >= limit)
+                panel.AddText(Palette.Wrap($"Chỉ hiện {limit} kết quả đầu theo tên — gõ thêm để thu hẹp.", TextStyle.Note));
+            panel.AddPaged(snapshot.Items, row);
         }
     }
 }

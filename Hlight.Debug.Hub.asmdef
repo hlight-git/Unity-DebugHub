@@ -4,9 +4,6 @@
     "references": [
         "IngameDebugConsole.Runtime",
         "Unity.InputSystem",
-        "Proxima",
-        "MaxSdk.Scripts",
-        "GoogleMobileAds",
         "Unity.TextMeshPro"
     ],
     "includePlatforms": [],

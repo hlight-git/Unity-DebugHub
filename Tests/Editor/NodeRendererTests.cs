@@ -5,7 +5,7 @@ using UnityEngine;
 
 namespace Hlight.Debug.Hub.Tests
 {
-    /// Bảng §3 của spec. Kiểm bằng loại row panel dựng ra, không kiểm pixel.
+    /// Bảng "Row suy từ node" trong README. Kiểm bằng loại row panel dựng ra, không kiểm pixel.
     public class NodeRendererTests
     {
         private DebugHubPanel panel;
@@ -19,6 +19,54 @@ namespace Hlight.Debug.Hub.Tests
             Render(Node.Value<bool>("flag", () => true, null));
 
             Assert.IsNull(TestPanel.Rows(panel)[0].toggle);
+        }
+
+        [Test]
+        public void WritableNullString_HasAnEditor()
+        {
+            Render(Node.Value<string>("text", () => null, _ => { }));
+            Assert.IsNotNull(TestPanel.Rows(panel)[0].input);
+        }
+
+        [Test]
+        public void WritableNullable_HasAnEditor_AndAcceptsANumber()
+        {
+            int? stored = null;
+            Render(Node.Value<int?>("maybe", () => stored, v => stored = v));
+
+            var input = TestPanel.Rows(panel)[0].input;
+            Assert.IsNotNull(input);
+            Assert.AreEqual(TMPro.TMP_InputField.ContentType.IntegerNumber, input.contentType);
+        }
+
+        [Test]
+        public void NestedCommand_HonorsConfirmationAndDismiss()
+        {
+            var calls = 0;
+            var node = new ActionNode { Label = "nested", Confirm = true, Dismiss = DismissMode.ClosePanel,
+                Invoke = _ => calls++ };
+            panel.ShowFromRoot(new DebugPage("root", p => p.AddText("root")));
+            NodeRenderer.RunInspect(panel, node, System.Array.Empty<string>());
+            Assert.AreEqual(0, calls);
+            Assert.AreEqual(2, panel.StackDepth);
+            TestPanel.ClickRowContaining(panel, "Huỷ");
+            Assert.AreEqual(0, calls);
+            NodeRenderer.RunInspect(panel, node, System.Array.Empty<string>());
+            TestPanel.ClickRowContaining(panel, "Chạy");
+            Assert.AreEqual(1, calls);
+            Assert.IsFalse(panel.IsOpen);
+        }
+
+        [Test]
+        public void ParamsPage_RejectsInvalidArgumentsBeforeConfirmation()
+        {
+            var calls = 0;
+            var node = new ActionNode { Label = "action", Parameters = new[] { new DebugParameter("amount", typeof(int)) } };
+            panel.ShowFromRoot(ParamsPage.For(node, (_, _) => calls++));
+            TestPanel.Rows(panel)[0].input.text = "invalid";
+            TestPanel.ClickRowContaining(panel, "Chạy");
+            Assert.AreEqual(0, calls);
+            StringAssert.Contains("amount", panel.LastResult);
         }
 
         [Test]
@@ -44,7 +92,7 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void WritableBool_HasMoreButton()
         {
-            // Task 8: ToggleRow thiếu nút `…` — Gán/Watch/Lưu vào $var không mở được cho bool.
+            // ToggleRow từng thiếu nút `…` — Gán/Watch/Lưu vào $var không mở được cho bool.
             Render(Node.Value("flag", () => true, v => { }));
 
             Assert.IsNotNull(TestPanel.Rows(panel)[0].more);
@@ -111,7 +159,7 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(0, calls, "dựng row cha mà đã gọi delegate của game");
         }
 
-        /// Task 18 follow-up: sửa một field trên Members page thành công mà không log gì thì phải
+        /// Sửa một field trên Members page thành công mà không log gì thì phải
         /// im re, không bật một toast rỗng (RunInspect phải theo đúng luật của CommandsPage.Dispatch).
         [Test]
         public void SilentSuccessfulEdit_OnAMembersPage_DoesNotPopAToast()
@@ -130,6 +178,37 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         private class Holder { public int Number = 1; }
+
+        [Test]
+        public void ThrowingFolder_ShowsAnErrorRow_InsteadOfBreakingThePanel()
+        {
+            Render(Node.Folder("info", () => throw new System.InvalidOperationException("chưa có level")));
+
+            UnityEngine.TestTools.LogAssert.Expect(LogType.Exception, new System.Text.RegularExpressions.Regex("chưa có level"));
+            Assert.DoesNotThrow(() => TestPanel.ClickRowContaining(panel, "info"));
+
+            Assert.AreEqual(2, panel.StackDepth, "trang folder vẫn mở");
+            StringAssert.Contains("chưa có level", string.Join("|", TestPanel.LabelsOf(panel)));
+        }
+
+        /// Transform implement IEnumerable (duyệt con) nhưng là object có member thật: mở ra phải thấy
+        /// position/rotation, danh sách con nằm ở một row riêng.
+        [Test]
+        public void Transform_OpensAsAnObject_WithItsChildrenOnASeparateRow()
+        {
+            var go = new GameObject("parent");
+            new GameObject("child").transform.SetParent(go.transform);
+            try
+            {
+                var cursor = new Cursor(typeof(Transform), go.transform, null);
+                panel.ShowFromRoot(new DebugPage("t", p => NodeRenderer.RenderMembers(p, cursor, null)));
+
+                var labels = TestPanel.LabelsOf(panel);
+                Assert.IsTrue(labels.Exists(l => l.StartsWith("localPosition")), string.Join(" | ", labels));
+                Assert.IsTrue(labels.Exists(l => l.StartsWith("Phần tử")));
+            }
+            finally { Object.DestroyImmediate(go); }
+        }
 
         private void Render(DebugNode node)
         {

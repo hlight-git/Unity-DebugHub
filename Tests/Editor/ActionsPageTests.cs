@@ -114,5 +114,20 @@ namespace Hlight.Debug.Hub.Tests
             }
             finally { Vars.Remove("g"); Object.DestroyImmediate(go); }
         }
+
+        /// `$my var` bị tách thành hai đối số, `$a.b` bị đọc thành biến `a` rồi member `b`.
+        [Test]
+        public void SaveVar_RejectsANameThatAnAddressCannotSpell()
+        {
+            var node = Node.Value<int>("n", () => 3, null);
+            panel.ShowFromRoot(ActionsPage.For(node, 3, (n, v) => { }));
+            TestPanel.ClickRowContaining(panel, "Lưu vào");
+            TestPanel.Rows(panel)[0].input.text = "my var";
+            TestPanel.ClickRowContaining(panel, "Lưu");
+
+            Assert.IsFalse(Vars.TryGet("my var", out _));
+            Assert.IsTrue(panel.IsOpen);
+            StringAssert.Contains("Tên biến", panel.LastResult);
+        }
     }
 }

@@ -6,7 +6,7 @@ namespace Hlight.Debug.Hub
     /// Page mở từ nút `…` của một row giá trị. Một nút một page thay vì rải hai–ba nút nhỏ lên
     /// mỗi row: panel bề ngang điện thoại đã có nhãn + giá trị + switch/field, thêm vùng bấm nữa
     /// là bấm nhầm. Có: Copy giá trị, Gán (reference/null), Ghim/Bỏ ghim, Bỏ biến, Lưu vào $….
-    public static class ActionsPage
+    internal static class ActionsPage
     {
         public static DebugPage For(ValueNode node, object current, Action<DebugNode, string[]> run)
         {
@@ -30,10 +30,11 @@ namespace Hlight.Debug.Hub
                     panel.AddNavigation("Gán giá trị", AssignPage(node, run));
 
                 // Ghim hai chiều — `Gỡ` ở trang Objects cũng là nút này, không phải một row riêng.
-                // Address gốc `$` không ghim được (biến chết theo domain reload); chính biến `$tên`
-                // thì có `Bỏ biến`.
+                // Chỉ hiện Ghim khi ghim được (cùng luật Watches.CanPin với nút ghim trên row): address
+                // gốc `$` (biến chết theo domain reload) hay có bước gọi method thì bấm là lỗi.
+                // Chính biến `$tên` thì có `Bỏ biến`.
                 var address = node.Address;
-                if (address != null && !address.StartsWith("$"))
+                if (address != null && (Watches.Contains(address) || Watches.CanPin(address)))
                 {
                     var pinned = Watches.Contains(address);
                     panel.AddButton(pinned ? "Bỏ ghim" : "Ghim", () =>
@@ -44,7 +45,7 @@ namespace Hlight.Debug.Hub
                         panel.Pop();
                     });
                 }
-                else if (address != null && address.IndexOfAny(new[] { '.', '[' }) < 0)
+                else if (address != null && address.StartsWith("$") && address.IndexOfAny(new[] { '.', '[' }) < 0)
                 {
                     panel.AddButton("Bỏ biến", () =>
                     {
@@ -58,30 +59,46 @@ namespace Hlight.Debug.Hub
         }
 
         /// Giữ đúng reference, kể cả object inactive hay component thứ hai cùng kiểu — thứ mà
-        /// GameObject.Find/GetComponent không lấy lại được (§4).
+        /// GameObject.Find/GetComponent không lấy lại được.
         private static DebugPage SaveVarPage(ValueNode node, object current)
         {
+            var name = string.Empty;
             return new DebugPage($"Lưu {node.Label}", panel =>
             {
-                var name = string.Empty;
-                panel.AddField("Tên biến", typeof(string), string.Empty, value => name = value);
+                panel.AddField("Tên biến", typeof(string), name, value => name = value);
                 panel.AddPrimary("Lưu", () =>
                 {
-                    if (string.IsNullOrWhiteSpace(name)) { panel.ShowResult("Tên biến rỗng.", true); return; }
-                    Vars.Bind(name.TrimStart('$'), current);
-                    panel.ShowResult($"${name.TrimStart('$')} = {DebugValues.ToText(current)}", false);
+                    var variable = name.Trim().TrimStart('$');
+                    if (!IsVariableName(variable))
+                    {
+                        panel.ShowResult("Tên biến chỉ gồm chữ, số, '_' và không bắt đầu bằng số.", true);
+                        return;
+                    }
+                    Vars.Bind(variable, current);
+                    panel.ShowResult($"${variable} = {DebugValues.ToText(current)}", false);
                     panel.Pop();
                 });
             }, searchable: false);
         }
 
+        /// `$tên` phải đọc lại được trong address (dừng ở '.' và '[') và trong dòng lệnh (tách ở dấu cách).
+        private static bool IsVariableName(string name)
+        {
+            if (string.IsNullOrEmpty(name) || char.IsDigit(name[0])) return false;
+            foreach (var c in name)
+            {
+                if (!char.IsLetterOrDigit(c) && c != '_') return false;
+            }
+            return true;
+        }
+
         private static DebugPage AssignPage(ValueNode node, Action<DebugNode, string[]> run)
         {
+            var typed = string.Empty;
             return new DebugPage($"Gán {node.Label}", panel =>
             {
-                var typed = string.Empty;
                 panel.AddText($"Kiểu: {node.Declared.Name}. Gõ 'null' để xoá tham chiếu, `$tên` để gán biến.");
-                panel.AddField("Giá trị", typeof(string), string.Empty, value => typed = value);
+                panel.AddField("Giá trị", typeof(string), typed, value => typed = value);
                 panel.AddPrimary("Gán", () =>
                 {
                     // Kiểm trước để báo lỗi ngay tại chỗ nhập…

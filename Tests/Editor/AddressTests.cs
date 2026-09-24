@@ -33,6 +33,10 @@ namespace Hlight.Debug.Hub.Tests
         public static int CountedReads;
         public int Counted => ++CountedReads;
 
+        /// Root có đếm: mỗi lần một address bắt đầu từ đây được resolve là một lần đọc.
+        public static int TrackedReads;
+        public static AddressFixture Tracked { get { TrackedReads++; return Instance; } }
+
         /// Setter luôn ném — fixture cho "Run/Set thất bại phải hiện lỗi rõ ràng, không được nuốt"
         /// (xem AdvancedPageTests.WatchPage_FailingWrite_...).
         public int Explosive { get => 0; set => throw new System.Exception("bùm"); }
@@ -41,8 +45,18 @@ namespace Hlight.Debug.Hub.Tests
         public Pair ThePair;
         public List<int> Items = new List<int> { 1, 2, 3 };
         public Dictionary<string, int> Map = new Dictionary<string, int> { { "a", 1 } };
+        public int[] Numbers = { 10, 20, 30 };
+        public Inner[] Boxes = { new Inner() };
+        public TwoIndexers Indexed = new TwoIndexers();
 
-        /// Getter-only trả về **reference** — sửa member bên trong vẫn phải được (§9.2).
+        /// Hai indexer: GetProperty("Item") trên type này ném AmbiguousMatchException.
+        public class TwoIndexers
+        {
+            public int this[int i] => i;
+            public int this[string s] => s.Length;
+        }
+
+        /// Getter-only trả về **reference** — sửa member bên trong vẫn phải được.
         public Inner Child { get; } = new Inner();
 
         public int Doubled(int x) => x * 2;
@@ -76,9 +90,8 @@ namespace Hlight.Debug.Hub.Tests
         }
     }
 
-    /// Task 21 xoá Executor.cs nhưng ReflectionExtensions.cs (GetFieldRecursive/GetPropertyRecursive/
-    /// AddMethodsRecursive) không đổi và Address vẫn dùng chung — 3 fixture dưới giữ lại đúng những
-    /// trường hợp cũ ExecutorTests phủ mà AddressFixture ở trên không chạm tới: field private, method
+    /// 3 fixture dưới phủ những trường hợp ReflectionExtensions (GetFieldRecursive/GetPropertyRecursive/
+    /// AddMethodsRecursive) phải xử lý mà AddressFixture ở trên không chạm tới: field private, method
     /// bị override, và static member kế thừa từ interface cha.
     public class AddressOverrideBase
     {
@@ -134,7 +147,7 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void Write_GoesThroughAGetterOnlyPropertyThatReturnsAReference()
         {
-            // Luật §9.2: chỉ value type mới cần write-back. Property chỉ có getter mà trả về
+            // Chỉ value type mới cần write-back. Property chỉ có getter mà trả về
             // reference thì member bên trong vẫn ghi được — nếu không, gần như cả game read-only.
             Assert.IsTrue(Address.TryWrite($"{ROOT}.Child.Value", 9, out var error), error);
             Assert.AreEqual(9, AddressFixture.Instance.Child.Value);
@@ -150,7 +163,7 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void Write_ThroughAnIndexerOnAStructField_LandsBackOnTheOriginal()
         {
-            // §9.2 áp dụng y hệt cho bước indexer: ThePair là struct (như Vector2/Vector3/Color
+            // Luật write-back áp dụng y hệt cho bước indexer: ThePair là struct (như Vector2/Vector3/Color
             // của Unity, đều có this[int]) — ghi qua ngoặc vuông phải write-back giống ghi qua dấu
             // chấm, không thì chỉ sửa được một bản copy vứt đi.
             Assert.IsTrue(Address.TryWrite($"{ROOT}.ThePair[1]", 9, out var error), error);
@@ -204,6 +217,41 @@ namespace Hlight.Debug.Hub.Tests
 
             Assert.IsTrue(Address.TryResolve($"{ROOT}.Pick{{0}}(1)", out var cursor, out error), error);
             Assert.IsNotNull(cursor.Value);
+        }
+
+        /// `<`, `>` và `{n}` trong **tham số** không phải cú pháp generic / chọn overload.
+        [Test]
+        public void Resolve_BracketsInsideStringArguments_AreJustText()
+        {
+            // Thứ tự overload do reflection quyết: thử cả hai, đúng một cái là bản nhận string.
+            foreach (var argument in new[] { "a<b", "<b>" })
+            {
+                var picked = 0;
+                for (var order = 0; order < 2; order++)
+                {
+                    if (Address.TryResolve($"{ROOT}.Pick{{{order}}}(\"{argument}\")", out var cursor, out _) &&
+                        (string)cursor.Value == "string") picked++;
+                }
+                Assert.AreEqual(1, picked, argument);
+            }
+
+            string error;
+
+            Assert.IsFalse(Address.TryResolve($"{ROOT}.Pick(\"{{1}}\")", out _, out error),
+                "{1} trong tham số không được âm thầm chọn overload");
+            StringAssert.Contains("{0}", error);
+
+            Assert.IsFalse(Address.TryResolve($"{ROOT}.Doubled<System.Int32>(1)", out _, out error));
+            StringAssert.Contains("generic", error);
+        }
+
+        [Test]
+        public void Elements_OfAMultiDimensionalArray_AreListed_NotAnError()
+        {
+            var grid = new Cursor(typeof(int[,]), new int[2, 3], null);
+            var count = 0;
+            foreach (var _ in Reflect.Elements(grid, null)) count++;
+            Assert.AreEqual(6, count);
         }
 
         [Test]
@@ -324,7 +372,7 @@ namespace Hlight.Debug.Hub.Tests
             finally { Object.DestroyImmediate(go); }
         }
 
-        /// Bug Task 22: `#Namespace.Type[i]` từng bị cắt root ở dấu '.' đầu tiên của namespace
+        /// Bug đã sửa: `#Namespace.Type[i]` từng bị cắt root ở dấu '.' đầu tiên của namespace
         /// (`CutAfterDollarToken`/`TrySplitInstanceRoot` sửa lại việc này), nên
         /// `#UnityEngine.Camera[0]` từng báo lỗi ngay ở "UnityEngine".
         [Test]
@@ -369,6 +417,62 @@ namespace Hlight.Debug.Hub.Tests
                 Assert.AreEqual(7, cursor.Value);
             }
             finally { Object.DestroyImmediate(go); }
+        }
+
+        [Test]
+        public void Indexer_ReadsAndWritesArrayElements()
+        {
+            Assert.IsTrue(Address.TryResolve($"{ROOT}.Numbers[1]", out var cursor, out var error), error);
+            Assert.AreEqual(20, cursor.Value);
+
+            Assert.IsTrue(Address.TrySet($"{ROOT}.Numbers[1]", "25", out error), error);
+            Assert.AreEqual(25, AddressFixture.Instance.Numbers[1]);
+        }
+
+        [Test]
+        public void Indexer_DrillsIntoAnArrayElement()
+        {
+            Assert.IsTrue(Address.TrySet($"{ROOT}.Boxes[0].Value", "8", out var error), error);
+            Assert.AreEqual(8, AddressFixture.Instance.Boxes[0].Value);
+        }
+
+        [Test]
+        public void Indexer_OutsideTheArray_IsAnError()
+        {
+            Assert.IsFalse(Address.TryResolve($"{ROOT}.Numbers[9]", out _, out var error));
+            StringAssert.Contains("9", error);
+        }
+
+        [Test]
+        public void GenericMethod_WithTheWrongTypeArguments_IsAnError_NotAnException()
+        {
+            string error = null;
+            Assert.DoesNotThrow(() => Address.TryResolve($"{ROOT}.Echo<Int32 Int32>(5)", out _, out error));
+            Assert.IsNotNull(error);
+        }
+
+        [Test]
+        public void GenericMethod_AcceptsANamespacedTypeArgument()
+        {
+            Assert.IsTrue(Address.TryResolve($"{ROOT}.Echo<System.Int32>(5)", out var cursor, out var error), error);
+            Assert.AreEqual(5, cursor.Value);
+        }
+
+        [Test]
+        public void MemberNamedItem_OnATypeWithSeveralIndexers_IsAnError_NotAnException()
+        {
+            string error = null;
+            Assert.DoesNotThrow(() => Address.TryResolve($"{ROOT}.Indexed.Item", out _, out error));
+            Assert.IsNotNull(error);
+        }
+
+        [Test]
+        public void StepSplit_IgnoresDotsInsideQuotesAndBrackets()
+        {
+            AddressFixture.Instance.Map["a.b"] = 9;
+
+            Assert.IsTrue(Address.TryResolve($"{ROOT}.Map[\"a.b\"]", out var cursor, out var error), error);
+            Assert.AreEqual(9, cursor.Value);
         }
     }
 }

@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Text.RegularExpressions;
 using IngameDebugConsole;
 using UnityEngine;
 using Object = UnityEngine.Object;
@@ -11,7 +10,7 @@ using Object = UnityEngine.Object;
 namespace Hlight.Debug.Hub
 {
     /// Một chỗ đứng trong cây dữ liệu: kiểu khai báo, giá trị hiện tại, và cách ghi đè giá trị đó.
-    public readonly struct Cursor
+    internal readonly struct Cursor
     {
         public readonly Type Declared;
         public readonly object Value;
@@ -33,20 +32,19 @@ namespace Hlight.Debug.Hub
     ///     address = root ( "." member | "[" args "]" | "." Method(args) )*
     ///     root    = TypeName | $var | #TypeName[i] | @command.path
     ///
-    /// Hai trần cố ý giữ từ Executor cũ: không parse ngoặc lồng (bắc cầu qua $var), và `#Type[i]`
-    /// không ổn định qua các phiên vì thứ tự FindObjectsByType không có bảo đảm.
-    public static class Address
+    /// Hai trần cố ý: không parse ngoặc cùng loại lồng nhau (bắc cầu qua $var), và `#Type[i]` đánh số
+    /// theo InstanceID — ổn định trong phiên cho tới khi có object cùng type sinh ra/bị huỷ.
+    internal static class Address
     {
         private const BindingFlags ALL = BindingFlags.Static | BindingFlags.Instance |
                                          BindingFlags.NonPublic | BindingFlags.Public;
-        private const string DOT_OUTSIDE_BRACKETS = @"\.(?![^\[\](){}]*[\]\)}])";
-        private const string BEFORE_BRACKET = @"(?=\[)";
 
         public static string Member(string address, string name) => $"{address}.{name}";
         public static string Index(string address, string index) => $"{address}[{index}]";
 
-        /// Watch từ chối address có bước gọi method — nếu không, `Factory.Spawn()` bị gọi 4 lần/giây.
-        /// Xét **step đã tách**, không tìm dấu ngoặc trong chuỗi: literal của indexer chứa được ngoặc.
+        /// Ghim từ chối address có bước gọi method — nếu không, `Factory.Spawn()` bị gọi mỗi lần trang
+        /// Objects làm mới. Xét **step đã tách**, không tìm dấu ngoặc trong chuỗi: literal của indexer
+        /// chứa được ngoặc.
         public static bool HasMethodStep(string address)
         {
             if (!TrySplit(address, out _, out var steps, out _)) return false;
@@ -121,7 +119,7 @@ namespace Hlight.Debug.Hub
             }
             catch (Exception exception)
             {
-                error = (exception.InnerException ?? exception).Message;
+                error = exception.Unwrap().Message;
                 return false;
             }
         }
@@ -157,7 +155,7 @@ namespace Hlight.Debug.Hub
             }
             else if (address[0] == '@')
             {
-                // Prefix dài nhất khớp path của một ValueNode đã đăng ký (§9.1).
+                // Prefix dài nhất khớp path của một ValueNode đã đăng ký.
                 if (!DebugRegistry.LongestValuePath(address.Substring(1), out var path, out rest))
                 {
                     error = $"Không có command giá trị nào khớp '{address}'.";
@@ -180,19 +178,51 @@ namespace Hlight.Debug.Hub
                 rest = address.Substring(rootLength).TrimStart('.');
             }
 
-            steps = string.IsNullOrEmpty(rest)
-                ? Array.Empty<string>()
-                : Regex.Split(rest, DOT_OUTSIDE_BRACKETS)
-                       .SelectMany(part => Regex.Split(part, BEFORE_BRACKET))
-                       .Where(part => part.Length > 0)
-                       .ToArray();
+            steps = SplitSteps(rest);
             return true;
         }
 
-        /// Phần đầu tới trước dấu '[' hoặc '(' đầu tiên — chỗ TypeFinder được phép dò.
+        /// Cắt ở '.' và trước '[' — chỉ khi đang ở ngoài mọi cặp ngoặc và ngoài chuỗi trong nháy kép:
+        /// `Echo<System.Int32>(5)`, `Map["a.b"]`, `Pick{1}(2.5)` đều là một bước.
+        internal static string[] SplitSteps(string rest)
+        {
+            if (string.IsNullOrEmpty(rest)) return Array.Empty<string>();
+
+            var steps = new List<string>();
+            var closers = new Stack<char>();
+            var quoted = false;
+            var start = 0;
+            for (var i = 0; i < rest.Length; i++)
+            {
+                var c = rest[i];
+                if (c == '"') { quoted = !quoted; continue; }
+                if (quoted) continue;
+
+                if (closers.Count == 0 && (c == '.' || c == '['))
+                {
+                    if (i > start) steps.Add(rest.Substring(start, i - start));
+                    start = c == '.' ? i + 1 : i;
+                }
+
+                switch (c)
+                {
+                    case '[': closers.Push(']'); break;
+                    case '(': closers.Push(')'); break;
+                    case '{': closers.Push('}'); break;
+                    case '<': closers.Push('>'); break;
+                    default:
+                        if (closers.Count > 0 && c == closers.Peek()) closers.Pop();
+                        break;
+                }
+            }
+            if (start < rest.Length) steps.Add(rest.Substring(start));
+            return steps.ToArray();
+        }
+
+        /// Phần đầu tới trước dấu ngoặc đầu tiên — chỗ TypeFinder được phép dò.
         private static string HeadOf(string address)
         {
-            var cut = address.IndexOfAny(new[] { '[', '(' });
+            var cut = address.IndexOfAny(new[] { '[', '(', '<', '{' });
             return cut < 0 ? address : address.Substring(0, cut);
         }
 
@@ -278,7 +308,7 @@ namespace Hlight.Debug.Hub
                 }
                 catch (Exception exception)
                 {
-                    error = $"{root}: {(exception.InnerException ?? exception).Message}";
+                    error = $"{root}: {exception.Unwrap().Message}";
                     return false;
                 }
                 return true;
@@ -298,8 +328,13 @@ namespace Hlight.Debug.Hub
             return true;
         }
 
-        /// `#Type` = instance đầu tiên đang sống, `#Type[i]` = cái thứ i. Thứ tự của
-        /// FindObjectsByType không có bảo đảm nên address này không ổn định qua các phiên.
+        /// Instance đang sống (kể cả inactive) theo đúng thứ tự mà `#Type[i]` đánh số. Danh sách của
+        /// Duyệt cũng lấy từ đây: SortMode.None không hứa thứ tự giữa hai lần gọi, nên danh sách và lần
+        /// resolve sau đó có thể trỏ hai object khác nhau.
+        internal static Object[] LiveInstances(Type type) =>
+            Object.FindObjectsByType(type, FindObjectsInactive.Include, FindObjectsSortMode.InstanceID);
+
+        /// `#Type` = instance đầu tiên đang sống, `#Type[i]` = cái thứ i.
         private static bool TryInstance(string root, out Cursor cursor, out string error)
         {
             cursor = default;
@@ -310,9 +345,6 @@ namespace Hlight.Debug.Hub
             if (bracket >= 0)
             {
                 var index = body.Substring(bracket + 1).TrimEnd(']');
-                // TryParse trước đây bị bỏ qua kết quả: "#Camera[abc]" âm thầm resolve instance 0
-                // thay vì báo lỗi. Giữ nguyên order = 0 chỉ khi text thật sự là "0" — chữ rác phải
-                // báo lỗi đọc được, không phải lặng lẽ lấy nhầm instance khác.
                 if (!int.TryParse(index, out order))
                 {
                     error = $"'{index}' không phải một số nguyên.";
@@ -327,10 +359,14 @@ namespace Hlight.Debug.Hub
                 error = $"'{body}' không phải một UnityEngine.Object type.";
                 return false;
             }
+            // FindObjectsByType ném với type generic mở (`Singleton`1`) — cùng luật BrowsePage.
+            if (type.ContainsGenericParameters)
+            {
+                error = $"'{body}' là generic mở — không có instance nào mang đúng type này.";
+                return false;
+            }
 
-            var found = Object.FindObjectsByType(type, FindObjectsInactive.Include, FindObjectsSortMode.None);
-            // order < 0 gộp chung vào cùng nhánh bounds-check: trước đây "#Camera[-1]" lọt qua đây
-            // rồi ném IndexOutOfRangeException ở found[order] thay vì lỗi đọc được.
+            var found = LiveInstances(type);
             if (order < 0 || order >= found.Length)
             {
                 error = $"Chỉ có {found.Length} instance của {body} đang sống.";
@@ -351,7 +387,21 @@ namespace Hlight.Debug.Hub
             return TryMember(parent, step, out cursor, out error);
         }
 
-        /// Quyền ghi xét **từng bước** (§9.2):
+        /// Getter của Unity/TMP mà chỉ cần **đọc** là tạo bản sao asset gắn vĩnh viễn vào object (mất
+        /// batching, rò bộ nhớ). Trang member đọc mọi property nên phải chặn ở đây.
+        private static readonly HashSet<string> CloningGetters = new(StringComparer.Ordinal)
+        {
+            "UnityEngine.Renderer.material", "UnityEngine.Renderer.materials",
+            "UnityEngine.MeshFilter.mesh", "UnityEngine.Collider.material",
+            "TMPro.TMP_Text.fontMaterial", "TMPro.TMP_Text.fontMaterials",
+            // Sub-mesh của fallback font / sprite: getter gọi CreateMaterialInstance.
+            "TMPro.TMP_SubMesh.material", "TMPro.TMP_SubMeshUI.material",
+        };
+
+        internal static bool IsCloningGetter(PropertyInfo property) =>
+            CloningGetters.Contains($"{property.DeclaringType?.FullName}.{property.Name}");
+
+        /// Quyền ghi xét **từng bước**:
         /// - parent là reference → ghi thẳng lên object, không cần parent.Write;
         /// - parent là value type đã boxing → phải có parent.Write để ghi cả bản copy về chỗ cũ;
         /// - readonly/const/không có setter → bước này không ghi được, nhưng vẫn mở vào trong được.
@@ -368,7 +418,7 @@ namespace Hlight.Debug.Hub
             {
                 object value;
                 try { value = field.GetValue(field.IsStatic ? null : source); }
-                catch (Exception exception) { error = (exception.InnerException ?? exception).Message; return false; }
+                catch (Exception exception) { error = exception.Unwrap().Message; return false; }
 
                 Action<object> write = null;
                 if (Writable(field, parent))
@@ -390,10 +440,16 @@ namespace Hlight.Debug.Hub
                 return false;
             }
 
+            if (IsCloningGetter(property))
+            {
+                error = $"không đọc '{name}': đọc là tạo bản sao asset gắn vào object — dùng bản shared.";
+                return false;
+            }
+
             var getter = property.GetMethod;
             object read;
             try { read = property.GetValue(getter != null && getter.IsStatic ? null : source); }
-            catch (Exception exception) { error = (exception.InnerException ?? exception).Message; return false; }
+            catch (Exception exception) { error = exception.Unwrap().Message; return false; }
 
             Action<object> setter = null;
             var isStatic = getter != null && getter.IsStatic;
@@ -421,7 +477,7 @@ namespace Hlight.Debug.Hub
             return property != null && Writable(property, parent);
         }
 
-        /// Một bản duy nhất của luật ghi (§9.2), dùng chung cho TryMember và CanWrite.
+        /// Một bản duy nhất của luật ghi, dùng chung cho TryMember và CanWrite.
         /// Member instance trên root static (Value null) không ghi được: không có object để ghi vào.
         private static bool Writable(FieldInfo field, Cursor parent)
         {
@@ -459,6 +515,9 @@ namespace Hlight.Debug.Hub
                 return false;
             }
 
+            // Mảng không có indexer công khai nào (chỉ có IList.Item khai tường minh, bị lọc ở dưới).
+            if (source is Array array) return TryArrayElement(array, arguments, out cursor, out error);
+
             var indexers = new List<PropertyInfo>();
             // Loại explicit interface implementation (`System.Collections.IList.Item`,
             // `IDictionary.Item`, …): List<T>/Dictionary<K,V> khai cả bản public THẬT lẫn bản này
@@ -474,7 +533,8 @@ namespace Hlight.Debug.Hub
                 return false;
             }
 
-            if (!TryPick(indexers, step, "indexer", out var indexer, out error)) return false;
+            // `{n}` nằm sau `]`: key `["{1}"]` không được hiểu thành "chọn indexer số 1".
+            if (!TryPick(indexers, step.Substring(step.LastIndexOf(']') + 1), "indexer", out var indexer, out error)) return false;
             var parameters = indexer.GetIndexParameters();
             var keys = new object[arguments.Count];
             for (var i = 0; i < keys.Length; i++)
@@ -485,11 +545,11 @@ namespace Hlight.Debug.Hub
 
             object value;
             try { value = indexer.GetValue(source, keys); }
-            catch (Exception exception) { error = (exception.InnerException ?? exception).Message; return false; }
+            catch (Exception exception) { error = exception.Unwrap().Message; return false; }
 
-            // Cùng luật write-back với TryMember (§9.2): parent là struct đã boxing thì phải có
-            // parent.Write để ghi cả bản copy về chỗ cũ — không thì `SomeVectorField[0] = 5` chạy
-            // không lỗi nhưng chỉ sửa một bản copy vứt đi, y hệt lỗi Executor cũ mắc với field.
+            // Cùng luật write-back với TryMember: parent là struct đã boxing thì phải có parent.Write
+            // để ghi cả bản copy về chỗ cũ — không thì `SomeVectorField[0] = 5` chạy không lỗi nhưng
+            // chỉ sửa một bản copy vứt đi.
             var needsWriteBack = source != null && source.GetType().IsValueType;
             Action<object> write = null;
             if (indexer.CanWrite && (!needsWriteBack || parent.Write != null))
@@ -504,14 +564,42 @@ namespace Hlight.Debug.Hub
             return true;
         }
 
-        /// Gọi method: đọc được nhưng **không** ghi được, và Watch từ chối address chứa bước này.
+        /// Mảng là reference nên ghi thẳng vào phần tử, không cần write-back qua parent.
+        private static bool TryArrayElement(Array array, List<string> arguments, out Cursor cursor, out string error)
+        {
+            cursor = default;
+            error = null;
+            if (arguments.Count != array.Rank)
+            {
+                error = $"mảng {array.Rank} chiều cần {array.Rank} chỉ số";
+                return false;
+            }
+
+            var indices = new int[arguments.Count];
+            for (var i = 0; i < indices.Length; i++)
+            {
+                if (int.TryParse(arguments[i], out indices[i]) && indices[i] >= 0 && indices[i] < array.GetLength(i))
+                    continue;
+                error = $"chỉ số '{arguments[i]}' nằm ngoài mảng (dài {array.GetLength(i)})";
+                return false;
+            }
+
+            cursor = new Cursor(array.GetType().GetElementType(), array.GetValue(indices),
+                value => array.SetValue(value, indices));
+            return true;
+        }
+
+        /// Gọi method: đọc được nhưng **không** ghi được, và Ghim từ chối address chứa bước này.
         private static bool TryMethod(Cursor parent, string step, out Cursor cursor, out string error)
         {
             cursor = default;
             error = null;
             var source = parent.Value;
-            // Tên dừng ở ký tự đặc biệt đầu tiên: `Find<$T>{1}(x)` có tên là `Find`.
-            var name = step.Substring(0, step.IndexOfAny(new[] { '<', '{', '(' }));
+            // `<…>` và `{n}` chỉ đọc ở phần trước `(`: `Find("a<b")` có `<` nằm trong tham số, không phải
+            // type argument. Tên dừng ở ký tự đặc biệt đầu tiên: `Find<$T>{1}(x)` có tên là `Find`.
+            var head = step.Substring(0, step.IndexOf('('));
+            var special = head.IndexOfAny(new[] { '<', '{' });
+            var name = special < 0 ? head : head.Substring(0, special);
             var arguments = new List<string>();
             DebugLogConsole.FetchArgumentsFromCommand(step.Substring(step.IndexOf('(') + 1).TrimEnd(')'), arguments);
 
@@ -524,13 +612,17 @@ namespace Hlight.Debug.Hub
                 return false;
             }
 
-            // Hai thứ này Executor cũ làm được, và Task 21 xoá Executor — mất chúng là mất chức năng.
-            if (!TryPick(overloads, step, "method", out var target, out error)) return false;
+            if (!TryPick(overloads, head, "method", out var target, out error)) return false;
 
-            if (step.Contains('<'))
+            if (head.Contains('<'))
             {
+                if (!target.IsGenericMethodDefinition)
+                {
+                    error = $"'{name}' không phải method generic";
+                    return false;
+                }
                 var typeArguments = new List<string>();
-                DebugLogConsole.FetchArgumentsFromCommand(Between(step, '<', '>'), typeArguments);
+                DebugLogConsole.FetchArgumentsFromCommand(Between(head, '<', '>'), typeArguments);
                 var resolved = new Type[typeArguments.Count];
                 for (var i = 0; i < resolved.Length; i++)
                 {
@@ -544,7 +636,14 @@ namespace Hlight.Debug.Hub
                         return false;
                     }
                 }
-                target = target.MakeGenericMethod(resolved);
+                // Sai số type argument hoặc vi phạm ràng buộc `where` → ArgumentException; hàm Try* không
+                // được ném ra ngoài.
+                try { target = target.MakeGenericMethod(resolved); }
+                catch (ArgumentException exception)
+                {
+                    error = exception.Message;
+                    return false;
+                }
             }
             else if (target.IsGenericMethodDefinition)
             {
@@ -561,7 +660,7 @@ namespace Hlight.Debug.Hub
 
             object value;
             try { value = target.Invoke(target.IsStatic ? null : source, args); }
-            catch (Exception exception) { error = (exception.InnerException ?? exception).Message; return false; }
+            catch (Exception exception) { error = exception.Unwrap().Message; return false; }
 
             cursor = new Cursor(target.ReturnType, value, null);
             return true;
@@ -570,7 +669,8 @@ namespace Hlight.Debug.Hub
         /// Nhiều ứng viên cùng khớp thì phải để người dùng chọn bằng `{n}`, **không** lấy bừa
         /// cái đầu: hai overload khác kiểu tham số nhưng cùng số lượng là chuyện thường, và chạy
         /// nhầm cái kia thì im lặng ra kết quả sai.
-        private static bool TryPick<T>(List<T> candidates, string step, string kind, out T picked, out string error)
+        /// <paramref name="selector"/> là phần của bước được phép chứa `{n}` — không gồm tham số.
+        private static bool TryPick<T>(List<T> candidates, string selector, string kind, out T picked, out string error)
         {
             error = null;
             if (candidates.Count == 1)
@@ -579,8 +679,8 @@ namespace Hlight.Debug.Hub
                 return true;
             }
 
-            if (step.Contains('{') && step.Contains('}') &&
-                int.TryParse(Between(step, '{', '}'), out var order) && order >= 0 && order < candidates.Count)
+            if (selector.Contains('{') && selector.Contains('}') &&
+                int.TryParse(Between(selector, '{', '}'), out var order) && order >= 0 && order < candidates.Count)
             {
                 picked = candidates[order];
                 return true;
@@ -592,7 +692,7 @@ namespace Hlight.Debug.Hub
             return false;
         }
 
-        /// Đoạn giữa cặp ký tự đầu tiên. Không xử lý lồng nhau — trần đã ghi ở §9.1.
+        /// Đoạn giữa cặp ký tự đầu tiên. Không xử lý lồng nhau — trần đã ghi ở đầu class.
         private static string Between(string text, char head, char tail)
         {
             var start = text.IndexOf(head) + 1;
