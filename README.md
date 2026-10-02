@@ -1,22 +1,10 @@
 # Hlight Debug Hub
 
-In-game debug hub: cheat command theo cây path, hệ inspect bằng reflection, log window (IngameDebugConsole) — tất cả sau một password. Hub nằm được cả trong bản store: chưa mở khoá thì gần như không tốn gì.
+In-game debug hub: cheat command theo cây path, hệ inspect bằng reflection, trang log — tất cả sau một password. Hub nằm được cả trong bản store: chưa mở khoá thì gần như không tốn gì.
 
 ## Cài đặt
 
-Package chứa submodule [IngameDebugConsole](https://github.com/yasirkula/UnityIngameDebugConsole) nên phải clone kèm submodule:
-
-```bash
-git clone --recurse-submodules <url> Packages/com.hlight.debug-hub
-```
-
-Với repo đã clone sẵn:
-
-```bash
-git submodule update --init --recursive
-```
-
-Thiếu bước này thì `ThirdParty/UnityIngameDebugConsole` rỗng và package không compile. Sau khi Unity import, submodule có thể dirty vì Unity nâng version importer trong `.meta` của sprite — **đừng commit vào submodule**, cứ để nguyên hoặc `git -C ThirdParty/UnityIngameDebugConsole checkout -- .`.
+Thêm package vào `Packages/` (embedded) hoặc qua git URL. Không cần clone kèm gì khác.
 
 ## Thiết lập
 
@@ -25,18 +13,23 @@ Thiếu bước này thì `ThirdParty/UnityIngameDebugConsole` rỗng và packag
 
 Người dùng mở hub bằng trigger (vẽ 4 góc, phím tắt…) → gõ password → máy nhớ trạng thái đã mở khoá (PlayerPrefs `DebugHub.AuthenticationState`).
 
-### Symbol
+### Mở khoá
 
-| Symbol | Tác dụng |
+| Quyền | Điều kiện |
 |---|---|
-| `DISABLE_DEBUG_HUB` | hub tự huỷ lúc khởi động, `RenameFolderOnBuild` loại folder `Resources` của package khỏi build. Đặt trong Player Settings (hook build đọc define lúc compile editor). |
-| `ALWAYS_ENABLE_INGAME_DEBUGGER` | bỏ qua password — **chỉ dùng cho build nội bộ**. |
+| Được ghi log (vô hình, chỉ RAM) | đã mở khoá **hoặc** bản nội bộ: iOS không cài từ App Store (TestFlight, ad-hoc, Xcode), Android cài qua app **App Tester** của Firebase App Distribution, Editor. APK cài tay / exe **không** tính. |
+| Được mở hub | chỉ khi đã mở khoá (PlayerPrefs `DebugHub.AuthenticationState`) |
 
-Hub **không** dùng `PRODUCTION`: symbol đó là công tắc tắt log của `com.hlight.logging`. Khi log bị tắt, hub vẫn bắt được log của command (bật tạm logger trong lúc chạy lệnh) và `console.show` bật lại log cho hết phiên.
+Mở khoá bằng password, hoặc tự động khi ô password mở mà máy tới được một **trang nội bộ** của công ty (`Auto Unlock › Pages` trên component DebugHub, kiểm song song, khớp một trang là đủ — UI không chờ). Mỗi trang:
 
-### Bỏ qua password theo mạng
+- **Url**: trang chỉ mở được trong mạng công ty, ví dụ `http://10.10.0.204/`. Không theo redirect, chờ tối đa 2 s.
+- **Must Contain**: chuỗi bắt buộc có trong trang, ví dụ `<title>Zego Dashboard</title>` (dùng tiêu đề, không dùng ETag/hash — đổi mỗi lần deploy).
 
-`networkReachabilityAuthenticationBypass.checkUrls` (trống mặc định): máy reachable (`HEAD` thành công) tới một URL trong danh sách được coi là đã xác thực. **Chỉ chạy ở build development** — ở bản store, mọi máy chưa mở khoá sẽ gửi request tới URL đó mỗi lần mở app (iOS hỏi quyền mạng cục bộ nếu là IP nội bộ, và mạng nào tình cờ có máy ở IP đó là mở khoá luôn). Target phải thật sự bị chặn ở tầng mạng với người ngoài: `HEAD` coi cả trang redirect-sang-login là thành công.
+Thêm trang của server khác để dự phòng: một server đổi IP hay sập thì bản đã phát hành vẫn tự mở khoá.
+
+Request chỉ gửi sau cử chỉ bí mật nên người chơi không bao giờ gửi. `http://` cần "Allow downloads over HTTP" = Always. iOS: package tự thêm `NSLocalNetworkUsageDescription` khi build; lần đầu tester được hỏi quyền mạng cục bộ và lần kiểm đó hết 2 s trước khi kịp bấm — cho phép xong thì đóng rồi mở lại ô password. Bấm "Không cho phép" thì phải bật lại trong Cài đặt › Quyền riêng tư › Mạng cục bộ.
+
+Bong bóng mặc định ẩn, nhớ trạng thái qua phiên (PlayerPrefs `DebugHub.EntryVisible`) — chỉ nhớ thao tác cố ý: mở khoá / cử chỉ gọi lại thì hiện, kéo vào nút X thì ẩn, `hub.entry`. Ẩn tạm (`DebugHub.Visible = false`, `hub.hide`, `.HidesHub()`) không nhớ, phiên sau bong bóng vẫn hiện. Lắc chỉ có tác dụng khi đã mở khoá — reviewer Apple (cài sandbox như TestFlight) không thấy gì.
 
 ## Node
 
@@ -111,14 +104,14 @@ Mặc định: `ActionNode` → đóng panel; `ValueNode` → ở lại; node do
 | `ValueNode` | trả giá trị hiện tại | parse theo `Declared` rồi `Set` | lỗi |
 | `FolderNode` | lỗi | lỗi | lỗi |
 
-Tách tham số bằng parser của IDC (quote/ngoặc giống console). Ô nhập của console chạy được command của hub qua `hub "level.goto 5"`; gõ sai thì console in lý do.
+Tách tham số bằng `DebugValues.SplitArguments`: quote và ngoặc (lồng được) là một đối số.
 
 `$ten` trong đối số là biến (xem Advanced); chuỗi thật bắt đầu bằng `$` viết `$$`.
 
 ### Ẩn nhanh cả hub
 
 ```csharp
-DebugHub.Visible = false;   // đóng panel + ẩn entry
+DebugHub.Visible = false;   // đóng panel + ẩn entry (chỉ phiên này, không nhớ qua phiên)
 DebugHub.Visible = true;    // hiện entry lại (chỉ ăn khi đã mở khoá)
 ```
 
@@ -127,7 +120,7 @@ DebugHub.Visible = true;    // hiện entry lại (chỉ ăn khi đã mở khoá
 Một panel duy nhất điều hướng theo stack. Bấm nền ngoài = đóng (giữ stack, mở lại về đúng trang); `‹` = lùi một tầng; `×` = đóng. Gốc panel là cây command: path tách theo `.` thành cây trang (`prefs.set.int` → `Commands › prefs › set › int`).
 
 - Entry bubble (như chat head Messenger): thả tay là bubble trôi theo đà rồi dính mép trái/phải gần điểm dừng — điểm dừng = chỗ nhấc tay + vận tốc × `momentum` (mặc định 0.18s, chỉnh ở Inspector). Thả nhẹ về mép gần, hất mạnh sang mép kia; dừng tay rồi mới nhấc thì không trôi. Kéo vào nút X ở đáy là bị hút vào, thả ra để ẩn hub.
-- Header: kính lúp (tìm), thanh điều chỉnh (công cụ/Advanced) và `?` (trợ giúp) — hai nút sau chỉ ở Commands gốc.
+- Header: kính lúp (tìm), thanh điều chỉnh (công cụ/Advanced), `?` (trợ giúp) và Log — ba nút sau chỉ ở Commands gốc. Tiêu đề tự co tới 80% cỡ chữ khi hẹp chỗ.
 - Category gốc có nút sao: sao đặc = yêu thích, được đưa lên nhóm **Yêu thích**, lưu PlayerPrefs.
 - Tìm ở một trang command chỉ lọc nhánh đó; ở gốc là toàn registry. Không quét vào `FolderNode` động. Trang có list riêng (member, type, instance, Objects) tự lọc list của nó.
 - Danh sách dài chia trang 40 mục.
@@ -153,14 +146,27 @@ Một panel duy nhất điều hướng theo stack. Bấm nền ngoài = đóng 
 
 ### Dòng kết quả
 
-Log mà command in ra trong lúc chạy hiện ở dòng nổi dưới đáy (ngoài panel), chỉ với node có `ShowsResult` (mặc định = `Dismiss == Stay`, ghi đè bằng `.Reports()`/`.Silent()`). Lỗi luôn hiện. Dài quá thì cắt (không cắt giữa một tag); bấm để mở log window.
+Log mà command in ra trong lúc chạy hiện ở dòng nổi dưới đáy (ngoài panel), chỉ với node có `ShowsResult` (mặc định = `Dismiss == Stay`, ghi đè bằng `.Reports()`/`.Silent()`). Lỗi luôn hiện. Dài quá thì cắt (không cắt giữa một tag); bấm để mở trang log tại vạch của chính lần chạy đã tạo dòng đó (dòng không do command tạo — copy, lỗi nhập — mở ở cuối log).
 
 ### Font
 
 Package **không mang font**. Mọi TMP để trống font nên TMP lấy `TMP_Settings.defaultFontAsset` của game. Điều kiện để hiện đúng:
 
-- Font mặc định có tiếng Việt và `› ‹ … – — ×` (hub chỉ dùng đúng các ký tự này ngoài chữ cái; icon là hình vẽ vector, không phải glyph). Kiểm bằng `FontEngine.TryGetGlyphIndex` trên TTF/OTF nguồn, không phải `HasCharacter`.
+- Font mặc định có tiếng Việt và `› ‹ … – — ×` (hub chỉ dùng đúng các ký tự này ngoài chữ cái; icon là hình vẽ vector, không phải glyph; trang log chỉ dùng thêm icon vector, không thêm glyph). Kiểm bằng `FontEngine.TryGetGlyphIndex` trên TTF/OTF nguồn, không phải `HasCharacter`.
 - Font Dynamic thì nên bật **Clear Dynamic Data On Build**: không thì glyph sinh ra trong Editor (kể cả từ chữ của hub) được lưu vào asset và đi vào mọi build.
+
+## Trang Log
+
+Nút Log ở header Commands gốc (kèm số lỗi chưa xem; bong bóng cũng có chấm đỏ số đó). Bộ ghi (`LogRecorder`) chạy từ lúc khởi động trên máy được ghi (xem **Mở khoá**), giữ tối đa 4 MB chuỗi trong RAM, không ghi file (4 MB là ngân sách **chuỗi**: mảng ring + một `LogItem` mỗi log nằm ngoài con số đó, nên với log rất ngắn bộ nhớ thật trên máy tester có thể lên ~15–20 MB); máy không được ghi thì không đăng ký callback nào, chi phí 0. Đầu danh sách luôn nói ghi từ lúc nào và đã bỏ bao nhiêu log cũ.
+
+- Panel giữ chiều cao tối đa cố định ở trang log và trang chi tiết, khỏi nhảy mỗi lần có log mới.
+- Chip Log / Cảnh báo / Lỗi bật tắt từng loại; số đếm là tổng, không đổi theo ô tìm. Chip Gộp (mặc định tắt) gộp log trùng (cùng loại, nội dung, stack) tại vị trí lần đầu, hàng ghi `×N`.
+- Tìm bằng ô tìm của header: khớp nội dung và nơi gọi, phần khớp được tô. Bộ lọc ẩn hết log thì có nút **Bỏ lọc** (bật lại cả ba loại, xoá từ khoá và đóng ô tìm).
+- Mỗi hàng: icon theo loại (khác hình, không chỉ khác màu), 2 dòng nội dung, `HH:mm:ss.fff – nơi gọi`; hàng lỗi nền đỏ nhạt. Nơi gọi = frame đầu tiên thuộc code game (không phải engine, `Debug`, `com.hlight.logging`); stack không có frame game nào thì lấy frame đầu tiên không thuộc lớp log. Vạch `› lệnh` đánh dấu lúc chạy command; bấm dòng kết quả mở trang log đúng tại vạch đó.
+- Đang ở đáy thì bám theo log mới; cuộn lên thì hiện "N log mới".
+- Bấm hàng → trang chi tiết: nội dung đầy đủ (quá 4000 ký tự thì cắt khi hiện, Copy vẫn lấy đủ), stack từng frame (game sáng, engine mờ; kiểu đối số rút gọn, bỏ namespace), dòng phụ `HH:mm:ss.fff` (log gộp: `HH:mm:ss.fff – ×N, cuối HH:mm:ss`). Thanh **‹ Trước / Copy / Sau ›** ghim ở đáy window, ngoài vùng cuộn: Copy lấy nội dung kèm stack gốc, Trước/Sau đi qua các log của bộ lọc hiện tại.
+- `…`: Copy tất cả (theo bộ lọc, quá 500k ký tự giữ phần mới nhất), Xoá (ẩn mọi log tới lúc này; dòng đầu danh sách thành "đã ẩn N log, bấm để hiện lại", danh sách trống thì ghi "Đã xoá – chưa có log mới").
+- Nội dung log là dữ liệu game: vào TMP qua `<noparse>`, và mọi `</` trong dữ liệu bị chèn ký tự zero-width để không tag đóng nào thoát ra được.
 
 ## Advanced
 
@@ -227,7 +233,10 @@ Debugger của SDK khác (vd `sdk.zego`) do game tự đăng ký.
 ## Trần đã biết
 
 - **IL2CPP managed code stripping**: Advanced và SDK row chạy bằng reflection. Mức stripping mặc định (Minimal) không strip code của assembly game/SDK; ở Medium/High, member không ai gọi tĩnh có thể bị strip — Advanced báo "không tìm thấy", SDK row biến mất. Package cố ý không mang `link.xml` (giữ code = build nặng thêm); cần thì thêm qua `IUnityLinkerProcessor`.
-- **IDC quét mọi assembly lúc khởi động** (`[ConsoleMethod]`, trong `RuntimeInitializeOnLoadMethod` của IDC, không có define tắt): ~66 ms trong Editor, mọi người chơi đều trả. Muốn bỏ thì phải fork IDC.
+- **Log trước khi mở khoá**: phiên mở khoá lần đầu trên máy không phải bản nội bộ chỉ có log từ lúc mở khoá.
+- **Project tắt log Unity** (ví dụ `PRODUCTION` của com.hlight.logging) thì hub không có log để hiện, kể cả dòng kết quả của command — hub không còn bật tạm logger.
+- **Dấu hiệu mạng công ty** phụ thuộc trang/IP của văn phòng: đổi thì sửa Inspector, theo build kế tiếp.
+- **Nơi gọi** ở build IL2CPP release chỉ có tên method (không số dòng) trừ khi bật IL2CPP Stacktrace Information có số dòng.
 - **Gọi method tuỳ ý qua trang Method có thể làm hỏng state game** — bản chất công cụ.
 - **Ngưỡng trigger tính bằng pixel thô** (vẽ ngoằn ngoèo, lắc): cảm giác khác nhau theo độ phân giải; chỉnh sau khi đo trên máy thật.
 - **Không parse ngoặc cùng loại lồng nhau** trong address — bắc cầu qua `$var`.
@@ -241,3 +250,7 @@ unity cmd --project-path . run_tests --mode EditMode --filter "Hlight.Debug.Hub.
 ```
 
 `AgentTestRunner` (chạy test đồng bộ cho agent) chỉ hỗ trợ `[SetUp]` / `[Test]` / `[TearDown]`.
+
+## Ghi công
+
+Bộ tách đối số và bảng parse theo kiểu trong `Scripts/Model/DebugValues.Parse.cs` mang từ [IngameDebugConsole](https://github.com/yasirkula/UnityIngameDebugConsole) của Süleyman Yasir KULA, giấy phép MIT; header bản quyền giữ nguyên trong file.

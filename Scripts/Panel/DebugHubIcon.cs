@@ -7,7 +7,7 @@ namespace Hlight.Debug.Hub
     [RequireComponent(typeof(CanvasRenderer))]
     public sealed class DebugHubIcon : MaskableGraphic
     {
-        public enum Symbol { Search, Tools, Close, Star, Disc, Replay, StarFilled }
+        public enum Symbol { Search, Tools, Close, Star, Disc, Replay, StarFilled, Log, More, Info, Warning, Error, Collapse, Down }
 
         [SerializeField, UnityEngine.Serialization.FormerlySerializedAs("symbol")] private Symbol symbolShape;
 
@@ -78,6 +78,52 @@ namespace Hlight.Debug.Hub
                 Line(mesh, previous, previous + new Vector2(-0.19f, 0.02f));
                 Line(mesh, previous, previous + new Vector2(-0.04f, 0.19f));
             }
+            else if (symbol == Symbol.Log)
+            {
+                for (var i = 0; i < 3; i++)
+                {
+                    var y = 0.24f - i * 0.24f;
+                    FilledCircle(mesh, new Vector2(-0.30f, y), 0.05f);
+                    Line(mesh, new Vector2(-0.14f, y), new Vector2(0.36f, y));
+                }
+            }
+            else if (symbol == Symbol.More)
+            {
+                for (var i = -1; i <= 1; i++) FilledCircle(mesh, new Vector2(i * 0.26f, 0f), 0.06f);
+            }
+            else if (symbol == Symbol.Info) FilledCircle(mesh, Vector2.zero, 0.16f);
+            else if (symbol == Symbol.Warning)
+            {
+                var top = new Vector2(0f, 0.36f);
+                var right = new Vector2(0.38f, -0.30f);
+                var left = new Vector2(-0.38f, -0.30f);
+                Line(mesh, top, right);
+                Line(mesh, right, left);
+                Line(mesh, left, top);
+                Line(mesh, new Vector2(0f, 0.12f), new Vector2(0f, -0.08f));
+                FilledCircle(mesh, new Vector2(0f, -0.19f), 0.035f);
+            }
+            else if (symbol == Symbol.Error)
+            {
+                Circle(mesh, Vector2.zero, 0.36f);
+                Line(mesh, new Vector2(-0.14f, -0.14f), new Vector2(0.14f, 0.14f));
+                Line(mesh, new Vector2(-0.14f, 0.14f), new Vector2(0.14f, -0.14f));
+            }
+            else if (symbol == Symbol.Collapse)
+            {
+                // Hai tấm chồng nhau: tấm trước đủ bốn cạnh, tấm sau chỉ lộ góc trên-phải.
+                Box(mesh, new Vector2(-0.34f, -0.34f), new Vector2(0.14f, 0.10f));
+                Line(mesh, new Vector2(-0.18f, 0.10f), new Vector2(-0.18f, 0.26f));
+                Line(mesh, new Vector2(-0.18f, 0.26f), new Vector2(0.30f, 0.26f));
+                Line(mesh, new Vector2(0.30f, 0.26f), new Vector2(0.30f, -0.18f));
+                Line(mesh, new Vector2(0.30f, -0.18f), new Vector2(0.14f, -0.18f));
+            }
+            else if (symbol == Symbol.Down)
+            {
+                Line(mesh, new Vector2(0f, 0.32f), new Vector2(0f, -0.30f));
+                Line(mesh, new Vector2(-0.22f, -0.08f), new Vector2(0f, -0.30f));
+                Line(mesh, new Vector2(0.22f, -0.08f), new Vector2(0f, -0.30f));
+            }
             else FilledCircle(mesh, Vector2.zero, 0.48f);
         }
 
@@ -90,6 +136,14 @@ namespace Hlight.Debug.Hub
                 Line(mesh, center + new Vector2(Mathf.Cos(a), Mathf.Sin(a)) * radius,
                     center + new Vector2(Mathf.Cos(b), Mathf.Sin(b)) * radius);
             }
+        }
+
+        private void Box(VertexHelper mesh, Vector2 min, Vector2 max)
+        {
+            Line(mesh, min, new Vector2(max.x, min.y));
+            Line(mesh, new Vector2(max.x, min.y), max);
+            Line(mesh, max, new Vector2(min.x, max.y));
+            Line(mesh, new Vector2(min.x, max.y), min);
         }
 
         /// Quạt tam giác từ tâm: đủ cho hình sao vì mọi đỉnh đều nhìn thấy tâm.

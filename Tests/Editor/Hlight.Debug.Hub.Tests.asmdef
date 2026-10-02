@@ -3,7 +3,6 @@
     "rootNamespace": "Hlight.Debug.Hub.Tests",
     "references": [
         "Hlight.Debug.Hub",
-        "IngameDebugConsole.Runtime",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner",
         "Unity.TextMeshPro"

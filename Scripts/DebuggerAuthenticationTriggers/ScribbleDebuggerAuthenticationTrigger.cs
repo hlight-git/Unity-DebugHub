@@ -8,13 +8,20 @@ namespace Hlight.Debug.Hub
     /// Nhấn trong một vùng màn hình cố định (triggerArea, toạ độ viewport chuẩn hoá 0-1 — giống việc
     /// bản gốc gán trên một Image ở vị trí nhất định, chỉ khác là so toạ độ trực tiếp thay vì raycast
     /// qua Graphic nên không cần thêm UI element vào scene), rồi kéo lung tung, rồi thả gần đúng chỗ
-    /// bắt đầu: tính là trigger nếu tổng khoảng cách di chuyển trong lúc giữ vượt minDragDistance VÀ
-    /// điểm thả cách điểm bắt đầu không quá maxStartEndDistance.
+    /// bắt đầu: tính là trigger nếu tổng quãng kéo trong lúc giữ vượt minDragScreens VÀ điểm thả cách
+    /// điểm bắt đầu không quá maxStartEndGap.
+    ///
+    /// Hai ngưỡng tính theo cạnh ngắn màn hình chứ không theo pixel: 10 px là 0,6 mm trên máy 1080p
+    /// nhưng gấp đôi trên máy 720p, cùng một nét vẽ lúc được lúc không.
     public class ScribbleDebuggerAuthenticationTrigger : DebuggerAuthenticationTrigger
     {
         [SerializeField] private Rect triggerArea = new(0f, 0f, 1f, 1f);
-        [SerializeField] private float minDragDistance = 3500f;
-        [SerializeField] private float maxStartEndDistance = 10f;
+
+        [Tooltip("Tổng quãng kéo tối thiểu, tính bằng số lần cạnh ngắn màn hình.")]
+        [SerializeField, Min(0f)] private float minDragScreens = 3f;
+
+        [Tooltip("Điểm thả cách điểm bắt đầu tối đa, tính bằng tỉ lệ cạnh ngắn màn hình (0,08 ≈ 5 mm trên điện thoại).")]
+        [SerializeField, Range(0f, 0.5f)] private float maxStartEndGap = 0.08f;
 
         private bool dragging;
         private float accumulatedDistance;
@@ -49,11 +56,15 @@ namespace Hlight.Debug.Hub
             if (!pressed && dragging)
             {
                 dragging = false;
-                return accumulatedDistance > minDragDistance && Vector2.Distance(startPosition, lastPosition) <= maxStartEndDistance;
+                return Completed(accumulatedDistance, Vector2.Distance(startPosition, lastPosition),
+                    Mathf.Min(Screen.width, Screen.height), minDragScreens, maxStartEndGap);
             }
 
             return false;
         }
+
+        internal static bool Completed(float path, float gap, float shortSide, float minScreens, float maxGap) =>
+            path > minScreens * shortSide && gap <= maxGap * shortSide;
 
         private bool IsInsideTriggerArea(Vector2 screenPosition)
         {

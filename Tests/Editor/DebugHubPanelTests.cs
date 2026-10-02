@@ -194,7 +194,7 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         /// Scene không có EventSystem thì không gõ được password. Prefab phải tự mang một cái,
-        /// inactive, để EventSystemHandler chỉ bật khi scene chưa có.
+        /// inactive, để EmbeddedEventSystem chỉ bật khi scene chưa có.
         [Test]
         public void Prefab_ShipsWithInactiveEventSystem_WiredToHandler()
         {
@@ -205,8 +205,8 @@ namespace Hlight.Debug.Hub.Tests
             Assert.IsNotNull(eventSystem.GetComponent<UnityEngine.EventSystems.EventSystem>());
             Assert.IsNotNull(eventSystem.GetComponent<UnityEngine.EventSystems.BaseInputModule>(), "EventSystem needs an input module");
 
-            var handler = instance.GetComponent<IngameDebugConsole.EventSystemHandler>();
-            Assert.IsNotNull(handler, "EventSystemHandler missing on prefab root");
+            var handler = instance.GetComponent<EmbeddedEventSystem>();
+            Assert.IsNotNull(handler, "EmbeddedEventSystem missing on prefab root");
             var wired = new SerializedObject(handler).FindProperty("embeddedEventSystem");
             Assert.AreEqual(eventSystem.gameObject, wired.objectReferenceValue);
         }
@@ -561,6 +561,53 @@ namespace Hlight.Debug.Hub.Tests
             var inputCorners = new Vector3[4];
             ((RectTransform)row.input.transform).GetWorldCorners(inputCorners);
             Assert.LessOrEqual(inputCorners[2].x, more[0].x, "the actions target must not intercept text editing");
+        }
+
+        /// Panel tắt sẵn trong prefab nên Awake của nó chưa chạy: dòng kết quả phải bấm được trước lần mở panel đầu.
+        [Test]
+        public void ToastClick_RaisesResultClicked_WithoutThePanelEverOpening()
+        {
+            panel.WireToast();
+            panel.WireToast();
+            var clicks = 0;
+            panel.ResultClicked += () => clicks++;
+            panel.ShowResult("x", false);
+
+            TestPanel.ToastOf(panel).GetComponent<Button>().onClick.Invoke();
+
+            Assert.AreEqual(1, clicks, "gọi WireToast hai lần vẫn chỉ một listener");
+        }
+
+        /// Dòng kết quả mang vạch của chính lần chạy tạo ra nó; vạch đến sau không kéo nó đi, và dòng không do
+        /// command tạo (copy, lỗi nhập) mang 0 = mở log ở cuối.
+        [Test]
+        public void CommandResult_CarriesTheMarkOfItsOwnRun_OtherResultsCarryZero()
+        {
+            LogRecorder.Reset();
+            LogRecorder.Start();
+            var node = DebugHub.Add<int>(null, "paneltest.take", "d", (int _) => { });
+            try
+            {
+                Assert.IsTrue(DebugRegistry.Find("paneltest.take abc", out var entry));
+                CommandsPage.RunNow(panel, entry, new[] { "abc" });   // parse hỏng: vẫn có vạch, toast báo lỗi
+
+                var logs = new System.Collections.Generic.List<LogEntry>();
+                LogRecorder.CopySince(0, logs);
+                var mark = logs.Find(e => e.Kind == LogKind.Command && e.Message == "paneltest.take abc").Seq;
+                Assert.Greater(mark, 0);
+                Assert.AreEqual(mark, panel.LastResultSeq);
+
+                LogRecorder.Mark("later");
+                Assert.AreEqual(mark, panel.LastResultSeq);
+
+                panel.ShowResult("đã copy log", false);
+                Assert.AreEqual(0, panel.LastResultSeq);
+            }
+            finally
+            {
+                DebugHub.Remove(node);
+                LogRecorder.Reset();
+            }
         }
     }
 }

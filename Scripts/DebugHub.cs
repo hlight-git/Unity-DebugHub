@@ -3,6 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
@@ -19,9 +20,8 @@ namespace Hlight.Debug.Hub
     [DefaultExecutionOrder(-100)]
     public class DebugHub : MonoBehaviour
     {
-        /// Cùng key và giá trị với bản trước: máy đã mở khoá thì vẫn mở.
-        private const string AUTHENTICATION_KEY = "DebugHub.AuthenticationState";
-        private const int AUTHENTICATED = 2;
+        /// Bong bóng hiện hay ẩn, nhớ qua phiên (spec ① §3.5). Mặc định ẩn: máy reviewer không bao giờ thấy.
+        internal const string ENTRY_VISIBLE_KEY = "DebugHub.EntryVisible";
 
         private static DebugHub instance;
 
@@ -29,10 +29,11 @@ namespace Hlight.Debug.Hub
         [SerializeField] private string password;
         [SerializeField] private DebugHubEntry entry;
         [SerializeField] private DebugHubPanel panel;
-        [SerializeField] private ConsoleController console;
+        [FormerlySerializedAs("console")] [SerializeField] private BuiltinCommands commands;
         [SerializeField] private RepeatButton repeat;
         [SerializeField] private TMP_InputField authenticationInputField;
-        [SerializeField] private NetworkReachabilityAuthenticationBypass networkReachabilityAuthenticationBypass;
+        [Tooltip("Trang nội bộ của công ty: ô password đang mở mà tới được một trang và trang chứa đúng chuỗi = coi như đã gõ đúng password.")]
+        [SerializeField] private AutoUnlock autoUnlock = new();
 
         /// Mọi trigger trong danh sách đều được hỏi mỗi frame, bất kể platform/editor window — mỗi
         /// trigger tự biết đọc input của nó có sẵn hay không (không có touchscreen/keyboard thì tự
@@ -43,6 +44,7 @@ namespace Hlight.Debug.Hub
 
         private bool unlocked;
         private bool askingPassword;
+        private long badgeShown = -1;
         private Func<bool> triggerPerformed;
 
         /// Dev note hiện ở page Help.
@@ -56,6 +58,9 @@ namespace Hlight.Debug.Hub
         ///
         /// Bật lại chỉ ăn khi đã xác thực: nếu không, gọi Visible = true từ code game là một đường vòng
         /// qua password.
+        ///
+        /// Không nhớ qua phiên (xem <see cref="RememberEntry"/>): hub.hide, sdk.max hay code game ẩn tạm để
+        /// nhìn game, không phải tester muốn tắt bong bóng ở phiên sau.
         public static bool Visible
         {
             get => instance && instance.entry.Activating;
@@ -89,17 +94,11 @@ namespace Hlight.Debug.Hub
             instance = null;
         }
 
-        private bool Unlocked
-        {
-            get
-            {
-#if ALWAYS_ENABLE_INGAME_DEBUGGER
-                return true;
-#else
-                return unlocked;
-#endif
-            }
-        }
+        /// Chỗ duy nhất ghi bong bóng hiện/ẩn cho phiên sau, chỉ từ thao tác cố ý của tester: kéo vào X, mở
+        /// khoá, cử chỉ gọi lại, hub.entry.
+        internal static void RememberEntry(bool visible) => PlayerPrefs.SetInt(ENTRY_VISIBLE_KEY, visible ? 1 : 0);
+
+        private bool Unlocked => unlocked;
 
         /// Trigger có RequiresAlreadyAuthenticated (ví dụ lắc) chỉ được hỏi khi đã xác thực rồi —
         /// không phải một cách để mở khoá lần đầu, chỉ để gọi lại entry đã ẩn cho tiện.
@@ -115,9 +114,7 @@ namespace Hlight.Debug.Hub
 
         private void Awake()
         {
-#if !DISABLE_DEBUG_HUB
             if (instance)
-#endif
             {
                 Destroy(gameObject);
                 return;
@@ -125,39 +122,25 @@ namespace Hlight.Debug.Hub
 
             DontDestroyOnLoad(this);
             instance = this;
-            // Đăng ký command từ đây chứ không từ Awake của console: bản bị huỷ ngay trên kia (trùng hoặc
-            // DISABLE_DEBUG_HUB) thì không đăng ký gì.
-            console.Initialize();
-            console.TryEnableConsole();
+            // Đăng ký command từ đây chứ không từ Awake của BuiltinCommands: bản trùng bị huỷ ngay trên kia thì
+            // không đăng ký gì.
+            commands.Initialize();
             repeat.Initialize();
             entry.Clicked += OpenCommandTree;
-            // Kết quả dài bị cắt ở dòng nổi; toàn văn kèm stack trace nằm ở log window.
-            panel.ResultClicked += () => console.Enabled = true;
+            // Kết quả dài bị cắt ở dòng nổi; toàn văn kèm stack nằm ở trang log, tại vạch của chính lần chạy
+            // đã tạo dòng đó. Gắn từ đây: Panel tắt sẵn trong prefab, Awake của nó chưa chạy tới lần mở đầu.
+            panel.WireToast();
+            panel.ResultClicked += () => OpenLog(panel.LastResultSeq);
             authenticationInputField.onEndEdit.AddListener(OnAuthenticationInputFieldSubmitted);
             // Tạo một lần: lambda tạo trong Update là một lần cấp phát mỗi frame trên máy mọi người chơi.
             triggerPerformed = () => AnyTriggerPerformed(triggers, Unlocked);
-            unlocked = PlayerPrefs.GetInt(AUTHENTICATION_KEY) == AUTHENTICATED;
+            unlocked = HubAccess.ReadUnlocked();
 
-#if !ALWAYS_ENABLE_INGAME_DEBUGGER
             if (string.IsNullOrEmpty(password))
                 UnityEngine.Debug.LogError("[DebugHub] Chưa điền password (Inspector của component DebugHub) — hub không mở được.");
-#endif
 
-            // EditMode test không tick player loop nên coroutine không bao giờ resume sau yield, và test
-            // không được bắn network request thật — chỉ start khi Play thật.
-            //
-            // Chỉ build development: hub nằm cả trong bản store, mà ở đó mọi máy người chơi chưa mở khoá sẽ
-            // gửi request tới checkUrls (thường là IP nội bộ) mỗi lần mở app — iOS hỏi quyền mạng cục bộ, và
-            // mạng nào tình cờ có máy ở IP đó là mở khoá luôn.
-            if (Application.isPlaying && UnityEngine.Debug.isDebugBuild && !Unlocked)
-            {
-                StartCoroutine(networkReachabilityAuthenticationBypass.Check(reachable =>
-                {
-                    if (!reachable) return;
-                    if (askingPassword) AcceptAuthentication();
-                    else Remember();
-                }));
-            }
+            // Mở khoá rồi và lần trước để bong bóng hiện thì hiện lại, khỏi làm cử chỉ mỗi phiên.
+            if (unlocked && PlayerPrefs.GetInt(ENTRY_VISIBLE_KEY) == 1) Visible = true;
         }
 
         // Bản trùng bị Destroy trong Awake chưa Initialize: `-=` handler chưa đăng ký là no-op.
@@ -165,12 +148,22 @@ namespace Hlight.Debug.Hub
 
         private void Update()
         {
+            // Chấm đỏ = lỗi chưa xem. So số nguyên mỗi frame, chỉ gán chữ khi đổi. Máy không ghi (người chơi)
+            // thì không có lỗi nào để đếm: khỏi khoá Gate mỗi frame, badge 0 = ẩn.
+            var unseen = LogRecorder.Recording ? LogRecorder.ErrorCount - LogModel.Shared.SeenErrors : 0;
+            if (unseen != badgeShown)
+            {
+                badgeShown = unseen;
+                entry.Badge = unseen;
+            }
+
             switch (DecideAction(panel.IsOpen, entry.Activating, askingPassword, Unlocked, triggerPerformed))
             {
                 case DebugHubAction.ShowEntry:
                     // Qua Visible chứ không set entry.Activating trực tiếp: nút repeat sống ngoài
                     // entry, phải được refresh cùng lúc entry hiện lại.
                     Visible = true;
+                    RememberEntry(true);
                     break;
 
                 case DebugHubAction.AskPassword:
@@ -178,6 +171,13 @@ namespace Hlight.Debug.Hub
                     authenticationInputField.text = string.Empty;
                     authenticationInputField.gameObject.SetActive(true);
                     StartCoroutine(FocusNextFrame(authenticationInputField));
+                    // Kiểm song song với ô password: ở công ty ô tự đóng, ngoài công ty ô vẫn đó để gõ — UI không
+                    // bao giờ chờ mạng. Chỉ Play thật: EditMode test không tick coroutine, không bắn request thật.
+                    if (Application.isPlaying && autoUnlock.Configured)
+                        StartCoroutine(autoUnlock.Check(() =>
+                        {
+                            if (askingPassword) AcceptAuthentication();
+                        }));
                     break;
             }
         }
@@ -226,20 +226,32 @@ namespace Hlight.Debug.Hub
             authenticationInputField.gameObject.SetActive(false);
             Remember();
             Visible = true;
+            RememberEntry(true);
         }
 
         private void Remember()
         {
             unlocked = true;
-            PlayerPrefs.SetInt(AUTHENTICATION_KEY, AUTHENTICATED);
+            HubAccess.SaveUnlocked();
+            LogRecorder.Start();
         }
 
         /// Gốc panel là cây command thẳng — không còn trang menu trung gian "Debug Hub". Các row cũ
-        /// của trang đó đều đã có chỗ riêng: Help ở nút "?" header, Console/Auto/Proxima là command
-        /// console.*, "Show entry button" là command hub.entry (ConsoleController.Initialize()).
+        /// của trang đó đều đã có chỗ riêng: Help ở nút "?" header, Proxima là command
+        /// console.proxima, "Show entry button" là command hub.entry (BuiltinCommands.Initialize()).
         private void OpenCommandTree()
         {
             panel.Show(CommandsPage.Root());
+        }
+
+        /// focusSeq 0 = mở ở cuối, bám log mới.
+        private void OpenLog(long focusSeq)
+        {
+            // Dòng kết quả hiện được cả trước khi mở khoá ("Sai mật khẩu."): bấm vào không được là cửa vào hub.
+            if (!Unlocked) return;
+            if (!panel.IsOpen) panel.Show(CommandsPage.Root());
+            if (panel.TopIsLog) panel.Replace(LogPage.Build(focusSeq));
+            else panel.Push(LogPage.Build(focusSeq));
         }
 
         #region API
@@ -360,8 +372,8 @@ namespace Hlight.Debug.Hub
         /// Chạy coroutine chờ một awaitable. Ở trên DebugHub vì nó là MonoBehaviour sống suốt phiên —
         /// node do reflection sinh thì không có chỗ nào để chạy coroutine.
         ///
-        /// Kết quả về **sau** khi DebugRegistry.Run đã trả nên nó vào console, không vào dòng kết quả
-        /// của lần chạy đó — dòng kết quả bấm được để mở console.
+        /// Kết quả về **sau** khi DebugRegistry.Run đã trả nên nó vào trang log, không vào dòng kết quả
+        /// của lần chạy đó — bấm dòng kết quả là mở trang log tại command vừa chạy.
         internal static void Await(object awaitable, string label)
         {
             if (awaitable == null) return;

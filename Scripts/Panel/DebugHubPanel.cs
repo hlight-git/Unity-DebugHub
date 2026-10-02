@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using IngameDebugConsole;
 using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
@@ -25,6 +24,8 @@ namespace Hlight.Debug.Hub
         private const float ROW_HEIGHT = 132f;
         private const float VALUE_HEIGHT = 172f;
         private const float MIN_TOUCH_PIXELS = 44f;
+        /// Footer cao 132 + 12 đệm: vùng cuộn co đúng chừng này khi footer hiện.
+        private const float FOOTER_INSET = 144f;
         /// TMP nhận size theo phần trăm, không như legacy Text — nên description tự co theo cỡ chữ
         /// của từng template thay vì cứng 38.
         private const string DescriptionSize = "90%";
@@ -42,6 +43,15 @@ namespace Hlight.Debug.Hub
         [SerializeField, Min(320f)] private float maxWindowWidth = 1080f;
         [Tooltip("Dòng kết quả nổi ở đáy màn hình. Nằm ngoài panel nên vẫn thấy sau khi panel đóng.")]
         [SerializeField] private DebugHubToast toast;
+
+        [Header("Log")]
+        [SerializeField] private LogView logView;
+        [SerializeField] private Button logButton;
+        [Tooltip("Số lỗi chưa xem trên nút Log. Ẩn/hiện qua object cha (Badge).")]
+        [SerializeField] private TMP_Text logBadge;
+        [SerializeField] private Button moreButton;
+        [Tooltip("Hàng nút ghim đáy window, ngoài vùng cuộn (trang chi tiết log). Tắt mặc định; bật qua ShowBar.")]
+        [SerializeField] private DebugHubBar footer;
 
         [Header("Header")]
         [SerializeField] private TMP_InputField searchInput;
@@ -81,11 +91,20 @@ namespace Hlight.Debug.Hub
 
         public bool IsOpen => gameObject.activeSelf;
 
-        /// Bấm vào dòng kết quả. DebugHub nối vào đây để mở console log window (toàn văn ở đó).
+        internal bool TopIsFixedHeight => stack.Count > 0 && stack.Peek().Page.FixedHeight;
+
+        /// Trang trên cùng là danh sách log (không tính trang chi tiết): bấm dòng kết quả thì thay nó, khỏi chồng thêm một tầng log.
+        internal bool TopIsLog => stack.Count > 0 && stack.Peek().Page.IsLog;
+
+        /// Bấm vào dòng kết quả. DebugHub nối vào đây để mở trang log tại <see cref="LastResultSeq"/>.
         public event Action ResultClicked;
 
         /// Nội dung dòng kết quả lần cuối. Test đọc cái này thay vì bới vào toast.
         public string LastResult { get; private set; }
+
+        /// Vạch log của chính lần chạy đã tạo dòng kết quả đang hiện; 0 = không do command (copy, lỗi nhập,
+        /// inspect) — bấm vào thì mở log ở cuối.
+        internal long LastResultSeq { get; private set; }
 
         /// Số tầng đang mở. Test dùng để biết một cú bấm đã pop hay chưa thay vì giả định
         /// Awake có chạy hay không.
@@ -141,7 +160,6 @@ namespace Hlight.Debug.Hub
             backgroundButton.onClick.AddListener(Close);
             backButton.onClick.AddListener(Pop);
             closeButton.onClick.AddListener(Close);
-            toast.Clicked += () => ResultClicked?.Invoke();
 
             searchButton.onClick.AddListener(() =>
             {
@@ -164,6 +182,11 @@ namespace Hlight.Debug.Hub
                 });
             }
             advancedButton.onClick.AddListener(() => Push(AdvancedPage.Root()));
+            logButton.onClick.AddListener(() => Push(LogPage.Build()));
+            moreButton.onClick.AddListener(() =>
+            {
+                if (stack.Count > 0) stack.Peek().Page.More?.Invoke(this);
+            });
         }
 
         private void Update()
@@ -225,16 +248,23 @@ namespace Hlight.Debug.Hub
             Show(root);
         }
 
-        /// Hiện kết quả (hoặc lỗi) của command vừa chạy.
-        public void ShowResult(string text, bool error)
+        /// Gọi tường minh từ DebugHub.Awake, không từ Awake của panel: Panel tắt sẵn trong prefab nên Awake chỉ
+        /// chạy ở lần mở đầu — trước đó bấm dòng kết quả không làm gì. Gọi lại không gắn thêm.
+        internal void WireToast() => toast.Wire(() => ResultClicked?.Invoke());
+
+        /// Hiện kết quả (hoặc lỗi) của command vừa chạy. <paramref name="logSeq"/>: vạch log của chính lần chạy
+        /// đó (chỉ CommandsPage.RunNow có), để bấm vào là tới đúng chỗ.
+        public void ShowResult(string text, bool error, long logSeq = 0)
         {
             LastResult = text;
+            LastResultSeq = logSeq;
             toast.Show(text, error);
         }
 
         public void HideResult()
         {
             LastResult = string.Empty;
+            LastResultSeq = 0;
             toast.Hide();
         }
 
@@ -261,6 +291,20 @@ namespace Hlight.Debug.Hub
             Rebuild();
             RestoreScroll(stack.Peek().Scroll);
         }
+
+        /// Thay trang trên cùng (Trước/Sau ở trang chi tiết): đi qua mười log không chất mười tầng stack.
+        internal void Replace(DebugPage page)
+        {
+            SavePageState();
+            if (stack.Count > 0) stack.Pop();
+            stack.Push(new PageState { Page = page });
+            query = string.Empty;
+            Rebuild();
+            RestoreScroll(1f);
+        }
+
+        /// Trang log gọi từ Build của nó: LogView mượn ScrollRect, giấu Content của row.
+        internal void ShowLog(LogModel model, long focusSeq) => logView.Open(this, scrollRect, model, focusSeq);
 
         /// Bấm ra ngoài panel: đóng hẳn bất kể đang ở page nào, khác với Pop() (lùi từng bước qua nút back).
         ///
@@ -303,6 +347,8 @@ namespace Hlight.Debug.Hub
         {
             if (stack.Count == 0 || !IsOpen) return;
             refreshLater = false;
+            // Mọi trang đều qua đây: rời trang log thì trả ScrollRect về Content của row.
+            logView.Close();
             Clear();
             var page = stack.Peek().Page;
             var searching = page.Searchable && stack.Peek().SearchOpen;
@@ -314,6 +360,11 @@ namespace Hlight.Debug.Hub
             searchButton.gameObject.SetActive(page.Searchable);
             advancedButton.gameObject.SetActive(page.ShowTools);
             helpButton.gameObject.SetActive(page.ShowTools);
+            logButton.gameObject.SetActive(page.ShowTools);
+            moreButton.gameObject.SetActive(page.More != null);
+            var unseen = LogRecorder.ErrorCount - LogModel.Shared.SeenErrors;
+            logBadge.transform.parent.gameObject.SetActive(unseen > 0);
+            if (unseen > 0) logBadge.text = LogText.Badge(unseen);
             ShowSubtitle(page.Subtitle);
             LayoutHeader(page);
 
@@ -393,7 +444,9 @@ namespace Hlight.Debug.Hub
             searchButton.GetComponentInChildren<DebugHubIcon>(true).color =
                 searching ? AccentColor : Palette.ToColor("#D9E4F1");
             var viewport = (RectTransform)scrollRect.transform;
-            viewport.offsetMax = new Vector2(viewport.offsetMax.x, -height - 12f);
+            var logBar = page.IsLog ? LogView.BAR_HEIGHT : 0f;
+            viewport.offsetMax = new Vector2(viewport.offsetMax.x, -height - 12f - logBar);
+            logView.PlaceBar(height);
         }
 
         private void ShowSubtitle(string address)
@@ -431,7 +484,9 @@ namespace Hlight.Debug.Hub
             var viewport = (RectTransform)scrollRect.transform;
             // Scroll view neo stretch trong window nên khoảng chừa cho header + padding = offset trên/dưới.
             var chrome = viewport.offsetMin.y - viewport.offsetMax.y;
-            var desired = LayoutUtility.GetPreferredHeight(content) + chrome;
+            // Trang log cao tối đa cố định: co theo số log thì panel nhảy mỗi lần có log mới. Trang có footer
+            // ghim đáy cũng vậy: footer mà co theo nội dung thì nhảy chỗ mỗi lần Trước/Sau.
+            var desired = TopIsFixedHeight ? MaxWindowHeight : LayoutUtility.GetPreferredHeight(content) + chrome;
 
             // Ép anchor dọc về giữa: nếu window còn neo stretch (prefab/scene cũ) thì sizeDelta.y
             // chỉ là phần cộng thêm vào khoảng anchor, panel sẽ cao hơn max mà không hiểu vì sao.
@@ -443,7 +498,9 @@ namespace Hlight.Debug.Hub
             SyncScrollbar();
         }
 
-        private void SyncScrollbar()
+        /// Đo theo content đang gắn vào ScrollRect, không theo field `content`: trang log thay content bằng
+        /// danh sách của nó và gọi lại đây mỗi lần danh sách đổi chiều cao.
+        internal void SyncScrollbar()
         {
             if (!scrollRect.verticalScrollbar) return;
             var viewport = scrollRect.viewport ? scrollRect.viewport : (RectTransform)scrollRect.transform;
@@ -459,9 +516,12 @@ namespace Hlight.Debug.Hub
                 var padding = Mathf.Max(0f, (requiredWidth - visualWidth) * 0.5f);
                 hitGraphic.raycastPadding = new Vector4(padding, 0f, padding, 0f);
             }
-            var visible = content.rect.height > viewport.rect.height + 1f;
+            var shown = scrollRect.content;
+            var visible = shown.rect.height > viewport.rect.height + 1f;
             bar.gameObject.SetActive(visible);
-            bar.size = Mathf.Clamp01(viewport.rect.height / Mathf.Max(1f, content.rect.height));
+            // Chiều dài tối thiểu của tay cầm nằm ở prefab (handle +96, Sliding Area −96): ScrollRect tự ghi
+            // size mỗi lần cuộn/dựng layout nên một sàn đặt ở đây sẽ bị đè ngay.
+            bar.size = Mathf.Clamp01(viewport.rect.height / Mathf.Max(1f, shown.rect.height));
             bar.SetValueWithoutNotify(scrollRect.verticalNormalizedPosition);
         }
 
@@ -493,6 +553,7 @@ namespace Hlight.Debug.Hub
         /// và nó xoá luôn cái vá Destroy-deferred-vs-DestroyImmediate.
         private void Clear()
         {
+            FooterShown = false;
             foreach (var row in spawnedRows)
             {
                 if (!row) continue;
@@ -594,6 +655,29 @@ namespace Hlight.Debug.Hub
         internal void AddPrimary(string label, Action onClick)
         {
             Spawn(actionTemplate, label).button.onClick.AddListener(() => onClick?.Invoke());
+        }
+
+        /// Footer ghim đáy window (ngoài vùng cuộn, không phải một row): nút chính ở giữa, hai nút phụ hai bên
+        /// (action null = mờ). Rebuild tắt nó trước khi dựng trang kế, nên trang nào cần thì tự gọi lại.
+        internal void ShowBar(string previous, Action onPrevious, string primary, Action onPrimary, string next, Action onNext)
+        {
+            FooterShown = true;
+            footer.Set(previous, onPrevious, primary, onPrimary, next, onNext);
+        }
+
+        /// Bật/tắt footer đi kèm đổi lề đáy của vùng cuộn — hai việc luôn đi cùng nhau nên nằm trong setter.
+        private bool FooterShown
+        {
+            get => footer.gameObject.activeSelf;
+            set
+            {
+                if (FooterShown == value) return;
+                footer.gameObject.SetActive(value);
+                // Tắt thì gỡ listener luôn: nút giữ closure của trang (model, item) nếu để nguyên.
+                if (!value) footer.Release();
+                var scroll = (RectTransform)scrollRect.transform;
+                scroll.offsetMin += new Vector2(0f, value ? FOOTER_INSET : -FOOTER_INSET);
+            }
         }
 
         internal void AddToggle(string label, bool value, Action<bool> onChanged, string description = null)
@@ -712,7 +796,7 @@ namespace Hlight.Debug.Hub
 
         /// Field cho một giá trị kiểu <paramref name="type"/>: enum ra page chọn, bool ra switch,
         /// số ra input chỉ nhận số, còn lại là input text. Mọi giá trị được validate bằng
-        /// DebugLogConsole.ParseArgument nên không có kiểu nào lọt qua mà không kiểm.
+        /// DebugValues.ParseArgument nên không có kiểu nào lọt qua mà không kiểm.
         ///
         /// <paramref name="onChanged"/> bắn theo từng lần sửa (page nhập liệu dùng để giữ giá trị),
         /// <paramref name="onSubmit"/> chỉ bắn khi người dùng chốt giá trị — row chạy ngay tại chỗ
@@ -748,7 +832,7 @@ namespace Hlight.Debug.Hub
             var shape = Nullable.GetUnderlyingType(type) ?? type;
             input.contentType = ContentTypeFor(shape);
             input.characterLimit = shape == typeof(char) ? 1 : 0;
-            if (input.placeholder is TMP_Text placeholder) placeholder.text = DebugLogConsole.GetTypeReadableName(shape);
+            if (input.placeholder is TMP_Text placeholder) placeholder.text = DebugValues.ReadableName(shape);
             input.SetTextWithoutNotify(current);
 
             // GameObject/Component parse bằng GameObject.Find: tô màu theo từng phím là quét scene theo

@@ -21,12 +21,23 @@ namespace Hlight.Debug.Hub
         /// dòng này nói mình đang ở đâu; bấm vào là copy.
         public readonly string Subtitle;
 
-        /// Hiện nút công cụ (Advanced) và `?` ở header — chỉ Commands gốc.
+        /// Hiện nút công cụ (Advanced), `?` và Log ở header — chỉ Commands gốc.
         public readonly bool ShowTools;
+
+        /// Nút `…` ở header mở thao tác của cả trang. null = ẩn.
+        public readonly Action<DebugHubPanel> More;
+
+        /// Trang log: panel cao tối đa cố định (không co theo nội dung), chừa chỗ thanh lọc dưới header.
+        public readonly bool IsLog;
+
+        /// Window luôn cao tối đa thay vì co theo nội dung: trang có footer ghim đáy (chi tiết log) thì footer
+        /// mới đứng yên khi chuyển trang. Trang log tự tính là cố định.
+        public readonly bool FixedHeight;
 
         public DebugPage(string title, Action<DebugHubPanel> build,
             Action<DebugHubPanel, string> search = null, bool searchable = true, bool live = false,
-            string subtitle = null, bool showTools = false)
+            string subtitle = null, bool showTools = false, Action<DebugHubPanel> more = null, bool isLog = false,
+            bool fixedHeight = false)
         {
             Title = title;
             Build = build;
@@ -35,6 +46,9 @@ namespace Hlight.Debug.Hub
             Live = live;
             Subtitle = subtitle;
             ShowTools = showTools;
+            More = more;
+            IsLog = isLog;
+            FixedHeight = fixedHeight || isLog;
         }
     }
 }

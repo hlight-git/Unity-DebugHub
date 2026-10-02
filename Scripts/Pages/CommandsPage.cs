@@ -147,13 +147,13 @@ namespace Hlight.Debug.Hub
 
         internal static void RunNow(DebugHubPanel panel, DebugRegistry.Entry entry, string[] values)
         {
-            var ok = DebugRegistry.RunEntry(entry, values, out var message);
+            var ok = DebugRegistry.RunEntry(entry, values, out var message, out var mark);
 
             // Lỗi thì luôn hiện. Còn lại chỉ hiện khi node là loại cần đọc kết quả và thật sự có in
             // ra gì: "> view.fps true" hay log của luồng load level nổi giữa màn hình chỉ là rác.
-            if (!ok) panel.ShowResult($"{entry.Path}: {message}", true);
+            if (!ok) panel.ShowResult($"{entry.Path}: {message}", true, mark);
             else if (entry.Node.ShowsResult && !string.IsNullOrEmpty(message))
-                panel.ShowResult($"> {entry.Path} {string.Join(" ", values)}\n{message}", false);
+                panel.ShowResult($"> {entry.Path} {string.Join(" ", values)}\n{message}", false, mark);
             else panel.HideResult();
 
             if (!ok) return;

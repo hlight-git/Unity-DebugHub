@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using IngameDebugConsole;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
@@ -499,7 +498,7 @@ namespace Hlight.Debug.Hub
             error = null;
             var source = parent.Value;
             var arguments = new List<string>();
-            DebugLogConsole.FetchArgumentsFromCommand(Between(step, '[', ']'), arguments);
+            DebugValues.SplitArguments(Between(step, '[', ']'), arguments);
             if (arguments.Count == 0)
             {
                 error = "indexer không có tham số nào";
@@ -601,7 +600,7 @@ namespace Hlight.Debug.Hub
             var special = head.IndexOfAny(new[] { '<', '{' });
             var name = special < 0 ? head : head.Substring(0, special);
             var arguments = new List<string>();
-            DebugLogConsole.FetchArgumentsFromCommand(step.Substring(step.IndexOf('(') + 1).TrimEnd(')'), arguments);
+            DebugValues.SplitArguments(step.Substring(step.IndexOf('(') + 1).TrimEnd(')'), arguments);
 
             var overloads = new List<MethodInfo>();
             (source?.GetType() ?? parent.Declared).AddMethodsRecursive(overloads,
@@ -622,7 +621,7 @@ namespace Hlight.Debug.Hub
                     return false;
                 }
                 var typeArguments = new List<string>();
-                DebugLogConsole.FetchArgumentsFromCommand(Between(head, '<', '>'), typeArguments);
+                DebugValues.SplitArguments(Between(head, '<', '>'), typeArguments);
                 var resolved = new Type[typeArguments.Count];
                 for (var i = 0; i < resolved.Length; i++)
                 {

@@ -1,4 +1,5 @@
 using System;
+using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -8,6 +9,8 @@ namespace Hlight.Debug.Hub
     {
         [SerializeField] private Button button;
         [SerializeField] private FloatingBubble floatingBubble;
+        [SerializeField] private GameObject badge;
+        [SerializeField] private TMP_Text badgeCount;
 
         public event Action Clicked;
 
@@ -21,6 +24,16 @@ namespace Hlight.Debug.Hub
             }
         }
 
+        /// Số lỗi ghi được mà chưa mở trang log xem (spec ① §5.1). 0 = ẩn.
+        public long Badge
+        {
+            set
+            {
+                badge.SetActive(value > 0);
+                if (value > 0) badgeCount.text = LogText.Badge(value);
+            }
+        }
+
         private void Awake()
         {
             button.onClick.AddListener(() =>
@@ -28,7 +41,12 @@ namespace Hlight.Debug.Hub
                 if (!floatingBubble.SuppressClick) Clicked?.Invoke();
             });
             floatingBubble.DragStateChanged += value => button.enabled = !value;
-            floatingBubble.Dismissed += () => DebugHub.Visible = false;
+            // Kéo vào X là tester cố ý tắt bong bóng: nhớ cho phiên sau.
+            floatingBubble.Dismissed += () =>
+            {
+                DebugHub.Visible = false;
+                DebugHub.RememberEntry(false);
+            };
         }
     }
 }

@@ -9,8 +9,9 @@ namespace Hlight.Debug.Hub
     /// Dòng kết quả của command, nổi ở đáy màn hình.
     ///
     /// Nằm ngoài panel (con của root hub, không phải của Panel) vì command mặc định đóng panel sau khi
-    /// chạy: để trong panel thì đóng xong là không thấy kết quả. Bấm vào nó = mở console log window,
-    /// nơi có toàn văn kèm stack trace — nên ở đây chỉ cần cắt ngắn, không cần page "Result" riêng.
+    /// chạy: để trong panel thì đóng xong là không thấy kết quả. Bấm vào nó = mở trang log tại vạch của
+    /// lần chạy đã tạo dòng này (không do command thì ở cuối log), nơi có toàn văn kèm stack trace — nên ở đây
+    /// chỉ cần cắt ngắn, không cần page "Result" riêng.
     public class DebugHubToast : MonoBehaviour
     {
         private static readonly Color ErrorColor = new Color(1f, 0.42f, 0.42f);
@@ -19,20 +20,26 @@ namespace Hlight.Debug.Hub
         [SerializeField] private Button button;
         [Tooltip("Tự ẩn sau bao nhiêu giây.")]
         [SerializeField] private float duration = 6f;
-        [Tooltip("Dài hơn thì cắt; toàn văn xem ở console.")]
+        [Tooltip("Dài hơn thì cắt; toàn văn xem ở trang log.")]
         [SerializeField] private int characterLimit = 240;
-
-        public event Action Clicked;
 
         private Color normalColor;
         private Coroutine hide;
         private float baseBottom;
+        private bool wired;
 
         private void Awake()
         {
             normalColor = label.color;
             baseBottom = ((RectTransform)transform).anchoredPosition.y;
-            button.onClick.AddListener(() => Clicked?.Invoke());
+        }
+
+        /// Gắn nút ở đây chứ không ở Awake: EditMode test không chắc gọi Awake. Gọi lại không gắn thêm.
+        internal void Wire(Action clicked)
+        {
+            if (wired) return;
+            wired = true;
+            button.onClick.AddListener(() => clicked());
         }
 
         public void Show(string text, bool error)

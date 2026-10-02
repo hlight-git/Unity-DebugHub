@@ -1,32 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using IngameDebugConsole;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
 namespace Hlight.Debug.Hub
 {
-    /// Cầu duy nhất sang parser của IngameDebugConsole, cộng hai câu hỏi mà IDC không trả lời được:
-    /// "kiểu này có đường parse không" và "kiểu này có editor gõ tại chỗ không".
-    ///
-    /// Phải tự giữ bảng vì `DebugLogConsole.parseFunctions` là private, còn `ParseArgument` trả false
-    /// lẫn lộn giữa "sai cú pháp" với "không hỗ trợ kiểu".
-    internal static class DebugValues
+    /// Parser của hub (bảng parse ở DebugValues.Parse.cs, mang từ IngameDebugConsole) cộng hai câu hỏi
+    /// mà parser không tự trả lời: "kiểu này có đường parse không" và "kiểu này có editor gõ tại chỗ không".
+    internal static partial class DebugValues
     {
-        /// Đúng bảng parser của IDC (DebugLogConsole.parseFunctions) — sửa ở đây khi submodule đổi.
-        private static readonly HashSet<Type> Parseable = new()
-        {
-            typeof(string), typeof(bool), typeof(char),
-            typeof(int), typeof(uint), typeof(long), typeof(ulong),
-            typeof(short), typeof(ushort), typeof(byte), typeof(sbyte),
-            typeof(float), typeof(double), typeof(decimal),
-            typeof(Vector2), typeof(Vector3), typeof(Vector4), typeof(Quaternion),
-            typeof(Color), typeof(Color32), typeof(Rect), typeof(RectOffset),
-            typeof(Bounds), typeof(Vector2Int), typeof(Vector3Int), typeof(RectInt), typeof(BoundsInt),
-            typeof(GameObject),
-        };
-
         /// Kiểu có nhiều thành phần: ToText ghép bằng dấu cách, ParseVector tách lại bằng space/phẩy.
         private static readonly Dictionary<Type, Func<object, float[]>> VectorParts = new()
         {
@@ -50,10 +33,10 @@ namespace Hlight.Debug.Hub
         {
             if (type == null) return false;
             type = Nullable.GetUnderlyingType(type) ?? type;
-            if (Parseable.Contains(type) || type.IsEnum) return true;
+            if (Parsers.ContainsKey(type) || type.IsEnum) return true;
             if (typeof(Component).IsAssignableFrom(type)) return true;
             var element = ElementTypeOf(type);
-            return element != null && (Parseable.Contains(element) || element.IsEnum ||
+            return element != null && (Parsers.ContainsKey(element) || element.IsEnum ||
                                        typeof(Component).IsAssignableFrom(element));
         }
 
@@ -64,7 +47,7 @@ namespace Hlight.Debug.Hub
             if (type == null) return false;
             type = Nullable.GetUnderlyingType(type) ?? type;
             if (type.IsEnum) return true;
-            return Parseable.Contains(type) && type != typeof(GameObject);
+            return Parsers.ContainsKey(type) && type != typeof(GameObject);
         }
 
         /// Dạng chữ của một giá trị, đọc được và parse lại được. InvariantCulture vì máy đặt
@@ -87,9 +70,9 @@ namespace Hlight.Debug.Hub
             return Convert.ToString(value, CultureInfo.InvariantCulture);
         }
 
-        /// Một đối số dùng được trong dòng lệnh (nút repeat, console). Khác ToText ở hai chỗ:
+        /// Một đối số dùng được trong dòng lệnh (nút repeat, DebugHub.Execute). Khác ToText ở hai chỗ:
         /// từ chối thứ không có biểu diễn độc lập với session, và bọc quote khi có khoảng trắng —
-        /// không bọc thì Vector3 "1 2 3" bị FetchArgumentsFromCommand tách thành ba đối số.
+        /// không bọc thì Vector3 "1 2 3" bị SplitArguments tách thành ba đối số.
         public static bool TryToArgument(object value, Type declared, out string text)
         {
             text = null;
@@ -111,7 +94,7 @@ namespace Hlight.Debug.Hub
             if (value is string && raw.StartsWith("$")) raw = "$" + raw;
 
             // Bọc quote chỉ cứu được khoảng trắng. Chuỗi chứa chính dấu `"`, xuống dòng hay tab thì
-            // FetchArgumentsFromCommand không tách lại đúng, mà nó không có escape — từ chối hẳn còn
+            // SplitArguments không tách lại đúng, mà nó không có escape — từ chối hẳn còn
             // hơn lưu một dòng lệnh chạy ra giá trị khác.
             foreach (var bad in new[] { '"', '\n', '\r', '\t' })
             {
@@ -172,13 +155,13 @@ namespace Hlight.Debug.Hub
             var nullable = !declared.IsValueType;
             if (nullable && declared != typeof(string) && text == "null") return true;
 
-            if (!DebugLogConsole.ParseArgument(text, declared, out value))
+            if (!ParseArgument(text, declared, out value))
             {
-                error = $"'{text}' không phải {DebugLogConsole.GetTypeReadableName(declared)}";
+                error = $"'{text}' không phải {ReadableName(declared)}";
                 return false;
             }
 
-            // ParseGameObject/ParseComponent của IDC trả true kể cả khi Find không thấy gì.
+            // ParseGameObject/ParseComponent trả true kể cả khi Find không thấy gì.
             // Im lặng nhận null ở đây là ghi null vào field mà người dùng tưởng đã tìm thấy object.
             if (value == null && typeof(Object).IsAssignableFrom(declared))
             {

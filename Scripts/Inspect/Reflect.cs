@@ -259,7 +259,7 @@ namespace Hlight.Debug.Hub
                 Label = parameters.Length == 0
                     ? method.Name
                     : $"{method.Name}({string.Join(", ", Array.ConvertAll(parameters, p => p.ParameterType.Name))})",
-                Description = DebugLogConsoleName(method.ReturnType),
+                Description = ReturnTypeName(method.ReturnType),
                 Parameters = descriptors,
                 // Theo chữ ký: hai overload cùng arity phải có hai ô nhớ tham số riêng.
                 Key = $"reflect:{owner}.{Signature(method)}",
@@ -346,9 +346,9 @@ namespace Hlight.Debug.Hub
             child.Write(value);
         }
 
-        private static string DebugLogConsoleName(Type type)
+        private static string ReturnTypeName(Type type)
         {
-            return type == typeof(void) ? null : IngameDebugConsole.DebugLogConsole.GetTypeReadableName(type);
+            return type == typeof(void) ? null : DebugValues.ReadableName(type);
         }
     }
 }

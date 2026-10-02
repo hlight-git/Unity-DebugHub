@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using IngameDebugConsole;
 
 namespace Hlight.Debug.Hub
 {
@@ -42,7 +41,7 @@ namespace Hlight.Debug.Hub
                 case ActionNode action:
                     foreach (var parameter in action.Parameters)
                     {
-                        builder.Append(" [").Append(DebugLogConsole.GetTypeReadableName(parameter.Type)).Append(' ')
+                        builder.Append(" [").Append(DebugValues.ReadableName(parameter.Type)).Append(' ')
                             .Append(parameter.Name).Append(']');
                     }
                     return;

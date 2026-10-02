@@ -46,7 +46,7 @@ namespace Hlight.Debug.Hub.Tests
             Assert.IsTrue(DebugRegistry.Find("deadtest.run", out var entry));
             Object.DestroyImmediate(owner);
 
-            Assert.IsFalse(DebugRegistry.RunEntry(entry, System.Array.Empty<string>(), out var message));
+            Assert.IsFalse(DebugRegistry.RunEntry(entry, System.Array.Empty<string>(), out var message, out _));
             Assert.IsFalse(ran);
             StringAssert.Contains("gỡ", message);
         }
@@ -201,21 +201,6 @@ namespace Hlight.Debug.Hub.Tests
             LogAssert.ignoreFailingMessages = true;
             Assert.IsFalse(DebugRegistry.Run(node, new string[0], out var message));
             StringAssert.Contains("ngoài", message);
-        }
-
-        [Test]
-        public void Run_CapturesLogs_EvenWhenUnityLoggingIsSilenced()
-        {
-            var node = Track(DebugHub.Add(null, "quiet.log", "d", () => UnityEngine.Debug.Log("vẫn thấy")));
-            var logger = UnityEngine.Debug.unityLogger;
-            logger.logEnabled = false;
-            try
-            {
-                Assert.IsTrue(DebugRegistry.Run(node, new string[0], out var message));
-                StringAssert.Contains("vẫn thấy", message);
-                Assert.IsFalse(logger.logEnabled, "chạy xong phải trả logger về như cũ");
-            }
-            finally { logger.logEnabled = true; }
         }
 
         [Test]

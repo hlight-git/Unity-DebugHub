@@ -34,7 +34,7 @@ namespace Hlight.Debug.Hub
 
             // Bật mà chưa có lệnh nào thì ẩn hẳn: một nút rỗng bấm ra lỗi thì tệ hơn là không có nút.
             // Và luôn tôn trọng Visible: LastCommandChanged bắn bất kể hub đang ẩn hay hiện, không check
-            // thì một lệnh chạy qua console trong lúc hub đang ẩn có chủ đích sẽ tự bật nút lên.
+            // thì một lệnh chạy qua DebugHub.Execute (code game) trong lúc hub đang ẩn có chủ đích sẽ tự bật nút lên.
             var visible = DebugHub.Visible && Enabled && !string.IsNullOrEmpty(line);
             if (!visible)
             {

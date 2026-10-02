@@ -5,7 +5,7 @@ using UnityEngine;
 namespace Hlight.Debug.Hub.Tests
 {
     /// Hợp đồng của DebugValues: kiểu nào parse được, kiểu nào có editor tại chỗ, và
-    /// ToText phải quay lại đúng giá trị cũ qua parser của IDC.
+    /// ToText phải quay lại đúng giá trị cũ qua parser của DebugValues (bảng ở DebugValues.Parse.cs).
     public class DebugValuesTests
     {
         private enum Flavor { Sweet, Salty }
@@ -86,7 +86,7 @@ namespace Hlight.Debug.Hub.Tests
         [Test]
         public void TryParse_TreatsFailedUnityLookupAsError_NotAsNull()
         {
-            // ParseGameObject của IDC luôn trả true, kể cả khi Find không thấy gì.
+            // ParseGameObject (DebugValues.Parse.cs) trả true kể cả khi Find không thấy gì; TryParse phải đổi thành lỗi.
             Assert.IsFalse(DebugValues.TryParse("khong-co-object-ten-nay", typeof(GameObject), out _, out var error));
             Assert.IsNotEmpty(error);
 
@@ -199,7 +199,7 @@ namespace Hlight.Debug.Hub.Tests
         public void Nullable_RoundTripsAsACommandArgument()
         {
             Assert.IsTrue(DebugValues.TryToArgument(null, typeof(int?), out var text));
-            Assert.IsTrue(DebugValues.TryParse(DebugLogConsoleUnquote(text), typeof(int?), out var back, out _));
+            Assert.IsTrue(DebugValues.TryParse(Unquote(text), typeof(int?), out var back, out _));
             Assert.IsNull(back);
         }
 
@@ -210,7 +210,7 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual("$100", value);
         }
 
-        private static string DebugLogConsoleUnquote(string text) => text.Trim('"');
+        private static string Unquote(string text) => text.Trim('"');
 
         private static void AssertRoundTrip(object value, Type type)
         {

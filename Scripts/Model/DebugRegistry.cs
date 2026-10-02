@@ -1,14 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
-using IngameDebugConsole;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
 namespace Hlight.Debug.Hub
 {
-    /// Storage node của hub. IDC ở lại làm log window và parser giá trị; cái gì hiện lên panel
-    /// thì hub tự giữ để có description, hình thái, owner — thứ ConsoleMethodInfo không chứa được.
+    /// Storage node của hub. Cái gì hiện lên panel
+    /// thì hub tự giữ để có description, hình thái, owner.
     internal static class DebugRegistry
     {
         private const string LAST_KEY = "DebugHub.LastCommand";
@@ -267,21 +266,11 @@ namespace Hlight.Debug.Hub
                 else captured.Append("<color=").Append(Palette.BAD).Append('>').Append(condition).Append("</color>");
             };
 
-            // Build tắt log của Unity (com.hlight.logging dưới PRODUCTION) thì không có log nào để bắt —
-            // bật tạm trong lúc lệnh chạy, xong trả lại như cũ.
-            var logger = UnityEngine.Debug.unityLogger;
-            var logEnabled = logger.logEnabled;
-            logger.logEnabled = true;
-
             Exception failure = null;
             Application.logMessageReceived += capture;
             try { run(); }
             catch (Exception exception) { failure = exception.Unwrap(); }
-            finally
-            {
-                Application.logMessageReceived -= capture;
-                logger.logEnabled = logEnabled;
-            }
+            finally { Application.logMessageReceived -= capture; }
 
             if (failure != null)
             {
@@ -320,8 +309,8 @@ namespace Hlight.Debug.Hub
         /// thì nhãn của nó đứng im tới lần bật/tắt sau.
         internal static event Action LastCommandChanged;
 
-        /// Chạy bằng một dòng lệnh: "level.goto 5". Đường cho nút repeat và ô nhập lệnh của console.
-        /// Tách tham số bằng FetchArgumentsFromCommand nên quote xử lý y như console.
+        /// Chạy bằng một dòng lệnh: "level.goto 5" — đường của DebugHub.Execute (code game, test). Tách tham số
+        /// bằng DebugValues.SplitArguments nên quote xử lý y như ô nhập tham số và dòng lệnh nút repeat lưu.
         internal static bool Execute(string line, out string message)
         {
             var values = ArgumentsOf(line);
@@ -336,14 +325,18 @@ namespace Hlight.Debug.Hub
                 return false;
             }
 
-            return RunEntry(entry, values, out message);
+            return RunEntry(entry, values, out message, out _);
         }
 
         /// Một đường chạy duy nhất cho node đã đăng ký — panel, Execute và nút repeat đều qua đây nên
         /// luật ghi lệnh cuối chỉ có một bản: ActionNode chạy xong là ghi (kể cả 0 tham số), ValueNode
         /// chỉ ghi khi gán, đọc thì không.
-        internal static bool RunEntry(Entry entry, string[] values, out string message)
+        ///
+        /// <paramref name="mark"/>: seq vạch log của chính lần chạy này (0 = không vạch). Trả ra đây chứ không đọc
+        /// "vạch cuối" sau đó: lệnh khác (Execute từ code game, Await) có thể đã vạch chen vào.
+        internal static bool RunEntry(Entry entry, string[] values, out string message, out long mark)
         {
+            mark = 0;
             // Trang Params/Xác nhận giữ entry qua lần đóng panel; owner bị Destroy (đổi scene) trong lúc
             // đó thì delegate trỏ vào object đã chết — ném MissingReference, hoặc tệ hơn, ghi vào state
             // của scope cũ rồi báo thành công.
@@ -352,6 +345,10 @@ namespace Hlight.Debug.Hub
                 message = "command đã bị gỡ (owner không còn).";
                 return false;
             }
+            // Vạch trong trang log: log nào in ra sau thao tác nào. Cùng luật với Record bên dưới — đọc một
+            // ValueNode không phải thao tác.
+            if (entry.Node is ActionNode || values.Length > 0)
+                mark = LogRecorder.Mark(values.Length == 0 ? entry.Path : $"{entry.Path} {string.Join(" ", values)}");
             var ok = Run(entry.Node, values, out message);
             if (ok && (entry.Node is ActionNode || values.Length > 0)) Record(entry, values);
             return ok;
@@ -377,11 +374,11 @@ namespace Hlight.Debug.Hub
             return false;
         }
 
-        /// Đối số sau path. null = dòng lệnh rỗng. Tách bằng parser của IDC nên quote xử lý y như console.
+        /// Đối số sau path. null = dòng lệnh rỗng. Tách bằng DebugValues.SplitArguments: quote và ngoặc xử lý như mọi ô nhập khác.
         internal static string[] ArgumentsOf(string line)
         {
             arguments.Clear();
-            if (!string.IsNullOrEmpty(line)) DebugLogConsole.FetchArgumentsFromCommand(line, arguments);
+            if (!string.IsNullOrEmpty(line)) DebugValues.SplitArguments(line, arguments);
             if (arguments.Count == 0) return null;
 
             var values = new string[arguments.Count - 1];
@@ -392,7 +389,7 @@ namespace Hlight.Debug.Hub
         private static string PathOf(string line)
         {
             arguments.Clear();
-            if (!string.IsNullOrEmpty(line)) DebugLogConsole.FetchArgumentsFromCommand(line, arguments);
+            if (!string.IsNullOrEmpty(line)) DebugValues.SplitArguments(line, arguments);
             return arguments.Count > 0 ? arguments[0] : string.Empty;
         }
 
