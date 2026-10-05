@@ -33,6 +33,7 @@ namespace Hlight.Debug.Hub
         [SerializeField] private Chip chipWarning;
         [SerializeField] private Chip chipError;
         [SerializeField] private Chip chipCollapse;
+        [SerializeField] private Chip chipUnity;
         [SerializeField] private Button pill;
         [SerializeField] private TMP_Text pillLabel;
         [SerializeField] private GameObject empty;
@@ -172,6 +173,7 @@ namespace Hlight.Debug.Hub
             chipWarning.button.onClick.AddListener(() => model.Toggle(LogGroup.Warning));
             chipError.button.onClick.AddListener(() => model.Toggle(LogGroup.Error));
             chipCollapse.button.onClick.AddListener(() => model.Collapse = !model.Collapse);
+            chipUnity.button.onClick.AddListener(() => model.UnityOnly = !model.UnityOnly);
             pill.onClick.AddListener(() =>
             {
                 model.Follow = true;
@@ -267,6 +269,11 @@ namespace Hlight.Debug.Hub
             SetChip(chipWarning, 1, model.IsShown(LogGroup.Warning), WarningOn, model.Count(LogGroup.Warning));
             SetChip(chipError, 2, model.IsShown(LogGroup.Error), ErrorOn, model.Count(LogGroup.Error));
             SetLook(chipCollapse, model.Collapse, ChipOn);
+            // Chưa có log native (Editor) thì không có gì để lọc: ẩn chip, khỏi thành nút chết. Đang bật thì luôn hiện — sau Xoá
+            // chưa có log native mới mà ẩn chip thì không tắt lọc được.
+            var chipShown = model.HasNative || model.UnityOnly;
+            if (chipUnity.button.gameObject.activeSelf != chipShown) chipUnity.button.gameObject.SetActive(chipShown);
+            SetLook(chipUnity, model.UnityOnly, ChipOn);
 
             var showPill = newRows > 0 && !model.Follow;
             if (pill.gameObject.activeSelf != showPill) pill.gameObject.SetActive(showPill);

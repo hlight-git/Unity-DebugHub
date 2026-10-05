@@ -152,6 +152,21 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(panel.MaxWindowHeight, window.sizeDelta.y, 0.01f);
         }
 
+        /// Log native: dòng tiếp theo là chữ thường, hiện nguyên văn — qua bộ đọc frame C# thì `v12.3.0` thành `3.0`.
+        [Test]
+        public void NativeLog_ShowsItsFollowingLinesVerbatim()
+        {
+            LogRecorder.ReceiveNative(System.DateTime.Now, LogType.Error, "AndroidRuntime", "FATAL EXCEPTION: main",
+                "Initializing SDK v12.3.0\n\tat com.x.Y.z(Y.java:12)");
+            Open();
+            panel.Push(LogDetailPage.For(LogModel.Shared, Item("FATAL EXCEPTION: main")));
+
+            var labels = TestPanel.LabelsOf(panel);
+            Assert.IsTrue(labels.Any(l => l.Contains("Initializing SDK v12.3.0")), string.Join(" | ", labels));
+            Assert.IsTrue(labels.Any(l => l.Contains("com.x.Y.z(Y.java:12)")), string.Join(" | ", labels));
+            Assert.IsFalse(labels.Any(l => l.Contains("Stack trace")));
+        }
+
         /// Mỗi frame là một row dựng lại ở mỗi Trước/Sau: chỉ hiện MAX_FRAMES frame đầu + một dòng "… còn N".
         [Test]
         public void LongStack_ShowsTheFirstFramesAndARemainderRow_CopyKeepsEveryFrame()

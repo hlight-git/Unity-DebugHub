@@ -32,6 +32,24 @@ namespace Hlight.Debug.Hub.Tests
             }
         }
 
+        /// Ký tự font không có: TMP bắn warning mỗi lần vẽ và warning lại thành log mới. Đổi ra `?` trước khi vẽ;
+        /// ZWSP do chính Escape chèn thì giữ.
+        [Test]
+        public void Escape_ReplacesGlyphsTheFontLacks_ButKeepsItsZeroWidthSpace()
+        {
+            LogText.HasGlyph = code => code != 0x2192 && code != 0x1F634 && code != 0x200B;
+            try
+            {
+                Assert.AreEqual("<noparse>[Capy] ? hạ 3 ? 2</noparse>", LogText.Escape("[Capy] \U0001F634 hạ 3 → 2"));
+                StringAssert.Contains("<​/", LogText.Escape("a</b"));
+                Assert.AreEqual("<noparse>(int,​string)</noparse>", LogText.Escape("(int,​string)"), "ZWSP của StackFrames");
+            }
+            finally
+            {
+                LogText.HasGlyph = null;
+            }
+        }
+
         [Test]
         public void Highlight_WrapsEveryMatch_IgnoringCase()
         {

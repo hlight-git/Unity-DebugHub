@@ -31,6 +31,33 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(LogType.Warning, got[1].Type);
         }
 
+        /// E của OS/SDK có ở mọi phiên: đếm vào thì chấm đỏ luôn sáng. Log Unity lấy lại từ logcat thì vẫn đếm.
+        [Test]
+        public void Logcat_NativeErrorsDoNotLightTheBadge_UnityOnesDo()
+        {
+            var time = new System.DateTime(2026, 10, 2, 14, 26, 18);
+            LogRecorder.ReceiveNative(time, LogType.Error, "Zygote", "noise", null);
+            Assert.AreEqual(0, LogRecorder.ErrorCount);
+            LogRecorder.ReceiveNative(time, LogType.Error, null, "NullReferenceException", "Harvest.X:Y()");
+            Assert.AreEqual(1, LogRecorder.ErrorCount);
+
+            LogRecorder.CopySince(0, got);
+            Assert.AreEqual(LogSource.Native, got[0].Source);
+            Assert.AreEqual("Zygote", got[0].Tag);
+            Assert.AreEqual(time, got[0].Time, "giữ giờ của logcat, không phải giờ nhận");
+            Assert.AreEqual(LogSource.Unity, got[1].Source);
+        }
+
+        /// Dòng ghi chú "Ghi từ …" phải tính cả phần lấy lại từ buffer logcat, cũ hơn lúc bắt đầu ghi.
+        [Test]
+        public void Logcat_OlderThanTheStart_MovesStartedAtBack()
+        {
+            LogRecorder.Start();
+            var older = LogRecorder.StartedAt.AddMinutes(-2);
+            LogRecorder.ReceiveNative(older, LogType.Log, "ActivityThread", "bind", null);
+            Assert.AreEqual(older, LogRecorder.StartedAt);
+        }
+
         [Test]
         public void CopySince_ReturnsOnlyNewer_AndNothingWhenUpToDate()
         {

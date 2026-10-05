@@ -32,7 +32,7 @@ namespace Hlight.Debug.Hub
         [FormerlySerializedAs("console")] [SerializeField] private BuiltinCommands commands;
         [SerializeField] private RepeatButton repeat;
         [SerializeField] private TMP_InputField authenticationInputField;
-        [Tooltip("Trang nội bộ của công ty: ô password đang mở mà tới được một trang và trang chứa đúng chuỗi = coi như đã gõ đúng password.")]
+        [Tooltip("Trang nội bộ của công ty: tới được một trang và trang chứa đúng chuỗi = coi như đã gõ đúng password. Android/PC kiểm lúc mở app (mở khoá ngầm, lắc để hiện bong bóng); iOS/macOS chỉ kiểm khi ô password mở.")]
         [SerializeField] private AutoUnlock autoUnlock = new();
 
         /// Mọi trigger trong danh sách đều được hỏi mỗi frame, bất kể platform/editor window — mỗi
@@ -44,6 +44,7 @@ namespace Hlight.Debug.Hub
 
         private bool unlocked;
         private bool askingPassword;
+        private bool checkingNetwork;
         private long badgeShown = -1;
         private Func<bool> triggerPerformed;
 
@@ -141,10 +142,65 @@ namespace Hlight.Debug.Hub
 
             // Mở khoá rồi và lần trước để bong bóng hiện thì hiện lại, khỏi làm cử chỉ mỗi phiên.
             if (unlocked && PlayerPrefs.GetInt(ENTRY_VISIBLE_KEY) == 1) Visible = true;
+
+            // Log game có `→`, emoji… mà font không có: tra font của hub để đổi ra `?` trước khi vẽ. Chỉ khi Play — EditMode
+            // test không đụng font thật.
+            if (Application.isPlaying)
+            {
+                // Đúng thứ tự TMP tìm glyph: font mặc định (kèm fallback của chính nó), rồi fallback chung trong TMP Settings.
+                var fonts = new List<TMP_FontAsset> { TMP_Settings.defaultFontAsset };
+                fonts.AddRange(TMP_Settings.fallbackFontAssets);
+                LogText.HasGlyph = code => fonts.Exists(font => font && HasGlyph(font, code));
+            }
+        }
+
+        /// HasCharacter tra fallback chỉ nhận char; emoji (ngoài BMP) đi bản chuỗi.
+        private static bool HasGlyph(TMP_FontAsset font, int code) => code <= 0xFFFF
+            ? font.HasCharacter((char)code, true, true)
+            : font.HasCharacters(char.ConvertFromUtf32(code), out uint[] _, true, true);
+
+        private void Start()
+        {
+            if (instance == this) CheckNetwork();
+        }
+
+        /// Bật Wi-Fi công ty rồi quay lại game là đủ, không phải mở lại app.
+        private void OnApplicationFocus(bool focused)
+        {
+            if (focused && instance == this) CheckNetwork();
+        }
+
+        /// Spec ② §3: vào được trang hợp lệ là mở khoá ngay, không chờ ô password (trừ iOS, xem AutoUnlock.ChecksAtLaunch).
+        private void CheckNetwork()
+        {
+            if (Unlocked || checkingNetwork || !autoUnlock.Configured || !AutoUnlock.ChecksAtLaunch(Application.platform)) return;
+            checkingNetwork = true;
+            StartCoroutine(CheckNetworkThen());
+        }
+
+        private IEnumerator CheckNetworkThen()
+        {
+            yield return autoUnlock.Check(OnNetworkMatched);
+            checkingNetwork = false;
+        }
+
+        /// Như bản 2.x: vào trang hợp lệ là mở khoá ngầm (bắt đầu ghi log), không bật bong bóng — lắc / vẽ 4 góc mới
+        /// hiện, ngay từ lần mở app đầu tiên. Ô password đang mở nghĩa là người dùng vừa làm cử chỉ: đóng ô và hiện
+        /// bong bóng như gõ đúng password.
+        private void OnNetworkMatched()
+        {
+            if (Unlocked) return;
+            if (askingPassword) AcceptAuthentication();
+            else Remember();
         }
 
         // Bản trùng bị Destroy trong Awake chưa Initialize: `-=` handler chưa đăng ký là no-op.
-        private void OnDestroy() => repeat.Release();
+        private void OnDestroy()
+        {
+            repeat.Release();
+            // Thoát Play không reload domain: để lại thì code EditMode tra (và thêm glyph vào) font dynamic thật.
+            if (instance == this) LogText.HasGlyph = null;
+        }
 
         private void Update()
         {
@@ -174,10 +230,7 @@ namespace Hlight.Debug.Hub
                     // Kiểm song song với ô password: ở công ty ô tự đóng, ngoài công ty ô vẫn đó để gõ — UI không
                     // bao giờ chờ mạng. Chỉ Play thật: EditMode test không tick coroutine, không bắn request thật.
                     if (Application.isPlaying && autoUnlock.Configured)
-                        StartCoroutine(autoUnlock.Check(() =>
-                        {
-                            if (askingPassword) AcceptAuthentication();
-                        }));
+                        StartCoroutine(autoUnlock.Check(OnNetworkMatched));
                     break;
             }
         }

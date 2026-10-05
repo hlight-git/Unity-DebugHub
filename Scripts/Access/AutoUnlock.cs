@@ -6,12 +6,12 @@ using UnityEngine.Networking;
 
 namespace Hlight.Debug.Hub
 {
-    /// Tự mở khoá ở công ty (spec ① §3.4): ô password đang mở mà tới được trang nội bộ, và trang trả đúng chuỗi
-    /// biết trước = coi như đã gõ đúng password.
+    /// Tự mở khoá ở công ty (spec ① §3.4, ② §3): tới được trang nội bộ và trang trả đúng chuỗi biết trước = coi như đã
+    /// gõ đúng password. Kiểm lúc mở / quay lại app trên nền tảng không hỏi quyền mạng cục bộ (ChecksAtLaunch), còn lại
+    /// chỉ khi ô password mở.
     ///
-    /// IP nội bộ không phải danh tính (mạng nào cũng tự đặt được 10.x), nên trang phải trả đúng một chuỗi. Chỉ
-    /// kiểm khi ô password đang mở: người chơi không làm cử chỉ bí mật nên không bao giờ gửi request, và iOS
-    /// không hỏi quyền mạng cục bộ họ.
+    /// IP nội bộ không phải danh tính (mạng nào cũng tự đặt được 10.x), nên trang phải trả đúng một chuỗi. Máy người chơi
+    /// ngoài công ty có gửi request lúc mở app, nhưng hỏng trong ≤ 2 s và không hiện gì.
     ///
     /// Trang chứ không IP công khai: server là của công ty, còn IP nhà mạng có thể đổi giữa hai lần phát hành.
     /// Giả được trang thì cũng đọc được password nằm cạnh nó trong cùng component, nên IP không an toàn hơn.
@@ -46,6 +46,16 @@ namespace Hlight.Debug.Hub
                 return false;
             }
         }
+
+        /// Spec ② §3: kiểm ngầm lúc mở app và mỗi lần quay lại app, không chờ ô password — chỉ trên nền tảng không có hộp xin
+        /// quyền mạng cục bộ. iOS, tvOS, visionOS và app macOS 15+ hiện hộp đó lần đầu chạm mạng cục bộ: kiểm lúc mở app là
+        /// mọi người chơi và reviewer đều thấy, nên ở đó chỉ kiểm khi ô password mở. Editor macOS chỉ hỏi chính Unity một lần.
+        internal static bool ChecksAtLaunch(RuntimePlatform platform) => platform switch
+        {
+            RuntimePlatform.Android or RuntimePlatform.WindowsPlayer or RuntimePlatform.WindowsEditor or
+                RuntimePlatform.LinuxPlayer or RuntimePlatform.LinuxEditor or RuntimePlatform.OSXEditor => true,
+            _ => false,
+        };
 
         private static bool Usable(Page page) => !string.IsNullOrWhiteSpace(page.url) && !string.IsNullOrEmpty(page.mustContain);
 

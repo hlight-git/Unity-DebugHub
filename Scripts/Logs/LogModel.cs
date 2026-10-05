@@ -33,7 +33,9 @@ namespace Hlight.Debug.Hub
             : LogGroup.Error;
 
         public string Time => time ??= LogText.Time(Entry.Time);
-        public string Caller => caller ??= StackFrames.Caller(Entry.Stack) ?? string.Empty;
+        /// Log logcat không có stack C#: tag của nó là "nơi gọi" (dòng phụ, tìm, Copy).
+        public string Caller => caller ??= Entry.Source == LogSource.Native ? Entry.Tag
+            : StackFrames.Caller(Entry.Stack) ?? string.Empty;
         public LogText.Rich Rich => rich ??= LogText.Parse(Entry.Message);
 
         /// Chữ nhìn thấy, không tag rich text: tìm và Copy đi trên chuỗi này.
@@ -59,10 +61,11 @@ namespace Hlight.Debug.Hub
 
         private readonly List<LogItem> items = new();
         private readonly List<LogItem> rows = new();
-        private readonly Dictionary<(LogType, string, string), LogItem> firsts = new();
+        private readonly Dictionary<(LogType, string, string, string), LogItem> firsts = new();
         private readonly List<LogEntry> incoming = new();
         private readonly bool[] shown = { true, true, true };
         private readonly int[] counts = new int[3];
+        private bool unityOnly;
         private bool collapse;
         private string query = string.Empty;
         private long lastSeq;
@@ -133,8 +136,24 @@ namespace Hlight.Debug.Hub
         {
             shown[0] = shown[1] = shown[2] = true;
             query = string.Empty;
+            unityOnly = false;
             Rebuild();
         }
+
+        /// Chip Unity: chỉ còn log Unity, ẩn log logcat của SDK/OS — kể cả log Android tới sau khi bật.
+        public bool UnityOnly
+        {
+            get => unityOnly;
+            set
+            {
+                if (unityOnly == value) return;
+                unityOnly = value;
+                Rebuild();
+            }
+        }
+
+        /// Đã có log native (logcat, OSLog) chưa. Chưa (Editor) thì chip Unity không có gì để lọc, view ẩn nó đi.
+        public bool HasNative { get; private set; }
 
         /// Ẩn mọi entry có Seq ≤ hiện tại của bộ ghi, kể cả entry chưa kéo về (trang log đang bị trang khác che).
         public void Clear()
@@ -236,7 +255,8 @@ namespace Hlight.Debug.Hub
             if (item.IsMarker) return $"[{item.Time}] › {item.Entry.Message}";
             var repeat = item.Repeat > 1 ? $" ×{item.Repeat}" : string.Empty;
             var stack = string.IsNullOrEmpty(item.Entry.Stack) ? string.Empty : "\n" + item.Entry.Stack.TrimEnd();
-            return $"[{item.Time}] [{LogText.TypeLabel(item.Entry.Type)}]{repeat} {item.Plain}{stack}";
+            var tag = item.Entry.Source == LogSource.Native ? item.Entry.Tag + ": " : string.Empty;
+            return $"[{item.Time}] [{LogText.TypeLabel(item.Entry.Type)}]{repeat} {tag}{item.Plain}{stack}";
         }
 
         private bool DropEvicted()
@@ -254,6 +274,7 @@ namespace Hlight.Debug.Hub
             rows.Clear();
             firsts.Clear();
             Array.Clear(counts, 0, counts.Length);
+            HasNative = false;
             foreach (var item in items)
             {
                 item.Repeat = 1;
@@ -273,11 +294,14 @@ namespace Hlight.Debug.Hub
             }
 
             counts[(int)item.Group]++;
-            if (!IsShown(item.Group) || !Matches(item)) return;
+            var native = item.Entry.Source == LogSource.Native;
+            if (native) HasNative = true;
+            if (!IsShown(item.Group) || native && unityOnly || !Matches(item)) return;
 
             if (collapse)
             {
-                var key = (item.Entry.Type, item.Entry.Message, item.Entry.Stack);
+                // Có tag: cùng nội dung mà khác nguồn (AppLovinSdk, UnityAds, Unity) không phải log lặp.
+                var key = (item.Entry.Type, item.Entry.Message, item.Entry.Stack, item.Entry.Tag);
                 if (firsts.TryGetValue(key, out var first))
                 {
                     first.Repeat++;
@@ -293,8 +317,11 @@ namespace Hlight.Debug.Hub
         private bool Matches(LogItem item)
         {
             if (query.Length == 0) return true;
+            // Log native: các dòng sau (logcat gộp các lần ghi cùng mili giây) là nội dung, không phải stack — phải tìm được.
             return item.Plain.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
-                   item.Caller.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+                   item.Caller.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   item.Entry.Source == LogSource.Native &&
+                   (item.Entry.Stack?.IndexOf(query, StringComparison.OrdinalIgnoreCase) ?? -1) >= 0;
         }
 
         private int HiddenByClear()

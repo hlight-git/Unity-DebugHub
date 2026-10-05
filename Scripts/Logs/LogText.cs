@@ -18,7 +18,38 @@ namespace Hlight.Debug.Hub
         /// TMP đóng tag theo tên viết hoa, dừng ở `>`, `=` hoặc khoảng trắng nên `</NoParse>`, `</noparse >`,
         /// `</noparse=x>` đều đóng được noparse: phá cả `</` thì không biến thể hoa/thường hay khoảng trắng nào đóng nổi.
         internal static string Escape(string text) =>
-            "<noparse>" + (text ?? string.Empty).Replace("</", "<\u200B/") + "</noparse>";
+            "<noparse>" + Sanitize(text ?? string.Empty).Replace("</", "<\u200B/") + "</noparse>";
+
+        /// Font của hub (kể cả fallback) có code point này không. DebugHub gắn khi Play; null = không tra (EditMode).
+        internal static Func<int, bool> HasGlyph;
+
+        /// Ký tự font không có (`→`, emoji…) thành `?`: TMP bắn warning mỗi lần vẽ, và warning lại thành log mới.
+        /// ASCII, ký tự điều khiển, ZWSP không tra.
+        private static string Sanitize(string text)
+        {
+            if (HasGlyph == null) return text;
+            StringBuilder builder = null;
+            for (var i = 0; i < text.Length; i++)
+            {
+                var c = text[i];
+                var pair = char.IsHighSurrogate(c) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]);
+                var keep = c < 0x80 || c == ZWSP || HasGlyph(pair ? char.ConvertToUtf32(c, text[i + 1]) : c);
+                if (!keep) builder ??= new StringBuilder(text.Length).Append(text, 0, i);
+                if (builder != null)
+                {
+                    if (!keep) builder.Append('?');
+                    else
+                    {
+                        builder.Append(c);
+                        if (pair) builder.Append(text[i + 1]);
+                    }
+                }
+                if (pair) i++;
+            }
+            return builder?.ToString() ?? text;
+        }
+
+        private const char ZWSP = (char)0x200B;
 
         /// Escape + tô các đoạn khớp (không phân biệt hoa thường). Tag mark nằm ngoài noparse nên vẫn có tác dụng.
         internal static string Highlight(string text, string query)

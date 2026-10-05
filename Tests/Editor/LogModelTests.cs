@@ -63,6 +63,71 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(1, model.RowCount);
         }
 
+        /// Log logcat không có stack C#: dòng phụ, tìm và Copy dùng tag của nó.
+        [Test]
+        public void NativeEntries_UseTheirTag_AsCaller_InSearchAndCopy()
+        {
+            LogRecorder.ReceiveNative(System.DateTime.Now, LogType.Warning, "AppLovinSdk", "slow", null);
+            model.Pull();
+            Assert.AreEqual("AppLovinSdk", model.RowAt(1).Caller);
+            StringAssert.Contains("AppLovinSdk: slow", LogModel.Describe(model.RowAt(1)));
+            model.Query = "applovin";
+            Assert.AreEqual(2, model.RowCount);
+        }
+
+        private static void Native(string tag, string message = "x") =>
+            LogRecorder.ReceiveNative(System.DateTime.Now, LogType.Log, tag, message, null);
+
+        /// Logcat gộp các lần ghi cùng mili giây thành một log: các dòng sau vẫn phải tìm được.
+        [Test]
+        public void Search_FindsTheFollowingLinesOfANativeLog()
+        {
+            LogRecorder.ReceiveNative(System.DateTime.Now, LogType.Log, "AppLovinSdk", "config:", "adapter: Mintegral 16.8");
+            model.Pull();
+            model.Query = "mintegral";
+            Assert.AreEqual(2, model.RowCount);
+        }
+
+        /// Gộp theo cả tag: cùng nội dung mà khác tag là hai nguồn khác nhau.
+        [Test]
+        public void Collapse_KeepsTheSameTextFromDifferentTagsApart()
+        {
+            Native("AppLovinSdk", "ready"); Native("UnityAds", "ready"); Log("ready");
+            model.Pull();
+            model.Collapse = true;
+            Assert.AreEqual(1 + 3, model.RowCount);
+        }
+
+        /// Chip Unity: chỉ còn log Unity, kể cả với log Android tới sau khi bật. Số trên chip loại vẫn là tổng.
+        [Test]
+        public void UnityOnly_HidesAndroidLogs_IncludingLaterOnes()
+        {
+            Log("game");
+            model.Pull();
+            Assert.IsFalse(model.HasNative, "chưa có log Android thì chip không có gì để lọc");
+
+            Native("AppLovinSdk");
+            model.Pull();
+            Assert.IsTrue(model.HasNative);
+            model.UnityOnly = true;
+            Native("MIUIInput");
+            model.Pull();
+            Assert.AreEqual(1 + 1, model.RowCount);
+            Assert.AreEqual("game", model.RowAt(1).Entry.Message);
+            Assert.AreEqual(3, model.Total);
+        }
+
+        [Test]
+        public void ResetFilters_TurnsUnityOnlyOff()
+        {
+            Log("game"); Native("AppLovinSdk");
+            model.Pull();
+            model.UnityOnly = true;
+            model.ResetFilters();
+            Assert.IsFalse(model.UnityOnly);
+            Assert.AreEqual(1 + 2, model.RowCount);
+        }
+
         /// Tìm và Copy đi trên chữ nhìn thấy: tag rich text không khớp, không lẫn vào chỗ dán.
         [Test]
         public void SearchAndCopy_UseTheVisibleText_NotTheRichTextTags()

@@ -51,6 +51,13 @@ namespace Hlight.Debug.Hub
                 Recording = true;
                 StartedAt = DateTime.Now;
             }
+#if UNITY_ANDROID && !UNITY_EDITOR
+            // Trước khi gắn callback: phần buffer logcat còn giữ (kể cả log Unity từ trước lúc bắt đầu ghi) vào ring
+            // trước, thứ tự đúng mà không phải sắp lại.
+            Logcat.Start();
+#elif UNITY_IOS && !UNITY_EDITOR
+            OsLog.Start();
+#endif
             Application.logMessageReceivedThreaded += Receive;
         }
 
@@ -78,6 +85,21 @@ namespace Hlight.Debug.Hub
             {
                 var entry = new LogEntry(nextSeq++, DateTime.Now, type, message, stack, LogKind.Log, LogSource.Unity);
                 if (entry.IsError) errorCount++;
+                Append(entry);
+            }
+        }
+
+        /// Một log đọc từ logcat (spec ② §2), giữ giờ của logcat. tag null = log Unity lấy lại từ buffer trước khi
+        /// callback gắn vào. Chấm đỏ chỉ đếm lỗi Unity: E của OS/SDK có ở mọi phiên, đếm vào thì chấm luôn sáng.
+        internal static void ReceiveNative(DateTime time, LogType type, string tag, string message, string stack)
+        {
+            lock (Gate)
+            {
+                var source = tag == null ? LogSource.Unity : LogSource.Native;
+                var entry = new LogEntry(nextSeq++, time, type, message, stack, LogKind.Log, source, tag);
+                if (entry.IsError && source == LogSource.Unity) errorCount++;
+                // "Ghi từ …" tính cả phần lấy lại từ buffer.
+                if (Recording && time < StartedAt) StartedAt = time;
                 Append(entry);
             }
         }

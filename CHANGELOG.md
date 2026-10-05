@@ -6,7 +6,7 @@
 - Bỏ IngameDebugConsole (submodule, prefab console, `[ConsoleMethod]`, lệnh cầu `hub "..."`, `console.show`, `console.auto`). Log xem ở trang **Log** của hub; chạy một dòng lệnh bằng code vẫn có `DebugHub.Execute(line)`.
 - Bỏ symbol `DISABLE_DEBUG_HUB`, `ALWAYS_ENABLE_INGAME_DEBUGGER` và `RenameFolderOnBuild`.
 - Hub không còn xử lý `PRODUCTION`: project tắt log Unity thì hub không có log để hiện (kể cả dòng kết quả của command).
-- `networkReachabilityAuthenticationBypass` → `autoUnlock` (danh sách trang nội bộ + chuỗi bắt buộc, khớp một trang là đủ). Chỉ kiểm khi ô password đang mở, mọi build.
+- `networkReachabilityAuthenticationBypass` → `autoUnlock` (danh sách trang nội bộ + chuỗi bắt buộc, khớp một trang là đủ). Mọi build. Android, PC kiểm lúc mở / quay lại app (mở khoá ngầm, lắc là bong bóng hiện); iOS, macOS chỉ kiểm khi ô password mở.
 - Trigger vẽ nguệch ngoạc: `minDragDistance`/`maxStartEndDistance` (pixel) → `minDragScreens`/`maxStartEndGap` (theo cạnh ngắn màn hình). Giá trị đã chỉnh trong scene không mang sang.
 - `ConsoleController` đổi tên `BuiltinCommands` (cùng GUID); field `DebugHub.console` thành `commands` (`FormerlySerializedAs`, scene/prefab cũ không mất reference).
 - Bỏ event public `DebugHubToast.Clicked`: bấm dòng kết quả đi qua `DebugHubPanel.ResultClicked`.
@@ -14,6 +14,10 @@
 ### Thêm
 - Bộ ghi log chạy từ lúc khởi động trên máy được ghi (đã mở khoá hoặc bản nội bộ: TestFlight/ad-hoc/Xcode, Firebase App Tester, Editor): mở trang log muộn vẫn đủ log của phiên.
 - Trang Log: danh sách ảo hoá, lọc Log/Cảnh báo/Lỗi kèm bộ đếm, tìm có tô sáng, gộp log trùng, vạch command trong dòng thời gian, bám đáy + "N log mới", trang chi tiết (stack từng frame với kiểu đối số rút gọn, thanh Trước/Copy/Sau ghim ở đáy window), Copy tất cả, Xoá có hiện lại.
+- Logcat Android của chính tiến trình trong trang log (log Java/native của SDK), lấy lại cả phần buffer từ lúc tiến trình khởi động. Chip **Unity** lọc riêng log Unity.
+- Log hệ thống iOS (OSLogStore, iOS 15+) của chính tiến trình trong trang log: NSLog / os_log của SDK.
+- Auto Unlock kiểm ngầm lúc mở app và khi quay lại app (trừ iOS): vào Wi-Fi công ty là mở khoá ngầm như bản 2.x, lắc là bong bóng hiện — không cần password.
+- Ký tự font không có trong log hiện thành `?`, hết vòng warning TMP tự sinh log.
 - Rich text trong log hiện như Unity console: `<b>`, `<i>`, `<color>` vẽ ra (tên màu Unity đổi ra mã); `<size>`, `<material>`, `<quad>` bỏ vì hàng log cao cố định; tag khác là chữ. Tìm và Copy đi trên chữ nhìn thấy.
 - Chấm đỏ số lỗi chưa xem trên bong bóng và nút Log. Bấm dòng kết quả mở trang log tại command vừa chạy.
 - Bong bóng nhớ trạng thái hiện/ẩn qua phiên.

@@ -88,6 +88,27 @@ namespace Hlight.Debug.Hub.Tests
             Assert.IsTrue(more.gameObject.activeSelf);
         }
 
+        /// Chip Unity: ẩn khi chưa có log native (Editor); đang bật thì luôn hiện — Xoá xong chưa có log native mới mà ẩn
+        /// chip thì không tắt lọc được.
+        [Test]
+        public void UnityChip_ShowsWithNativeLogs_AndStaysWhileOn()
+        {
+            var chip = panel.transform.Find("Window/LogBar/ChipUnity").gameObject;
+            Logs(1);
+            Open();
+            Assert.IsFalse(chip.activeSelf);
+
+            LogRecorder.ReceiveNative(System.DateTime.Now, LogType.Log, "AppLovinSdk", "ready", null);
+            view.Tick();
+            Assert.IsTrue(chip.activeSelf);
+            chip.GetComponent<Button>().onClick.Invoke();
+            Assert.IsTrue(LogModel.Shared.UnityOnly);
+
+            LogModel.Shared.Clear();
+            view.Tick();
+            Assert.IsTrue(chip.activeSelf, "đang lọc thì chip phải còn để tắt");
+        }
+
         [Test]
         public void ErrorChip_HidesErrors_ButKeepsTheCount()
         {

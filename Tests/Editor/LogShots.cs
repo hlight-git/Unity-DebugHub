@@ -106,6 +106,8 @@ namespace Hlight.Debug.Hub.Tests
             LogRecorder.Receive("Failed to load addressable 'Level_006': InvalidKeyException", "Harvest.LevelPreset:LoadAsync (string) (at Assets/LevelPreset.cs:40)", LogType.Error);
             LogRecorder.Receive("[Ads] Banner loaded 320x50", "Harvest.BannerView:OnLoaded () (at Assets/BannerView.cs:23)", LogType.Log);
             LogRecorder.Receive("Set user_properties : <color=green><b>max_level</b></color> - 5 <size=60>List<int></size>", "Harvest.TrackerManager:SetUserProperty (string,object) (at Assets/TrackerManager.cs:55)", LogType.Log);
+            LogRecorder.ReceiveNative(System.DateTime.Now, LogType.Log, "AppLovinSdk", "Rewarded ad loaded in 412ms", null);
+            LogRecorder.ReceiveNative(System.DateTime.Now, LogType.Warning, "MIUIInput", "[MotionEvent] ViewRootImpl windowName 'UnityPlayerActivity'", null);
         }
 
         internal static string Shoot(string path, Action<DebugHubPanel> arrange)

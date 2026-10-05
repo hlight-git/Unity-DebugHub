@@ -27,12 +27,8 @@ namespace Hlight.Debug.Hub
                 panel.AddButton(LogText.Render(item.Rich, null, LogText.DETAIL_CHARS) + cut,
                     () => Copy(panel, item.Plain, "nội dung"));
 
-                panel.AddText($"<color={Palette.DIM}>Stack trace</color>");
-                var frames = StackFrames.Split(item.Entry.Stack);
-                if (frames.Count == 0) panel.AddText($"<color={Palette.MUTED}>Không có stack trace.</color>");
-                for (var i = 0; i < frames.Count && i < MAX_FRAMES; i++) panel.AddText(Describe(frames[i]));
-                if (frames.Count > MAX_FRAMES)
-                    panel.AddText($"<color={Palette.DIM}>… còn {LogText.Count(frames.Count - MAX_FRAMES)} frame – Copy để lấy đủ</color>");
+                if (item.Entry.Source == LogSource.Unity) AddFrames(panel, item.Entry.Stack);
+                else AddLines(panel, item.Entry.Stack);
 
                 var previous = model.Neighbour(item, -1);
                 var next = model.Neighbour(item, 1);
@@ -49,6 +45,28 @@ namespace Hlight.Debug.Hub
         private static string Subtitle(LogItem item) => item.Repeat > 1
             ? $"{item.Time} – ×{LogText.Count(item.Repeat)}, cuối {item.Last.ToString("HH:mm:ss", CultureInfo.InvariantCulture)}"
             : item.Time;
+
+        private static void AddFrames(DebugHubPanel panel, string stack)
+        {
+            panel.AddText($"<color={Palette.DIM}>Stack trace</color>");
+            var frames = StackFrames.Split(stack);
+            if (frames.Count == 0) panel.AddText($"<color={Palette.MUTED}>Không có stack trace.</color>");
+            for (var i = 0; i < frames.Count && i < MAX_FRAMES; i++) panel.AddText(Describe(frames[i]));
+            if (frames.Count > MAX_FRAMES)
+                panel.AddText($"<color={Palette.DIM}>… còn {LogText.Count(frames.Count - MAX_FRAMES)} frame – Copy để lấy đủ</color>");
+        }
+
+        /// Log native: các dòng sau dòng đầu (stack Java, các lần ghi cùng mili giây) là chữ thường, không phải frame C# —
+        /// qua StackFrames thì `SDK v12.3.0` thành `3.0`. Hiện nguyên văn.
+        private static void AddLines(DebugHubPanel panel, string stack)
+        {
+            if (string.IsNullOrEmpty(stack)) return;
+            var lines = stack.Split('\n');
+            panel.AddText($"<color={Palette.DIM}>Dòng tiếp theo</color>");
+            for (var i = 0; i < lines.Length && i < MAX_FRAMES; i++) panel.AddText(LogText.Escape(lines[i]));
+            if (lines.Length > MAX_FRAMES)
+                panel.AddText($"<color={Palette.DIM}>… còn {LogText.Count(lines.Length - MAX_FRAMES)} dòng – Copy để lấy đủ</color>");
+        }
 
         private static string Describe(StackFrames.Frame frame)
         {

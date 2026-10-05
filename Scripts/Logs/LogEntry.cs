@@ -18,7 +18,11 @@ namespace Hlight.Debug.Hub
         public readonly LogKind Kind;
         public readonly LogSource Source;
 
-        public LogEntry(long seq, DateTime time, LogType type, string message, string stack, LogKind kind, LogSource source)
+        /// Tag logcat của log native (spec ②); null với log Unity.
+        public readonly string Tag;
+
+        public LogEntry(long seq, DateTime time, LogType type, string message, string stack, LogKind kind, LogSource source,
+            string tag = null)
         {
             Seq = seq;
             Time = time;
@@ -27,12 +31,13 @@ namespace Hlight.Debug.Hub
             Stack = stack;
             Kind = kind;
             Source = source;
+            Tag = tag;
         }
 
         public bool IsError => Type == LogType.Error || Type == LogType.Exception || Type == LogType.Assert;
 
         /// Byte giữ trong RAM: chuỗi .NET là UTF-16, cộng 64 cho chính entry — log rỗng cũng phải tốn chỗ,
         /// không thì ring nở vô hạn.
-        public int Cost => 64 + ((Message?.Length ?? 0) + (Stack?.Length ?? 0)) * 2;
+        public int Cost => 64 + ((Message?.Length ?? 0) + (Stack?.Length ?? 0) + (Tag?.Length ?? 0)) * 2;
     }
 }

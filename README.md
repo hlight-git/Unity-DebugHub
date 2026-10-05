@@ -20,16 +20,21 @@ Người dùng mở hub bằng trigger (vẽ 4 góc, phím tắt…) → gõ pas
 | Được ghi log (vô hình, chỉ RAM) | đã mở khoá **hoặc** bản nội bộ: iOS không cài từ App Store (TestFlight, ad-hoc, Xcode), Android cài qua app **App Tester** của Firebase App Distribution, Editor. APK cài tay / exe **không** tính. |
 | Được mở hub | chỉ khi đã mở khoá (PlayerPrefs `DebugHub.AuthenticationState`) |
 
-Mở khoá bằng password, hoặc tự động khi ô password mở mà máy tới được một **trang nội bộ** của công ty (`Auto Unlock › Pages` trên component DebugHub, kiểm song song, khớp một trang là đủ — UI không chờ). Mỗi trang:
+Mở khoá bằng password, hoặc tự động khi máy tới được một **trang nội bộ** của công ty (`Auto Unlock › Pages` trên component DebugHub, kiểm song song, khớp một trang là đủ — UI không chờ):
+
+- **Android, Windows, Linux, Editor**: kiểm ngầm lúc mở app và mỗi lần app quay lại màn hình, tới khi mở khoá. Khớp là mở khoá **ngầm** (bắt đầu ghi log, không hiện gì) như bản 2.x: lắc hoặc vẽ 4 góc là bong bóng hiện, dùng được ngay từ lần mở app đầu tiên. Ô password đang mở lúc khớp thì ô tự đóng và bong bóng hiện.
+- **iOS, tvOS, visionOS, app macOS**: chỉ kiểm khi ô password mở (sau cử chỉ). Lần đầu chạm mạng cục bộ các nền tảng này hiện hộp xin quyền (macOS từ 15); kiểm lúc mở app thì mọi người chơi và reviewer Apple đều thấy hộp đó.
+
+Mỗi trang:
 
 - **Url**: trang chỉ mở được trong mạng công ty, ví dụ `http://10.10.0.204/`. Không theo redirect, chờ tối đa 2 s.
 - **Must Contain**: chuỗi bắt buộc có trong trang, ví dụ `<title>Zego Dashboard</title>` (dùng tiêu đề, không dùng ETag/hash — đổi mỗi lần deploy).
 
 Thêm trang của server khác để dự phòng: một server đổi IP hay sập thì bản đã phát hành vẫn tự mở khoá.
 
-Request chỉ gửi sau cử chỉ bí mật nên người chơi không bao giờ gửi. `http://` cần "Allow downloads over HTTP" = Always. iOS: package tự thêm `NSLocalNetworkUsageDescription` khi build; lần đầu tester được hỏi quyền mạng cục bộ và lần kiểm đó hết 2 s trước khi kịp bấm — cho phép xong thì đóng rồi mở lại ô password. Bấm "Không cho phép" thì phải bật lại trong Cài đặt › Quyền riêng tư › Mạng cục bộ.
+Ngoài công ty request hỏng trong ≤ 2 s, người chơi không thấy gì. `http://` cần "Allow downloads over HTTP" = Always. iOS: package tự thêm `NSLocalNetworkUsageDescription` khi build; lần đầu tester được hỏi quyền mạng cục bộ và lần kiểm đó hết 2 s trước khi kịp bấm — cho phép xong thì đóng rồi mở lại ô password. Bấm "Không cho phép" thì phải bật lại trong Cài đặt › Quyền riêng tư › Mạng cục bộ.
 
-Bong bóng mặc định ẩn, nhớ trạng thái qua phiên (PlayerPrefs `DebugHub.EntryVisible`) — chỉ nhớ thao tác cố ý: mở khoá / cử chỉ gọi lại thì hiện, kéo vào nút X thì ẩn, `hub.entry`. Ẩn tạm (`DebugHub.Visible = false`, `hub.hide`, `.HidesHub()`) không nhớ, phiên sau bong bóng vẫn hiện. Lắc chỉ có tác dụng khi đã mở khoá — reviewer Apple (cài sandbox như TestFlight) không thấy gì.
+Bong bóng mặc định ẩn, nhớ trạng thái qua phiên (PlayerPrefs `DebugHub.EntryVisible`) — chỉ nhớ thao tác cố ý: gõ đúng password / cử chỉ gọi lại thì hiện (mở khoá ngầm qua mạng công ty thì không), kéo vào nút X thì ẩn, `hub.entry`. Ẩn tạm (`DebugHub.Visible = false`, `hub.hide`, `.HidesHub()`) không nhớ, phiên sau bong bóng vẫn hiện. Lắc chỉ có tác dụng khi đã mở khoá — reviewer Apple (cài sandbox như TestFlight) không thấy gì.
 
 ## Node
 
@@ -166,7 +171,27 @@ Nút Log ở header Commands gốc (kèm số lỗi chưa xem; bong bóng cũng 
 - Đang ở đáy thì bám theo log mới; cuộn lên thì hiện "N log mới".
 - Bấm hàng → trang chi tiết: nội dung đầy đủ (quá 4000 ký tự thì cắt khi hiện, Copy vẫn lấy đủ), stack từng frame (game sáng, engine mờ; kiểu đối số rút gọn, bỏ namespace), dòng phụ `HH:mm:ss.fff` (log gộp: `HH:mm:ss.fff – ×N, cuối HH:mm:ss`). Thanh **‹ Trước / Copy / Sau ›** ghim ở đáy window, ngoài vùng cuộn: Copy lấy nội dung kèm stack gốc, Trước/Sau đi qua các log của bộ lọc hiện tại.
 - `…`: Copy tất cả (theo bộ lọc, quá 500k ký tự giữ phần mới nhất), Xoá (ẩn mọi log tới lúc này; dòng đầu danh sách thành "đã ẩn N log, bấm để hiện lại", danh sách trống thì ghi "Đã xoá – chưa có log mới").
-- Nội dung log là dữ liệu game: vào TMP qua `<noparse>`, và mọi `</` trong dữ liệu bị chèn ký tự zero-width để không tag đóng nào thoát ra được.
+- Nội dung log là dữ liệu game: vào TMP qua `<noparse>`, và mọi `</` trong dữ liệu bị chèn ký tự zero-width để không tag đóng nào thoát ra được. Ký tự font không có (`→`, emoji…) hiện thành `?` — không thì TMP bắn warning mỗi lần vẽ và warning lại thành log mới; Copy và tìm vẫn trên chuỗi gốc.
+
+### Logcat (Android)
+
+Trên Android trang log có cả **logcat của chính tiến trình game**: log Java/native của SDK (AppLovin, Firebase, UnityAds…), lỗi Java. Từ Android 4.1 app chỉ đọc được log của nó — log của tiến trình khác (như Android Logcat trong Editor hiện) thì không app nào đọc được.
+
+- Bắt đầu ghi (khởi động hoặc mở khoá giữa phiên): lấy lại phần buffer logcat còn giữ từ lúc tiến trình khởi động, kể cả log Unity từ trước lúc bắt đầu ghi — phiên đầu không hụt đầu, miễn buffer chưa trôi (vài phút trên máy bận). Dump này chạy đồng bộ (~50–150 ms, chỉ trên máy được ghi), rồi stream phần mới trên thread nền.
+- V/D/I là Log, W là Cảnh báo, E/F/A là Lỗi. Dòng phụ hiện tag thay nơi gọi; tìm khớp cả tag; Copy ghi `Tag: nội dung`. Các dòng liên tiếp cùng header (stack Java) gộp một log.
+- Log tag `Unity` trong logcat bỏ qua sau khi callback Unity gắn: callback có mọi log C# và log engine đi qua log handler, kèm stack chuẩn hơn. Vài dòng engine chỉ in ra logcat (`UnloadTime`, `Unloading N unused Assets`…) không qua callback nên hub không có — logcat không phân biệt được chúng với log đã có, nên không đoán.
+- Chấm đỏ chỉ đếm lỗi Unity: E của OS/SDK có ở mọi phiên. Dùng chung ngân sách 4 MB với log Unity.
+- Chip **Unity** trên thanh lọc (hiện khi đã có log native, hoặc khi đang bật): bật thì chỉ còn log Unity, kể cả log native tới sau; **Bỏ lọc** tắt nó.
+
+### Log hệ thống (iOS)
+
+Trên iOS (15+) trang log có log hệ thống của chính tiến trình qua `OSLogStore`: NSLog / os_log của SDK (AppLovin, Firebase…), lỗi mạng của CFNetwork. Plugin `Plugins/iOS/DebugHubOsLog.mm` (link `OSLog.framework`).
+
+- Tag là thư viện ghi log (`AppLovinSDK`, `CFNetwork`…). Debug/info/notice là Log, error/fault là Lỗi (os_log không có mức cảnh báo).
+- Không stream được như logcat: đọc theo lượt mỗi 2 s trên thread nền. Lượt đầu (đồng bộ, trước khi gắn callback) lấy từ lúc tiến trình khởi động.
+- Log Unity được nhận ra chính xác: từ SubsystemRegistration (mọi máy) hub thay handler os_log của Trampoline bằng bản y hệt ghi vào subsystem riêng `com.hlight.debughub.unity`, rồi bỏ các entry đó sau khi callback gắn. Log SDK link tĩnh (cũng ra từ `UnityFramework`) vẫn giữ, tag `UnityFramework`; vài dòng khởi tạo engine trước SubsystemRegistration cũng mang tag đó. Có debugger gắn thì Unity ghi ra stdout như Trampoline, không vào os_log.
+- SDK log bằng os_log kiểu riêng tư thì giá trị hiện `<private>`; log mức debug thường không được hệ thống giữ.
+- Chip **Unity** và luật chấm đỏ giống Android.
 
 ## Advanced
 
