@@ -19,7 +19,7 @@
 - Auto Unlock kiểm ngầm lúc mở app và khi quay lại app (trừ iOS): vào Wi-Fi công ty là mở khoá ngầm như bản 2.x, lắc là bong bóng hiện — không cần password.
 - Ký tự font không có trong log hiện thành `?`, hết vòng warning TMP tự sinh log.
 - Rich text trong log hiện như Unity console: `<b>`, `<i>`, `<color>` vẽ ra (tên màu Unity đổi ra mã); `<size>`, `<material>`, `<quad>` bỏ vì hàng log cao cố định; tag khác là chữ. Tìm và Copy đi trên chữ nhìn thấy.
-- Chấm đỏ số lỗi chưa xem trên bong bóng và nút Log. Bấm dòng kết quả mở trang log tại command vừa chạy.
+- Entry thành ô đếm log mới chưa xem (Log / Cảnh báo / Lỗi, như IngameDebugConsole), bỏ icon; chấm đỏ số lỗi trên nút Log. Bấm dòng kết quả mở trang log tại command vừa chạy.
 - Bong bóng nhớ trạng thái hiện/ẩn qua phiên.
 
 ### Sửa

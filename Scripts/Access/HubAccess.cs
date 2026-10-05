@@ -21,9 +21,8 @@ namespace Hlight.Debug.Hub
             PlayerPrefs.Save();
         }
 
-        internal static bool MayRecord(bool unlocked, bool internalBuild) => unlocked || internalBuild;
-
-        /// Hỏi nguồn cài trước: bản nội bộ thì khỏi đọc PlayerPrefs ở pha khởi động sớm nhất.
+        /// Được ghi log = đã mở khoá hoặc bản nội bộ. Hỏi nguồn cài trước: bản nội bộ thì khỏi đọc PlayerPrefs ở pha khởi
+        /// động sớm nhất.
         internal static bool MayRecordNow() => InstallSource.IsInternal || ReadUnlocked();
     }
 }

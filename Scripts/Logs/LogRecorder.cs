@@ -20,14 +20,18 @@ namespace Hlight.Debug.Hub
         private static long bytes;
         private static long nextSeq = 1;
         private static long dropped;
-        private static long errorCount;
+        /// Log Unity theo loại (chỉ số LogGroup): log native (MIUI, SDK…) phiên nào cũng nhiều, đếm vào thì ô đếm trên entry và
+        /// chấm đỏ lúc nào cũng to, hết tác dụng báo.
+        private static readonly long[] unityCounts = new long[3];
 
         internal static int Budget { get; set; } = DEFAULT_BUDGET;
         internal static bool Recording { get; private set; }
         internal static DateTime StartedAt { get; private set; }
 
         internal static long Dropped { get { lock (Gate) return dropped; } }
-        internal static long ErrorCount { get { lock (Gate) return errorCount; } }
+        internal static long ErrorCount => CountOf(LogGroup.Error);
+
+        internal static long CountOf(LogGroup group) { lock (Gate) return unityCounts[(int)group]; }
         internal static long LastSeq { get { lock (Gate) return nextSeq - 1; } }
 
         /// Seq của entry cũ nhất còn giữ; ring rỗng thì là seq kế tiếp.
@@ -73,7 +77,8 @@ namespace Hlight.Debug.Hub
                 head = count = 0;
                 bytes = 0;
                 nextSeq = 1;
-                dropped = errorCount = 0;
+                dropped = 0;
+                Array.Clear(unityCounts, 0, unityCounts.Length);
                 Budget = DEFAULT_BUDGET;
             }
         }
@@ -84,7 +89,7 @@ namespace Hlight.Debug.Hub
             lock (Gate)
             {
                 var entry = new LogEntry(nextSeq++, DateTime.Now, type, message, stack, LogKind.Log, LogSource.Unity);
-                if (entry.IsError) errorCount++;
+                unityCounts[(int)LogModel.GroupOf(type)]++;
                 Append(entry);
             }
         }
@@ -97,7 +102,7 @@ namespace Hlight.Debug.Hub
             {
                 var source = tag == null ? LogSource.Unity : LogSource.Native;
                 var entry = new LogEntry(nextSeq++, time, type, message, stack, LogKind.Log, source, tag);
-                if (entry.IsError && source == LogSource.Unity) errorCount++;
+                if (source == LogSource.Unity) unityCounts[(int)LogModel.GroupOf(type)]++;
                 // "Ghi từ …" tính cả phần lấy lại từ buffer.
                 if (Recording && time < StartedAt) StartedAt = time;
                 Append(entry);

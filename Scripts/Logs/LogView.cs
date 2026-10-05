@@ -159,7 +159,7 @@ namespace Hlight.Debug.Hub
             // Sau khi cuộn xong để thanh cuộn nhận cả cỡ lẫn vị trí mới.
             if (resized) panel.SyncScrollbar();
 
-            model.SeenErrors = LogRecorder.ErrorCount;
+            for (var group = 0; group < model.Seen.Length; group++) model.Seen[group] = LogRecorder.CountOf((LogGroup)group);
             BindRows();
             UpdateChrome();
         }

@@ -45,7 +45,7 @@ namespace Hlight.Debug.Hub
         private bool unlocked;
         private bool askingPassword;
         private bool checkingNetwork;
-        private long badgeShown = -1;
+        private readonly long[] countsShown = { -1, -1, -1 };
         private Func<bool> triggerPerformed;
 
         /// Dev note hiện ở page Help.
@@ -204,14 +204,18 @@ namespace Hlight.Debug.Hub
 
         private void Update()
         {
-            // Chấm đỏ = lỗi chưa xem. So số nguyên mỗi frame, chỉ gán chữ khi đổi. Máy không ghi (người chơi)
-            // thì không có lỗi nào để đếm: khỏi khoá Gate mỗi frame, badge 0 = ẩn.
-            var unseen = LogRecorder.Recording ? LogRecorder.ErrorCount - LogModel.Shared.SeenErrors : 0;
-            if (unseen != badgeShown)
+            // Ô đếm trên entry = log Unity mới chưa xem theo loại. So số nguyên mỗi frame, chỉ gán chữ khi đổi. Máy không
+            // ghi (người chơi) thì không có gì để đếm: khỏi khoá Gate mỗi frame, cả ba 0.
+            var recording = LogRecorder.Recording;
+            var changed = false;
+            for (var group = 0; group < countsShown.Length; group++)
             {
-                badgeShown = unseen;
-                entry.Badge = unseen;
+                var unseen = recording ? LogRecorder.CountOf((LogGroup)group) - LogModel.Shared.Seen[group] : 0;
+                if (unseen == countsShown[group]) continue;
+                countsShown[group] = unseen;
+                changed = true;
             }
+            if (changed) entry.SetCounts(countsShown[0], countsShown[1], countsShown[2]);
 
             switch (DecideAction(panel.IsOpen, entry.Activating, askingPassword, Unlocked, triggerPerformed))
             {

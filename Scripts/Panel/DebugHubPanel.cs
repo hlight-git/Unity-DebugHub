@@ -362,7 +362,7 @@ namespace Hlight.Debug.Hub
             helpButton.gameObject.SetActive(page.ShowTools);
             logButton.gameObject.SetActive(page.ShowTools);
             moreButton.gameObject.SetActive(page.More != null);
-            var unseen = LogRecorder.ErrorCount - LogModel.Shared.SeenErrors;
+            var unseen = LogRecorder.ErrorCount - LogModel.Shared.Seen[(int)LogGroup.Error];
             logBadge.transform.parent.gameObject.SetActive(unseen > 0);
             if (unseen > 0) logBadge.text = LogText.Badge(unseen);
             ShowSubtitle(page.Subtitle);

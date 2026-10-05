@@ -28,9 +28,7 @@ namespace Hlight.Debug.Hub
 
         public bool IsMarker => Entry.Kind == LogKind.Command;
 
-        public LogGroup Group => Entry.Type == LogType.Log ? LogGroup.Log
-            : Entry.Type == LogType.Warning ? LogGroup.Warning
-            : LogGroup.Error;
+        public LogGroup Group => LogModel.GroupOf(Entry.Type);
 
         public string Time => time ??= LogText.Time(Entry.Time);
         /// Log logcat không có stack C#: tag của nó là "nơi gọi" (dòng phụ, tìm, Copy).
@@ -77,8 +75,13 @@ namespace Hlight.Debug.Hub
         /// Hàng có viền mint: log vừa xem chi tiết, hoặc vạch command vừa nhảy tới.
         public long SelectedSeq;
 
-        /// Chấm đỏ = LogRecorder.ErrorCount - SeenErrors. View đặt mỗi frame khi trang log đang mở.
-        public long SeenErrors;
+        /// Số log Unity đã thấy theo loại (chỉ số LogGroup). Log mới chưa xem = LogRecorder.CountOf - Seen: ô đếm trên
+        /// entry và chấm đỏ nút Log. View đặt mỗi frame khi trang log đang mở.
+        public readonly long[] Seen = new long[3];
+
+        /// Error, Exception, Assert cùng là Lỗi.
+        internal static LogGroup GroupOf(LogType type) =>
+            type == LogType.Log ? LogGroup.Log : type == LogType.Warning ? LogGroup.Warning : LogGroup.Error;
 
         /// Tăng khi nội dung một hàng đã có đổi (lọc lại, gộp thêm, bỏ log cũ): view gán lại hàng đang hiện.
         public int Version { get; private set; }

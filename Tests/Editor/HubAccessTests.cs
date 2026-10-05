@@ -33,14 +33,6 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(2, PlayerPrefs.GetInt("DebugHub.AuthenticationState"));
         }
 
-        [Test]
-        public void Record_WhenUnlockedOrInternal_Only()
-        {
-            Assert.IsTrue(HubAccess.MayRecord(true, false));
-            Assert.IsTrue(HubAccess.MayRecord(false, true));
-            Assert.IsFalse(HubAccess.MayRecord(false, false));
-        }
-
         /// App Tester có thể tự cài (installing) hoặc nhờ trình cài hệ thống (initiating).
         [Test]
         public void AppTester_MatchesEitherField()

@@ -46,8 +46,8 @@ namespace Hlight.Debug.Hub.Tests
                     OpenDetail(panel, firstError: false);
                 });
                 // Bong bóng một mình (panel đóng) với chấm đỏ: số nhỏ, rồi số tràn "99+" — xem chữ có nằm gọn trong vòng tròn.
-                var bubble = Shoot("Temp/debughub-entry-badge.png", panel => ShowBubble(panel, 3));
-                var bubble99 = Shoot("Temp/debughub-entry-badge-99.png", panel => ShowBubble(panel, 120));
+                var bubble = Shoot("Temp/debughub-entry-badge.png", panel => ShowBubble(panel, 12, 0, 3));
+                var bubble99 = Shoot("Temp/debughub-entry-badge-99.png", panel => ShowBubble(panel, 12, 3, 120));
                 return root + ", " + bottom + ", " + detail + ", " + last + ", " + top + ", " + tall + ", " + bubble + ", " + bubble99;
             }
             finally
@@ -68,12 +68,23 @@ namespace Hlight.Debug.Hub.Tests
             return stack.ToString();
         }
 
-        private static void ShowBubble(DebugHubPanel panel, long badge)
+        private static void ShowBubble(DebugHubPanel panel, long logs, long warnings, long errors)
         {
             panel.Close();
             var entry = panel.transform.root.GetComponentInChildren<DebugHubEntry>(true);
             entry.Activating = true;
-            entry.Badge = badge;
+            // Như trên máy: bong bóng dính mép phải, nút repeat nằm dưới entry.
+            var bubble = entry.GetComponent<FloatingBubble>();
+            typeof(FloatingBubble).GetField("dockedEdge", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .SetValue(bubble, FloatingBubble.Edge.Right);
+            var rect = (RectTransform)entry.transform;
+            var canvas = (RectTransform)rect.parent;
+            rect.anchoredPosition = new Vector2(canvas.rect.width * 0.5f - rect.rect.width * 0.5f - 24f, rect.anchoredPosition.y);
+            entry.SetCounts(logs, warnings, errors);
+            // Nút repeat cạnh entry, như sau khi đã chạy một lệnh.
+            var repeat = panel.transform.root.GetComponentInChildren<RepeatButton>(true);
+            repeat.gameObject.SetActive(true);
+            repeat.Present("network.ping");
         }
 
         private static void OpenDetail(DebugHubPanel panel, bool firstError)

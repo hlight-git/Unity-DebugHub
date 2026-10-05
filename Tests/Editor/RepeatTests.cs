@@ -99,5 +99,40 @@ namespace Hlight.Debug.Hub.Tests
             }
             finally { Object.DestroyImmediate(repeat.transform.root.gameObject); }
         }
+
+        /// Đặt cạnh entry thì nhãn dài lòi vào giữa màn hình: nút nằm dưới entry (entry ở nửa dưới màn hình thì trên),
+        /// mép ngoài thẳng mép ngoài entry.
+        [Test]
+        public void RepeatButton_SitsBelowOrAboveTheEntry_AlignedToItsOuterEdge()
+        {
+            var repeat = TestPanel.BuildRepeatButton();
+            try
+            {
+                var bubble = (FloatingBubble)typeof(RepeatButton).GetField("bubble",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(repeat);
+                var edge = typeof(FloatingBubble).GetField("dockedEdge",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                var entry = (RectTransform)bubble.transform;
+                var button = (RectTransform)repeat.transform;
+                repeat.gameObject.SetActive(true);
+
+                edge.SetValue(bubble, FloatingBubble.Edge.Right);
+                entry.anchoredPosition = new Vector2(300f, 200f);
+                repeat.Present("level.goto 5");
+                Assert.AreEqual(entry.anchoredPosition.x + entry.rect.width / 2, button.anchoredPosition.x + button.rect.width / 2, 0.01f,
+                    "mép phải thẳng mép phải entry");
+                Assert.Less(button.anchoredPosition.y + button.rect.height / 2, entry.anchoredPosition.y - entry.rect.height / 2,
+                    "nửa trên màn hình: nằm dưới entry, không chồng");
+
+                edge.SetValue(bubble, FloatingBubble.Edge.Left);
+                entry.anchoredPosition = new Vector2(-300f, -200f);
+                repeat.Present("level.goto 5");
+                Assert.AreEqual(entry.anchoredPosition.x - entry.rect.width / 2, button.anchoredPosition.x - button.rect.width / 2, 0.01f,
+                    "mép trái thẳng mép trái entry");
+                Assert.Greater(button.anchoredPosition.y - button.rect.height / 2, entry.anchoredPosition.y + entry.rect.height / 2,
+                    "nửa dưới màn hình: nằm trên entry");
+            }
+            finally { Object.DestroyImmediate(repeat.transform.root.gameObject); }
+        }
     }
 }

@@ -92,13 +92,17 @@ namespace Hlight.Debug.Hub
             else Refresh();
         }
 
+        /// Dưới entry (entry ở nửa dưới màn hình thì trên), mép ngoài thẳng mép ngoài entry: đặt cạnh thì nhãn dài lòi
+        /// vào giữa màn hình. Entry neo giữa canvas nên y ≥ 0 là nửa trên.
         private void PositionNextToBubble()
         {
             var rect = (RectTransform)transform;
             var bubbleRect = (RectTransform)bubble.transform;
-            var gapX = bubbleRect.rect.width * 0.5f + rect.rect.width * 0.5f + 12f;
-            var offset = bubble.DockedEdge == FloatingBubble.Edge.Left ? gapX : -gapX;
-            rect.anchoredPosition = bubbleRect.anchoredPosition + new Vector2(offset, 0f);
+            var alignX = (bubbleRect.rect.width - rect.rect.width) * 0.5f;
+            var x = bubble.DockedEdge == FloatingBubble.Edge.Right ? alignX : -alignX;
+            var gapY = bubbleRect.rect.height * 0.5f + rect.rect.height * 0.5f + 12f;
+            var y = bubbleRect.anchoredPosition.y >= 0f ? -gapY : gapY;
+            rect.anchoredPosition = bubbleRect.anchoredPosition + new Vector2(x, y);
         }
 
         private void Run() => DebugHub.Repeat(DebugRegistry.LastCommand);

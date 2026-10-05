@@ -162,7 +162,7 @@ Package **không mang font**. Mọi TMP để trống font nên TMP lấy `TMP_S
 
 ## Trang Log
 
-Nút Log ở header Commands gốc (kèm số lỗi chưa xem; bong bóng cũng có chấm đỏ số đó). Bộ ghi (`LogRecorder`) chạy từ lúc khởi động trên máy được ghi (xem **Mở khoá**), giữ tối đa 4 MB chuỗi trong RAM, không ghi file (4 MB là ngân sách **chuỗi**: mảng ring + một `LogItem` mỗi log nằm ngoài con số đó, nên với log rất ngắn bộ nhớ thật trên máy tester có thể lên ~15–20 MB); máy không được ghi thì không đăng ký callback nào, chi phí 0. Đầu danh sách luôn nói ghi từ lúc nào và đã bỏ bao nhiêu log cũ.
+Nút Log ở header Commands gốc (kèm chấm đỏ số lỗi chưa xem). Nút nổi (entry) là ô đếm log mới chưa xem theo loại — Log / Cảnh báo / Lỗi, như IngameDebugConsole: luôn hiện ba số (số 0 mờ đi), cỡ cố định đủ cho `99+` để không lệch khỏi mép đang dính; bấm vẫn mở cây command; mở trang log là về 0. Bộ ghi (`LogRecorder`) chạy từ lúc khởi động trên máy được ghi (xem **Mở khoá**), giữ tối đa 4 MB chuỗi trong RAM, không ghi file (4 MB là ngân sách **chuỗi**: mảng ring + một `LogItem` mỗi log nằm ngoài con số đó, nên với log rất ngắn bộ nhớ thật trên máy tester có thể lên ~15–20 MB); máy không được ghi thì không đăng ký callback nào, chi phí 0. Đầu danh sách luôn nói ghi từ lúc nào và đã bỏ bao nhiêu log cũ.
 
 - Panel giữ chiều cao tối đa cố định ở trang log và trang chi tiết, khỏi nhảy mỗi lần có log mới.
 - Chip Log / Cảnh báo / Lỗi bật tắt từng loại; số đếm là tổng, không đổi theo ô tìm. Chip Gộp (mặc định tắt) gộp log trùng (cùng loại, nội dung, stack) tại vị trí lần đầu, hàng ghi `×N`.
@@ -180,7 +180,7 @@ Trên Android trang log có cả **logcat của chính tiến trình game**: log
 - Bắt đầu ghi (khởi động hoặc mở khoá giữa phiên): lấy lại phần buffer logcat còn giữ từ lúc tiến trình khởi động, kể cả log Unity từ trước lúc bắt đầu ghi — phiên đầu không hụt đầu, miễn buffer chưa trôi (vài phút trên máy bận). Dump này chạy đồng bộ (~50–150 ms, chỉ trên máy được ghi), rồi stream phần mới trên thread nền.
 - V/D/I là Log, W là Cảnh báo, E/F/A là Lỗi. Dòng phụ hiện tag thay nơi gọi; tìm khớp cả tag; Copy ghi `Tag: nội dung`. Các dòng liên tiếp cùng header (stack Java) gộp một log.
 - Log tag `Unity` trong logcat bỏ qua sau khi callback Unity gắn: callback có mọi log C# và log engine đi qua log handler, kèm stack chuẩn hơn. Vài dòng engine chỉ in ra logcat (`UnloadTime`, `Unloading N unused Assets`…) không qua callback nên hub không có — logcat không phân biệt được chúng với log đã có, nên không đoán.
-- Chấm đỏ chỉ đếm lỗi Unity: E của OS/SDK có ở mọi phiên. Dùng chung ngân sách 4 MB với log Unity.
+- Chấm đỏ và ô đếm trên entry chỉ đếm log Unity: E của OS/SDK có ở mọi phiên. Dùng chung ngân sách 4 MB với log Unity.
 - Chip **Unity** trên thanh lọc (hiện khi đã có log native, hoặc khi đang bật): bật thì chỉ còn log Unity, kể cả log native tới sau; **Bỏ lọc** tắt nó.
 
 ### Log hệ thống (iOS)
@@ -191,7 +191,7 @@ Trên iOS (15+) trang log có log hệ thống của chính tiến trình qua `O
 - Không stream được như logcat: đọc theo lượt mỗi 2 s trên thread nền. Lượt đầu (đồng bộ, trước khi gắn callback) lấy từ lúc tiến trình khởi động.
 - Log Unity được nhận ra chính xác: từ SubsystemRegistration (mọi máy) hub thay handler os_log của Trampoline bằng bản y hệt ghi vào subsystem riêng `com.hlight.debughub.unity`, rồi bỏ các entry đó sau khi callback gắn. Log SDK link tĩnh (cũng ra từ `UnityFramework`) vẫn giữ, tag `UnityFramework`; vài dòng khởi tạo engine trước SubsystemRegistration cũng mang tag đó. Có debugger gắn thì Unity ghi ra stdout như Trampoline, không vào os_log.
 - SDK log bằng os_log kiểu riêng tư thì giá trị hiện `<private>`; log mức debug thường không được hệ thống giữ.
-- Chip **Unity** và luật chấm đỏ giống Android.
+- Chip **Unity** và luật đếm (chấm đỏ, ô đếm) giống Android.
 
 ## Advanced
 

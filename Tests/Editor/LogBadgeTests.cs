@@ -25,38 +25,42 @@ namespace Hlight.Debug.Hub.Tests
         }
 
         [Test]
-        public void EntryBadge_ShowsCount_CapsAt99_HidesAtZero()
+        public void Entry_ShowsAllThreeCounts_DimsZeros_CapsAt99()
         {
             var entry = panel.transform.root.GetComponentInChildren<DebugHubEntry>(true);
-            var badge = entry.transform.Find("Badge").gameObject;
-            var count = badge.transform.Find("Count").GetComponent<TMP_Text>();
+            TMP_Text Label(string group) => entry.transform.Find(group + "/Label").GetComponent<TMP_Text>();
+            float Alpha(string group) => entry.transform.Find(group).GetComponent<CanvasGroup>().alpha;
 
-            entry.Badge = 3;
-            Assert.IsTrue(badge.activeSelf);
-            Assert.AreEqual("3", count.text);
-            entry.Badge = 120;
-            Assert.AreEqual("99+", count.text);
-            entry.Badge = 0;
-            Assert.IsFalse(badge.activeSelf);
+            entry.SetCounts(3, 0, 120);
+            Assert.AreEqual("3", Label("Log").text);
+            Assert.AreEqual(1f, Alpha("Log"));
+            Assert.AreEqual("0", Label("Warning").text, "số 0 vẫn hiện, ô không đổi hình");
+            Assert.Less(Alpha("Warning"), 1f, "số 0 mờ đi");
+            Assert.AreEqual("99+", Label("Error").text);
         }
 
-        /// Máy không ghi log (người chơi): DebugHub.Update không đếm lỗi mỗi frame và chấm đỏ của bong bóng ẩn.
+        /// DebugHub.Update: đếm log Unity mới theo loại, chỉ khi máy đang ghi. Log native (MIUI, SDK…) không đếm.
         [Test]
-        public void HubUpdate_HidesTheEntryBadge_WhileNotRecording()
+        public void HubUpdate_CountsUnseenUnityLogsByType_OnlyWhileRecording()
         {
             var root = panel.transform.root;
             var hub = root.GetComponentInChildren<DebugHub>(true);
-            var badge = root.GetComponentInChildren<DebugHubEntry>(true).transform.Find("Badge").gameObject;
+            var entry = root.GetComponentInChildren<DebugHubEntry>(true).transform;
+            TMP_Text Label(string group) => entry.Find(group + "/Label").GetComponent<TMP_Text>();
             var update = typeof(DebugHub).GetMethod("Update",
                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
             LogRecorder.Receive("e", null, LogType.Error);
 
             update.Invoke(hub, null);
-            Assert.IsFalse(badge.activeSelf);
+            Assert.AreEqual("0", Label("Error").text, "máy không ghi thì không đếm");
 
             LogRecorder.Start();
+            LogRecorder.Receive("w", null, LogType.Warning);
+            LogRecorder.ReceiveNative(System.DateTime.Now, LogType.Error, "MIUIInput", "noise", null);
             update.Invoke(hub, null);
-            Assert.IsTrue(badge.activeSelf);
+            Assert.AreEqual("0", Label("Log").text);
+            Assert.AreEqual("1", Label("Warning").text);
+            Assert.AreEqual("1", Label("Error").text, "lỗi native không đếm");
         }
 
         /// Mở trang log là "đã xem": quay về gốc thì chấm đỏ trên nút Log tắt.

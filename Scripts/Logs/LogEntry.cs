@@ -34,8 +34,6 @@ namespace Hlight.Debug.Hub
             Tag = tag;
         }
 
-        public bool IsError => Type == LogType.Error || Type == LogType.Exception || Type == LogType.Assert;
-
         /// Byte giữ trong RAM: chuỗi .NET là UTF-16, cộng 64 cho chính entry — log rỗng cũng phải tốn chỗ,
         /// không thì ring nở vô hạn.
         public int Cost => 64 + ((Message?.Length ?? 0) + (Stack?.Length ?? 0) + (Tag?.Length ?? 0)) * 2;
