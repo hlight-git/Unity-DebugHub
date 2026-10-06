@@ -45,6 +45,22 @@ namespace Hlight.Debug.Hub
                 return;
             }
 
+            if (node.Options != null && node.Set != null)
+            {
+                IReadOnlyList<string> options;
+                // null = class con chưa tải xong danh sách (README bảo cache từ API): trang chọn trống, không phải lỗi.
+                try { options = node.Options() ?? Array.Empty<string>(); }
+                catch (Exception exception)
+                {
+                    panel.AddError(label, exception.Unwrap().Message);
+                    return;
+                }
+                // Lựa chọn là dữ liệu, không phải biến (xem DebugValues.Literal).
+                panel.AddChoice(label, options, current as string ?? string.Empty,
+                    value => run(node, new[] { DebugValues.Literal(value) }), node.Description);
+                return;
+            }
+
             // string/int? đang null mà có setter vẫn là ô nhập: null là một giá trị hợp lệ của chúng.
             var nullIsAValue = node.Set != null &&
                                (node.Declared == typeof(string) || Nullable.GetUnderlyingType(node.Declared) != null);
@@ -67,7 +83,7 @@ namespace Hlight.Debug.Hub
                 else
                 {
                     panel.AddField(label, node.Declared, DebugValues.ToText(current), null,
-                        value => run(node, new[] { value }), node.Description);
+                        value => run(node, new[] { DebugValues.Literal(value) }), node.Description);
                 }
                 panel.AttachActions(node, current, run);
                 return;
@@ -216,7 +232,7 @@ namespace Hlight.Debug.Hub
             cursor = default;
             object current;
             try { current = node.Get(); }
-            catch (Exception exception) { panel.AddText($"<color={Palette.BAD}>{exception.Message}</color>"); return false; }
+            catch (Exception exception) { panel.AddText($"<color={Palette.BAD}>{LogText.Escape(exception.Message)}</color>"); return false; }
             if (IsNull(current)) { panel.AddText("null"); return false; }
 
             cursor = new Cursor(node.Declared, current, node.Set);
@@ -228,7 +244,8 @@ namespace Hlight.Debug.Hub
             var matches = new List<DebugNode>();
             foreach (var child in children)
             {
-                if (child.Label == null || child.Label.IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                // Nhãn khoá dictionary đã qua Escape: so trên chữ nhìn thấy.
+                if (child.Label == null || LogText.Unescape(child.Label).IndexOf(query, StringComparison.OrdinalIgnoreCase) < 0) continue;
                 matches.Add(child);
             }
             if (matches.Count == 0) panel.AddText(none);
@@ -247,7 +264,7 @@ namespace Hlight.Debug.Hub
                 var snapshot = (string[])values.Clone();
                 panel.Push(new DebugPage(node.Label, page =>
                 {
-                    page.AddText($"Xác nhận: <b>{node.Label} {string.Join(" ", snapshot)}</b>");
+                    page.AddText($"Xác nhận: <b>{LogText.Escape($"{node.Label} {string.Join(" ", snapshot)}")}</b>");
                     page.AddPrimary("Chạy", () => { page.Pop(); RunInspectNow(page, node, snapshot); });
                     page.AddButton("Huỷ", page.Pop);
                 }, searchable: false));
@@ -266,12 +283,13 @@ namespace Hlight.Debug.Hub
             if (node.Dismiss != DismissMode.Stay) panel.Close();
         }
 
-        /// Chữ phụ căn phải: đủ để biết bên trong có gì mà không phải mở ra.
+        /// Chữ phụ căn phải: đủ để biết bên trong có gì mà không phải mở ra. Tên object là dữ liệu game, tên kiểu generic
+        /// có `<…>`: cả hai qua Escape.
         private static string Summary(object value)
         {
-            if (value is ICollection collection) return $"{DebugValues.TypeName(value.GetType())} ({collection.Count})";
-            if (value is Object unityObject) return unityObject.name;
-            return DebugValues.TypeName(value.GetType());
+            if (value is ICollection collection)
+                return LogText.Escape($"{DebugValues.TypeName(value.GetType())} ({collection.Count})");
+            return LogText.Escape(value is Object unityObject ? unityObject.name : DebugValues.TypeName(value.GetType()));
         }
 
         /// Object đã Destroy không `== null` theo nghĩa C#, mà mở vào nó thì mọi getter ném.

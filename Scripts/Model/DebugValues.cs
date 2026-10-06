@@ -91,7 +91,7 @@ namespace Hlight.Debug.Hub
 
             var raw = ToText(value);
             // Execute đọc `$x` là biến: chuỗi thật bắt đầu bằng `$` phải lưu thành `$$x`.
-            if (value is string && raw.StartsWith("$")) raw = "$" + raw;
+            if (value is string) raw = Literal(raw);
 
             // Bọc quote chỉ cứu được khoảng trắng. Chuỗi chứa chính dấu `"`, xuống dòng hay tab thì
             // SplitArguments không tách lại đúng, mà nó không có escape — từ chối hẳn còn
@@ -104,6 +104,10 @@ namespace Hlight.Debug.Hub
             text = raw.Length == 0 || raw.IndexOf(' ') >= 0 ? $"\"{raw}\"" : raw;
             return true;
         }
+
+        /// Chuỗi thật đưa qua TryParse(allowVars: true): `$` đầu chuỗi là biến nên viết `$$`. Ô nhập tại chỗ và Node.Choice
+        /// không nhận biến (ô kiểm bằng allowVars: false) mà vẫn chạy qua DebugRegistry.Run.
+        internal static string Literal(string text) => text.StartsWith("$") ? "$" + text : text;
 
         /// Parse một ô nhập. Trả false kèm lý do đọc được — ô nhập tô đỏ bằng chính cái này.
         ///

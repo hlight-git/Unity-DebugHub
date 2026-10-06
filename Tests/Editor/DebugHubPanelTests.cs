@@ -226,7 +226,8 @@ namespace Hlight.Debug.Hub.Tests
             var options = content.GetComponentsInChildren<Button>(false);
             Assert.AreEqual(System.Enum.GetNames(typeof(LogType)).Length, options.Length, "choice page must list every enum value");
 
-            var wanted = System.Array.Find(options, o => o.GetComponentInChildren<TMP_Text>(true).text.StartsWith(nameof(LogType.Exception)));
+            // Contains: lựa chọn hiện qua <noparse> (dữ liệu, không phải tag).
+            var wanted = System.Array.Find(options, o => o.GetComponentInChildren<TMP_Text>(true).text.Contains(nameof(LogType.Exception)));
             Assert.IsNotNull(wanted, "Exception option missing");
             wanted.onClick.Invoke();
 

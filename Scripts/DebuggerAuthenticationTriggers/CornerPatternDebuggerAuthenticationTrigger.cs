@@ -36,6 +36,18 @@ namespace Hlight.Debug.Hub
 
         int validatedStepCount;
 
+        public override string Hint =>
+            "Vẽ liền một nét qua các góc: " + string.Join(" › ", System.Array.ConvertAll(triggerSteps, Name)) + ", rồi nhấc tay.";
+
+        static string Name(ScreenPosition position) => position switch
+        {
+            ScreenPosition.TopLeft => "trái trên",
+            ScreenPosition.TopRight => "phải trên",
+            ScreenPosition.BotLeft => "trái dưới",
+            ScreenPosition.BotRight => "phải dưới",
+            _ => "?",
+        };
+
         /// Góc = 20% mỗi chiều. Tính thẳng, không duyệt Enum.GetValues: hàm này chạy mỗi frame người chơi
         /// đang giữ tay (bản store, chưa mở khoá), GetValues là một mảng + boxing mỗi lần.
         static ScreenPosition GetScreenPosition(Vector2 position)

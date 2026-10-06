@@ -24,6 +24,7 @@ namespace Hlight.Debug.Hub
             set
             {
                 PlayerPrefs.SetInt(ENABLED_KEY, value ? 1 : 0);
+                PlayerPrefs.Save();
                 Refresh();
             }
         }

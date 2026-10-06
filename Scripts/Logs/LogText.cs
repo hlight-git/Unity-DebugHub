@@ -20,6 +20,13 @@ namespace Hlight.Debug.Hub
         internal static string Escape(string text) =>
             "<noparse>" + Sanitize(text ?? string.Empty).Replace("</", "<\u200B/") + "</noparse>";
 
+        /// Ngược của Escape, để ô tìm so trên chữ nhìn thấy chứ không trên vỏ `<noparse>` (gõ "a" không được khớp mọi
+        /// nhãn). Ký tự font thiếu đã thành `?` thì không lấy lại được.
+        internal static string Unescape(string text) =>
+            text.StartsWith("<noparse>", StringComparison.Ordinal) && text.EndsWith("</noparse>", StringComparison.Ordinal)
+                ? text.Substring(9, text.Length - 19).Replace("<\u200B/", "</")
+                : text;
+
         /// Font của hub (kể cả fallback) có code point này không. DebugHub gắn khi Play; null = không tra (EditMode).
         internal static Func<int, bool> HasGlyph;
 

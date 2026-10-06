@@ -138,7 +138,7 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(1, model.RowCount);
             model.Query = "boom";
             Assert.AreEqual(2, model.RowCount);
-            StringAssert.EndsWith("] boom", model.CopyAll());
+            StringAssert.EndsWith("] boom", model.CopyAll(out _));
         }
 
         [Test]
@@ -179,10 +179,24 @@ namespace Hlight.Debug.Hub.Tests
         {
             Log(new string('a', LogModel.COPY_LIMIT) + "0123456789");
             model.Pull();
-            var text = model.CopyAll();
+            var text = model.CopyAll(out var kept);
             Assert.IsNotEmpty(text);
             Assert.LessOrEqual(text.Length, LogModel.COPY_LIMIT);
             StringAssert.EndsWith("0123456789", text);
+            Assert.AreEqual(1, kept);
+        }
+
+        /// "đã copy N log" / "Kèm N log" phải đếm log thật sự nằm trong chuỗi, không phải số hàng đang hiện.
+        [Test]
+        public void CopyAll_CountsOnlyTheLogsItKept()
+        {
+            var half = new string('a', LogModel.COPY_LIMIT / 2);
+            Log(half); Log(half); Log(half);
+            model.Pull();
+
+            model.CopyAll(out var kept);
+
+            Assert.AreEqual(1, kept);
         }
 
         [Test]
@@ -252,6 +266,35 @@ namespace Hlight.Debug.Hub.Tests
         public void FollowsByDefault()
         {
             Assert.IsTrue(model.Follow);
+        }
+
+        /// Spec ④ §2.1: log của báo lỗi không phụ thuộc chip QA quên tắt, nhưng tôn trọng Xoá ("tính từ đây").
+        [Test]
+        public void AllText_IgnoresFiltersSearchAndCollapse_ButStartsAfterClear()
+        {
+            Log("cũ");
+            model.Pull();
+            model.Clear();
+            Log("một"); Log("cảnh-báo", LogType.Warning); Log("một");
+            model.Pull();
+            model.Toggle(LogGroup.Warning);
+            model.Query = "zzz";
+            model.Collapse = true;
+
+            var text = model.AllText();
+
+            StringAssert.DoesNotContain("cũ", text);
+            StringAssert.Contains("cảnh-báo", text);
+            Assert.AreEqual(3, text.Split('\n').Length, "không gộp hai dòng `một`");
+        }
+
+        /// Đọc thẳng bộ ghi: không được ăn mất "N log mới" của trang log.
+        [Test]
+        public void AllText_DoesNotPullIntoTheModel()
+        {
+            Log("x");
+            model.AllText();
+            Assert.AreEqual(1, model.Pull());
         }
     }
 }

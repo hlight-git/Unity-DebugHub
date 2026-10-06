@@ -155,7 +155,8 @@ namespace Hlight.Debug.Hub
                 {
                     if (shown++ >= ELEMENT_LIMIT) break;
                     var key = DebugValues.ToText(pair.Key);
-                    yield return Element(cursor, address, $"\"{key}\"", key, pair.Value);
+                    // Nhãn là khoá của game (`"<size=400>x"` là phóng to cả row): qua Escape. Address giữ khoá gốc.
+                    yield return Element(cursor, address, $"\"{key}\"", LogText.Escape(key), pair.Value);
                 }
                 if (map.Count > ELEMENT_LIMIT) yield return Rest(map.Count - ELEMENT_LIMIT);
                 yield break;

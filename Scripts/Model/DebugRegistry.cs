@@ -53,7 +53,10 @@ namespace Hlight.Debug.Hub
 
         public static void ClearLastCommand()
         {
+            // Đã không có thì thôi: lệnh không lưu được chạy lặp lại (Execute trong vòng lặp) không ghi đĩa mỗi lần.
+            if (!PlayerPrefs.HasKey(LAST_KEY)) return;
             PlayerPrefs.DeleteKey(LAST_KEY);
+            PlayerPrefs.Save();
             LastCommandChanged?.Invoke();
         }
 
@@ -301,7 +304,11 @@ namespace Hlight.Debug.Hub
                 }
                 line.Append(' ').Append(text);
             }
-            PlayerPrefs.SetString(LAST_KEY, line.ToString());
+            // Lệnh y hệt lần trước (nút repeat, Execute trong vòng lặp của game): không ghi đĩa lại, nút cũng không đổi gì.
+            var recorded = line.ToString();
+            if (recorded == LastCommand) return;
+            PlayerPrefs.SetString(LAST_KEY, recorded);
+            PlayerPrefs.Save();
             LastCommandChanged?.Invoke();
         }
 

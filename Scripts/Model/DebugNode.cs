@@ -50,6 +50,9 @@ namespace Hlight.Debug.Hub
         public bool Confirm;
         internal bool? showsResult;
 
+        /// Thứ tự trong cây Commands (xem DebugNodeExtensions.Priority). Chỉ node đăng ký dùng.
+        internal int priority;
+
         /// Có hiện dòng kết quả sau khi chạy hay không. Mặc định suy từ Dismiss vì đó là cùng
         /// một câu chuyện: panel ở lại = đang đọc dữ liệu nên cần thấy output.
         public bool ShowsResult => showsResult ?? Dismiss == DismissMode.Stay;
@@ -65,6 +68,9 @@ namespace Hlight.Debug.Hub
 
         /// Địa chỉ resolve lại được, để ghim vào Objects. null = không ghim được.
         public string Address;
+
+        /// Có thì row là trang chọn trong danh sách này (lấy lúc dựng trang), không phải ô nhập. Xem Node.Choice.
+        public Func<IReadOnlyList<string>> Options;
     }
 
     /// Một việc chạy được.

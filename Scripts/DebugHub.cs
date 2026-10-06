@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using TMPro;
 using UnityEngine;
 using UnityEngine.Serialization;
@@ -34,6 +36,10 @@ namespace Hlight.Debug.Hub
         [SerializeField] private TMP_InputField authenticationInputField;
         [Tooltip("Trang nội bộ của công ty: tới được một trang và trang chứa đúng chuỗi = coi như đã gõ đúng password. Android/PC kiểm lúc mở app (mở khoá ngầm, lắc để hiện bong bóng); iOS/macOS chỉ kiểm khi ô password mở.")]
         [SerializeField] private AutoUnlock autoUnlock = new();
+        [Tooltip("Kênh báo lỗi của project: class con của BugReporter đặt trên chính object này. Trống = không có hub.report.")]
+        [SerializeField] private BugReporter reporter;
+        [Tooltip("Kênh message của project: class con của MessageSender đặt trên chính object này. Trống = không có hub.message.")]
+        [SerializeField] private MessageSender messenger;
 
         /// Mọi trigger trong danh sách đều được hỏi mỗi frame, bất kể platform/editor window — mỗi
         /// trigger tự biết đọc input của nó có sẵn hay không (không có touchscreen/keyboard thì tự
@@ -48,8 +54,24 @@ namespace Hlight.Debug.Hub
         private readonly long[] countsShown = { -1, -1, -1 };
         private Func<bool> triggerPerformed;
 
-        /// Dev note hiện ở page Help.
+        /// Ghi chú của game, hiện ở mục "Ghi chú của game" của trang Trợ giúp.
         public static List<string> Notes { get; } = new();
+
+        /// Trang Trợ giúp: mỗi trigger đang gắn tự nói cách dùng nó — cử chỉ trên máy trước, phím (PC/Editor) sau. Không
+        /// có hub (EditMode) thì rỗng.
+        internal static IReadOnlyList<string> TriggerHints
+        {
+            get
+            {
+                var hints = new List<string>();
+                if (!instance) return hints;
+                foreach (var trigger in instance.triggers.OrderBy(trigger => trigger is KeyPressDebuggerAuthenticationTrigger))
+                {
+                    if (trigger.Hint != null) hints.Add(trigger.Hint);
+                }
+                return hints;
+            }
+        }
 
         /// Ẩn/hiện nhanh cả hub từ bất kỳ đâu — cho code game gọi, và cho
         /// <see cref="DismissMode.HideHub"/> dùng sau khi chạy command.
@@ -96,8 +118,13 @@ namespace Hlight.Debug.Hub
         }
 
         /// Chỗ duy nhất ghi bong bóng hiện/ẩn cho phiên sau, chỉ từ thao tác cố ý của tester: kéo vào X, mở
-        /// khoá, cử chỉ gọi lại, hub.entry.
-        internal static void RememberEntry(bool visible) => PlayerPrefs.SetInt(ENTRY_VISIBLE_KEY, visible ? 1 : 0);
+        /// khoá, cử chỉ gọi lại, hub.entry. Save ngay như HubAccess: vuốt tắt app trên Android không có OnApplicationQuit
+        /// để Unity tự ghi.
+        internal static void RememberEntry(bool visible)
+        {
+            PlayerPrefs.SetInt(ENTRY_VISIBLE_KEY, visible ? 1 : 0);
+            PlayerPrefs.Save();
+        }
 
         private bool Unlocked => unlocked;
 
@@ -127,6 +154,7 @@ namespace Hlight.Debug.Hub
             // không đăng ký gì.
             commands.Initialize();
             repeat.Initialize();
+            Sending.Initialize(reporter, messenger, ShowSent);
             entry.Clicked += OpenCommandTree;
             // Kết quả dài bị cắt ở dòng nổi; toàn văn kèm stack nằm ở trang log, tại vạch của chính lần chạy
             // đã tạo dòng đó. Gắn từ đây: Panel tắt sẵn trong prefab, Awake của nó chưa chạy tới lần mở đầu.
@@ -311,6 +339,13 @@ namespace Hlight.Debug.Hub
             else panel.Push(LogPage.Build(focusSeq));
         }
 
+        /// Kết quả gửi về sau khi panel đã đóng. Hub đang ẩn (QA ẩn để quay màn hình) thì chỉ còn log, không chèn dòng
+        /// chữ vào video.
+        private void ShowSent(string text, bool error)
+        {
+            if (Visible) panel.ShowResult(text, error);
+        }
+
         #region API
 
         public static ActionNode Add(Object owner, string path, string description, Action run)
@@ -446,6 +481,15 @@ namespace Hlight.Debug.Hub
                 if (error != null) UnityEngine.Debug.LogError($"{label}: {error.Message}");
                 else UnityEngine.Debug.Log($"{label} xong: {DebugValues.ToText(result)}");
             }));
+        }
+
+        /// Chờ Task của một kênh gửi (spec ④ §3): cùng vòng chờ với Await, nhưng **không trần thời gian** — hết giờ báo
+        /// lỗi trong khi request vẫn có thể thành công thì QA gửi lại thành issue trùng; timeout là việc của Send. Kết
+        /// quả/lỗi SendFlow.Finish đọc lại từ chính task nên bỏ qua. Không có hub (EditMode) thì không chờ: test gọi
+        /// SendFlow.Finish thẳng.
+        internal static void Watch(Task task, Action done)
+        {
+            if (instance) instance.StartCoroutine(Awaitables.Wait(task, (_, _) => done(), float.PositiveInfinity));
         }
 
         public static bool Execute(string line, out string message) => DebugRegistry.Execute(line, out message);

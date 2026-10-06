@@ -1,5 +1,20 @@
 # Changelog
 
+## 3.1.0
+
+### Thêm
+- Báo lỗi và message qua API của project: class con của `BugReporter` / `MessageSender` đặt trên object DebugHub, kéo vào ô **Reporter** / **Messenger**. Form là `Fields()` của class con; hub đưa log (`BugReport.Logs`, `DebugMessage.Logs`). Row `hub.report`, `hub.message`, và Log › … › **Gửi qua message**.
+- `Node.Choice`: chọn một chuỗi trong danh sách lấy lúc dựng trang (`ValueNode.Options`).
+- Trang Trợ giúp làm lại, theo thứ tự: ghi chú của game (chỉ khi có); hai trang tra **Tất cả lệnh** (theo thứ tự cây, không còn gọi getter để in giá trị hiện tại) và **Cú pháp address** (bấm là copy ví dụ); cách mở / ẩn hub đọc từ chính các trigger đang gắn (`DebuggerAuthenticationTrigger.Hint`, trigger tự viết override để có dòng của mình); cách đọc một dòng; header. Ghi chú về Objects/Duyệt của hub chuyển vào trang này, không còn nằm trong `DebugHub.Notes`.
+- `.Priority(n)`: thứ tự trong cây Commands như `MenuItem` của Unity (số nhỏ lên trước; thư mục theo priority nhỏ nhất bên trong). Không gắn thì cây y như trước. Nhóm **Yêu thích** giờ theo luật này thay vì thứ tự bấm sao.
+
+### Sửa
+- Ô nhập tại chỗ kiểu chuỗi nhận `$…` nguyên văn (`$5 pack`), không còn đọc thành biến rồi báo "chưa được gán". Gán biến vẫn đi qua trang nhập tham số và `…` › Gán giá trị.
+- Gỡ một scene không còn để hub mất EventSystem: EventSystem nhúng hỏi lại sau mỗi lần gỡ, như sau mỗi lần load.
+- Dữ liệu game và chữ gõ tay vào TMP qua `LogText.Escape`: trang chọn (enum, `Node.Choice`), dòng giá trị (copy), tên object ở cột phụ và ở trang Duyệt, khoá dictionary, dòng lỗi (`AddError`, lỗi resolve address, getter ném), đối số ở trang xác nhận. Tag rich text trong dữ liệu không còn đổi định dạng; dòng giá trị không còn bị chuỗi chứa `</noparse>` phá.
+- "đã copy N log" đếm đúng số log nằm trong chuỗi copy (bị cắt ở 500k ký tự thì N nhỏ hơn số hàng đang hiện).
+- Ẩn bong bóng, ghim, lệnh cuối và bật nút repeat lưu PlayerPrefs ngay: vuốt tắt app trên Android không còn mất. Lệnh cuối chỉ ghi khi đổi.
+
 ## 3.0.0
 
 ### Phá vỡ tương thích

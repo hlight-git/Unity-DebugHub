@@ -13,6 +13,8 @@ namespace Hlight.Debug.Hub
 
         public override bool RequiresAlreadyAuthenticated => true;
 
+        public override string Hint => "Lắc mạnh máy (chỉ gọi lại bong bóng khi máy đã mở khoá).";
+
         public override bool IsPerformedTriggerAction()
         {
             return ShakeSqrMagnitude() >= shakeThreshold;

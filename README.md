@@ -43,7 +43,7 @@ Mọi thứ hiện lên panel là một trong bốn loại `DebugNode`, đăng k
 | Loại | Là gì | Field chính |
 |---|---|---|
 | `ActionNode` | một việc chạy được | `Parameters[]`, `Invoke` |
-| `ValueNode` | một giá trị đọc được, ghi được nếu `Set != null` | `Declared`, `Get`, `Set`, `Address` |
+| `ValueNode` | một giá trị đọc được, ghi được nếu `Set != null` | `Declared`, `Get`, `Set`, `Address`, `Options` |
 | `FolderNode` | có con, liệt kê lúc mở (không giữ sẵn) | `Children`, `Inline`, `Live` |
 | `TextNode` | chữ: mô tả, ghi chú, bảng đã format | `Text`, `Style` |
 
@@ -77,6 +77,7 @@ DebugHub.Add<float, float>(this, "time.skip", "...", FastForward).Defaults("1", 
 | `.Confirms()` | chạy phải qua trang xác nhận (kể cả từ nút repeat) |
 | `.Reports()` / `.Silent()` | luôn / không bao giờ hiện dòng kết quả |
 | `.Defaults(params string[])` | seed tham số ban đầu, chỉ khi người dùng chưa nhập gì |
+| `.Priority(int)` | thứ tự trong cây Commands như `MenuItem`: số nhỏ lên trước (mặc định 0, âm để lên đầu) |
 
 Mặc định: `ActionNode` → đóng panel; `ValueNode` → ở lại; node do reflection sinh → ở lại.
 
@@ -87,6 +88,7 @@ Mặc định: `ActionNode` → đóng panel; `ValueNode` → ở lại; node do
 | Node | Điều kiện | Row |
 |---|---|---|
 | `ValueNode` | `Get()` ném exception | dòng lỗi |
+| `ValueNode` | có `Options` (`Node.Choice`) và setter | row chọn trong danh sách lấy lúc dựng trang |
 | `ValueNode` | `Get()` ra null (kể cả fake-null), trừ `string`/`int?`… có setter | row `null`, có nút `…` |
 | `ValueNode` | giá trị đơn (số, bool, enum, vector, `int?`…), `Set == null` | giá trị căn phải, **bấm = copy** |
 | `ValueNode` | `bool` có setter | switch |
@@ -126,7 +128,9 @@ Một panel duy nhất điều hướng theo stack. Bấm nền ngoài = đóng 
 
 - Entry bubble (như chat head Messenger): thả tay là bubble trôi theo đà rồi dính mép trái/phải gần điểm dừng — điểm dừng = chỗ nhấc tay + vận tốc × `momentum` (mặc định 0.18s, chỉnh ở Inspector). Thả nhẹ về mép gần, hất mạnh sang mép kia; dừng tay rồi mới nhấc thì không trôi. Kéo vào nút X ở đáy là bị hút vào, thả ra để ẩn hub.
 - Header: kính lúp (tìm), thanh điều chỉnh (công cụ/Advanced), `?` (trợ giúp) và Log — ba nút sau chỉ ở Commands gốc. Tiêu đề tự co tới 80% cỡ chữ khi hẹp chỗ.
-- Category gốc có nút sao: sao đặc = yêu thích, được đưa lên nhóm **Yêu thích**, lưu PlayerPrefs.
+- Trợ giúp (`?`): ghi chú của game (`DebugHub.Notes.Add(...)`, chỉ hiện khi có), hai trang tra **Tất cả lệnh** (cùng thứ tự cây Commands, kèm kiểu tham số và mô tả; không gọi getter) và **Cú pháp address** (bấm một dòng là copy ví dụ), rồi cách mở / ẩn hub, cách đọc một dòng, header và nút nổi. Cách mở hub đọc từ chính các trigger đang gắn: trigger tự viết override `Hint` để có dòng của mình (null = không nhắc).
+- Thứ tự mỗi tầng, như `MenuItem` của Unity: `.Priority(n)` nhỏ lên trước; thư mục đứng ở priority nhỏ nhất trong nó; thư mục và lệnh xen nhau theo priority. Trùng priority thì thư mục trước, thư mục theo tên, lệnh theo thứ tự đăng ký. Kết quả tìm không theo priority. Không có đường kẻ ngăn nhóm như menu Unity.
+- Category gốc có nút sao: sao đặc = yêu thích, được đưa lên nhóm **Yêu thích** (cùng luật thứ tự ở trên), lưu PlayerPrefs.
 - Tìm ở một trang command chỉ lọc nhánh đó; ở gốc là toàn registry. Không quét vào `FolderNode` động. Trang có list riêng (member, type, instance, Objects) tự lọc list của nó.
 - Danh sách dài chia trang 40 mục.
 - Giá trị hiển thị là dữ liệu của game nên được bọc `<noparse>`; description do code viết thì vẫn dùng rich text của TMP (`<size=80%>`…).
@@ -170,7 +174,7 @@ Nút Log ở header Commands gốc (kèm chấm đỏ số lỗi chưa xem). Nú
 - Mỗi hàng: icon theo loại (khác hình, không chỉ khác màu), 2 dòng nội dung, `HH:mm:ss.fff – nơi gọi`; hàng lỗi nền đỏ nhạt. Nơi gọi = frame đầu tiên thuộc code game (không phải engine, `Debug`, `com.hlight.logging`); stack không có frame game nào thì lấy frame đầu tiên không thuộc lớp log. Vạch `› lệnh` đánh dấu lúc chạy command; bấm dòng kết quả mở trang log đúng tại vạch đó.
 - Đang ở đáy thì bám theo log mới; cuộn lên thì hiện "N log mới".
 - Bấm hàng → trang chi tiết: nội dung đầy đủ (quá 4000 ký tự thì cắt khi hiện, Copy vẫn lấy đủ), stack từng frame (game sáng, engine mờ; kiểu đối số rút gọn, bỏ namespace), dòng phụ `HH:mm:ss.fff` (log gộp: `HH:mm:ss.fff – ×N, cuối HH:mm:ss`). Thanh **‹ Trước / Copy / Sau ›** ghim ở đáy window, ngoài vùng cuộn: Copy lấy nội dung kèm stack gốc, Trước/Sau đi qua các log của bộ lọc hiện tại.
-- `…`: Copy tất cả (theo bộ lọc, quá 500k ký tự giữ phần mới nhất), Xoá (ẩn mọi log tới lúc này; dòng đầu danh sách thành "đã ẩn N log, bấm để hiện lại", danh sách trống thì ghi "Đã xoá – chưa có log mới").
+- `…`: Copy tất cả (theo bộ lọc, quá 500k ký tự giữ phần mới nhất), Gửi qua message (khi có Messenger, xem **Báo lỗi và message**), Xoá (ẩn mọi log tới lúc này; dòng đầu danh sách thành "đã ẩn N log, bấm để hiện lại", danh sách trống thì ghi "Đã xoá – chưa có log mới").
 - Nội dung log là dữ liệu game: vào TMP qua `<noparse>`, và mọi `</` trong dữ liệu bị chèn ký tự zero-width để không tag đóng nào thoát ra được. Ký tự font không có (`→`, emoji…) hiện thành `?` — không thì TMP bắn warning mỗi lần vẽ và warning lại thành log mới; Copy và tìm vẫn trên chuỗi gốc.
 
 ### Logcat (Android)
@@ -192,6 +196,50 @@ Trên iOS (15+) trang log có log hệ thống của chính tiến trình qua `O
 - Log Unity được nhận ra chính xác: từ SubsystemRegistration (mọi máy) hub thay handler os_log của Trampoline bằng bản y hệt ghi vào subsystem riêng `com.hlight.debughub.unity`, rồi bỏ các entry đó sau khi callback gắn. Log SDK link tĩnh (cũng ra từ `UnityFramework`) vẫn giữ, tag `UnityFramework`; vài dòng khởi tạo engine trước SubsystemRegistration cũng mang tag đó. Có debugger gắn thì Unity ghi ra stdout như Trampoline, không vào os_log.
 - SDK log bằng os_log kiểu riêng tư thì giá trị hiện `<private>`; log mức debug thường không được hệ thống giữ.
 - Chip **Unity** và luật đếm (chấm đỏ, ô đếm) giống Android.
+
+## Báo lỗi và message
+
+Chỗ cho project gửi lên API riêng: **báo lỗi** (tạo issue) và **message** (chữ, đẩy log, không file). Hub lo form và log; endpoint, payload, token, đăng nhập, thông tin game/máy là việc của class con.
+
+1. Viết class con của `BugReporter` và/hoặc `MessageSender`.
+2. Thêm component đó vào **chính object DebugHub** (object này `DontDestroyOnLoad`; đặt trên GameObject khác trong scene đầu thì nó bị unload sau boot và row `hub.report` / `hub.message` biến mất theo).
+3. Kéo vào ô **Reporter** / **Messenger** của component DebugHub. Ô trống = không có row.
+
+```csharp
+public class ApiBugReporter : BugReporter
+{
+    private string title = "";
+    private Priority priority = Priority.Normal;
+
+    public override IEnumerable<DebugNode> Fields()
+    {
+        yield return Node.Value("title", () => title, v => title = v);
+        yield return Node.Value("priority", () => priority, v => priority = v);
+    }
+
+    public override async Task<string> Send(BugReport report)
+    {
+        if (title.Length == 0) throw new Exception("Chưa có title");   // form còn mở, sửa rồi gửi lại
+        var sent = title;
+        var payload = new IssuePayload { title = sent, priority = priority.ToString(), logs = report.Logs,
+            version = Application.version };
+        // await POST payload…
+        if (title == sent) title = "";   // trong lúc chờ QA đã gõ cho lỗi kế tiếp thì giữ nguyên
+        return "BUG-123";
+    }
+}
+```
+
+| | `hub.report` | `hub.message` | Log › `…` › **Gửi qua message** |
+|---|---|---|---|
+| Form | `Fields()` + Gửi | `Fields()` + Gửi | "Kèm N log (theo bộ lọc)." + `Fields()` + Gửi |
+| Hub đưa | `BugReport.Logs`: mọi log sau mốc Xoá, bỏ qua lọc / tìm / Gộp, chụp lúc bấm Gửi | `DebugMessage.Logs = null` | `DebugMessage.Logs`: theo bộ lọc như Copy tất cả, chụp lúc mở form |
+
+- `Fields()`: mọi ô của form — `Node.Value`, `Node.Choice` (danh sách lấy lúc dựng trang: người nhận, assignee), `Node.Text`. Gọi lại mỗi lần trang dựng lại: rẻ, không side effect. `Node.Choice` đọc danh sách ngay lúc dựng trang nên danh sách từ API phải được class con tải/cache sẵn (ví dụ trong `Start`/`OnEnable`) — `Fields()` tự nó không có side effect. Giá trị do class con giữ, tự quyết giữ hay xoá sau khi gửi.
+- `Send`: đọc field trước `await` đầu tiên; xoá field sau `await` thì chỉ xoá khi nó vẫn là giá trị vừa gửi (QA mở lại form gõ tiếp được trong lúc chờ). Trả chữ cho dòng kết quả (null = "Đã gửi báo lỗi." / "Đã gửi."). Ném = lỗi: hỏng ngay (validate) thì form còn mở; hỏng sau thì dòng kết quả đỏ, mở lại form vẫn còn giá trị. Phải tự có timeout.
+- Log › `…` › **Gửi qua message** chỉ hiện khi đã gán Messenger **và** bộ lọc hiện tại còn ít nhất 1 log.
+- Bấm Gửi: panel đóng, dòng kết quả "Đang gửi…" rồi kết quả. Mỗi kênh một lần gửi một lúc. Không vào nút repeat. Hub đang ẩn thì kết quả chỉ vào log.
+- API thêm trường: sửa payload / `Fields()` / `Send` của class con. Package chỉ đổi khi API cần thứ chỉ hub có (ảnh/video) — lúc đó thêm field vào `BugReport`, class con cũ không vỡ.
 
 ## Advanced
 
@@ -259,14 +307,17 @@ Debugger của SDK khác (vd `sdk.zego`) do game tự đăng ký.
 
 - **IL2CPP managed code stripping**: Advanced và SDK row chạy bằng reflection. Mức stripping mặc định (Minimal) không strip code của assembly game/SDK; ở Medium/High, member không ai gọi tĩnh có thể bị strip — Advanced báo "không tìm thấy", SDK row biến mất. Package cố ý không mang `link.xml` (giữ code = build nặng thêm); cần thì thêm qua `IUnityLinkerProcessor`.
 - **Log trước khi mở khoá**: phiên mở khoá lần đầu trên máy không phải bản nội bộ chỉ có log từ lúc mở khoá.
-- **Project tắt log Unity** (ví dụ `PRODUCTION` của com.hlight.logging) thì hub không có log để hiện, kể cả dòng kết quả của command — hub không còn bật tạm logger.
+- **Project tắt log Unity** (ví dụ `PRODUCTION` của com.hlight.logging) thì hub không có log để hiện, kể cả dòng kết quả của command — hub không còn bật tạm logger. Báo lỗi / message: `Logs` rỗng; "Đang gửi…", "Đang gửi lần trước…" và kết quả về ngay không hiện (đi qua log của lệnh) — bấm Gửi lúc kênh đang bận thì panel chỉ đóng. Kết quả về sau và lỗi ngay vẫn hiện.
 - **Dấu hiệu mạng công ty** phụ thuộc trang/IP của văn phòng: đổi thì sửa Inspector, theo build kế tiếp.
 - **Nơi gọi** ở build IL2CPP release chỉ có tên method (không số dòng) trừ khi bật IL2CPP Stacktrace Information có số dòng.
 - **Gọi method tuỳ ý qua trang Method có thể làm hỏng state game** — bản chất công cụ.
-- **Ngưỡng trigger tính bằng pixel thô** (vẽ ngoằn ngoèo, lắc): cảm giác khác nhau theo độ phân giải; chỉnh sau khi đo trên máy thật.
+- **Ngưỡng trigger chưa đo trên máy thật**: vẽ nguệch ngoạc và 4 góc tính theo tỉ lệ màn hình, lắc theo g (`shakeThreshold` là bình phương độ lớn: prefab đặt 20 ≈ 4,5 g, mặc định trong code 50 ≈ 7 g). Chỉnh trong Inspector sau khi thử trên điện thoại.
 - **Không parse ngoặc cùng loại lồng nhau** trong address — bắc cầu qua `$var`.
 - **Bảng monospace là xấp xỉ** — font khác nhau thì số ký tự vừa một dòng khác nhau.
 - **`KeyPressDebuggerAuthenticationTrigger` serialize field khác nhau theo input backend** (`Key` vs `KeyCode`): đổi backend là mất phím đã chọn.
+- **URL/token của class con gửi nằm trong bản store** (hub cố ý ship bản store): decompile là thấy.
+- **`Send` không có timeout** thì kênh đó kẹt "Đang gửi…" tới khi tắt app. Hub cố ý không cắt: hết giờ mà request vẫn thành công thì QA gửi lại thành issue trùng.
+- **Form báo lỗi / message chỉ có ô một dòng.**
 
 ## Test
 
@@ -274,7 +325,7 @@ Debugger của SDK khác (vd `sdk.zego`) do game tự đăng ký.
 unity cmd --project-path . run_tests --mode EditMode --filter "Hlight.Debug.Hub.Tests" --filter_type assembly
 ```
 
-`AgentTestRunner` (chạy test đồng bộ cho agent) chỉ hỗ trợ `[SetUp]` / `[Test]` / `[TearDown]`.
+`AgentTestRunner` (chạy test đồng bộ cho agent) chỉ hỗ trợ `[SetUp]` / `[Test]` / `[TearDown]`, và không có log scope: test dùng `LogAssert.Expect` luôn đỏ ở đó dù đúng. Lệnh `run_tests` ở trên là chuẩn; runner này chỉ để dùng khi Test Runner treo.
 
 ## Ghi công
 

@@ -40,14 +40,18 @@ namespace Hlight.Debug.Hub
             embeddedEventSystem.SetActive(false);
         }
 
+        private void OnSceneLoaded(Scene scene, LoadSceneMode mode) => Recheck();
+
+        /// Gỡ scene cũng phải hỏi lại: scene vừa gỡ có thể mang theo EventSystem của game, hoặc cái nhúng đang là cái
+        /// duy nhất — chỉ tắt là không còn EventSystem nào, không bấm được gì tới lần load scene sau.
+        private void OnSceneUnloaded(Scene scene) => Recheck();
+
         /// Tắt trước rồi mới hỏi: scene mới mang EventSystem riêng thì EventSystem.current là cái của scene.
-        private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
+        private void Recheck()
         {
             embeddedEventSystem.SetActive(false);
             ActivateIfNeeded();
         }
-
-        private void OnSceneUnloaded(Scene scene) => embeddedEventSystem.SetActive(false);
 
         private void ActivateIfNeeded()
         {

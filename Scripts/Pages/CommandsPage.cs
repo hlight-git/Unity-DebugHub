@@ -21,58 +21,96 @@ namespace Hlight.Debug.Hub
                 showTools: prefix.Length == 0);
         }
 
-        private static void BuildFolder(DebugHubPanel panel, string[] prefix)
+        /// Một dòng ở một tầng của cây: thư mục (Folder, Count) hoặc lá (Entry).
+        internal readonly struct Row
         {
-            var folders = new SortedDictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            public readonly string Folder;
+            public readonly int Count;
+            public readonly DebugRegistry.Entry Entry;
+            public readonly int Priority;
+
+            /// Thứ tự lúc chưa xét priority: thư mục theo tên rồi tới lá theo thứ tự đăng ký.
+            public readonly int Index;
+
+            public Row(string folder, int count, DebugRegistry.Entry entry, int priority, int index)
+            {
+                Folder = folder;
+                Count = count;
+                Entry = entry;
+                Priority = priority;
+                Index = index;
+            }
+        }
+
+        /// Thứ tự một tầng, như MenuItem của Unity: priority nhỏ lên trước; thư mục lấy priority nhỏ nhất bên trong nó
+        /// (submenu theo item đầu). Trùng priority thì giữ đúng thứ tự cũ — không ai gắn priority là cây y như trước.
+        internal static List<Row> Rows(IReadOnlyList<DebugRegistry.Entry> entries, string[] prefix)
+        {
+            var folders = new SortedDictionary<string, (int Count, int Priority)>(StringComparer.OrdinalIgnoreCase);
             var leaves = new List<DebugRegistry.Entry>();
 
-            foreach (var entry in DebugRegistry.All)
+            foreach (var entry in entries)
             {
                 var segments = Segments(entry);
                 if (!Contains(segments, prefix)) continue;
                 if (segments.Length == prefix.Length + 1) { leaves.Add(entry); continue; }
 
                 var folder = segments[prefix.Length];
-                folders.TryGetValue(folder, out var count);
-                folders[folder] = count + 1;
+                folders[folder] = folders.TryGetValue(folder, out var seen)
+                    ? (seen.Count + 1, Math.Min(seen.Priority, entry.Node.priority))
+                    : (1, entry.Node.priority);
             }
 
-            if (prefix.Length == 0)
+            var rows = new List<Row>(folders.Count + leaves.Count);
+            foreach (var folder in folders) rows.Add(new Row(folder.Key, folder.Value.Count, null, folder.Value.Priority, rows.Count));
+            foreach (var leaf in leaves) rows.Add(new Row(null, 0, leaf, leaf.Node.priority, rows.Count));
+            rows.Sort((a, b) => a.Priority != b.Priority ? a.Priority.CompareTo(b.Priority) : a.Index.CompareTo(b.Index));
+            return rows;
+        }
+
+        private static void BuildFolder(DebugHubPanel panel, string[] prefix)
+        {
+            var rows = Rows(DebugRegistry.All, prefix);
+            if (rows.Count == 0)
             {
-                var rendered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                var favoriteCategories = CommandCategoryFavorites.All;
-                var hasFavorite = false;
-                foreach (var category in favoriteCategories)
-                {
-                    if (!folders.TryGetValue(category, out var count)) continue;
-                    if (!hasFavorite) panel.AddText($"<color={Palette.FAVORITE}><b>Yêu thích</b></color>");
-                    hasFavorite = true;
-                    AddRootCategory(panel, category, count, true);
-                    rendered.Add(category);
-                }
-                if (hasFavorite && rendered.Count < folders.Count)
-                    panel.AddText($"<color={Palette.MUTED}><b>Tất cả</b></color>");
-                foreach (var folder in folders)
-                {
-                    if (rendered.Contains(folder.Key)) continue;
-                    AddRootCategory(panel, folder.Key, folder.Value, false);
-                }
-            }
-            else
-            {
-                foreach (var folder in folders)
-                    panel.AddNavigation(folder.Key, Folder(Concat(prefix, folder.Key), folder.Key), null,
-                        folder.Value.ToString());
+                panel.AddText("Chưa có command nào.");
+                return;
             }
 
-            foreach (var leaf in leaves)
+            var leaves = rows.FindAll(row => row.Entry != null).ConvertAll(row => row.Entry);
+            if (prefix.Length > 0)
             {
-                var entry = leaf;
+                foreach (var row in rows) AddRow(panel, row, prefix, leaves, false);
+                return;
+            }
+
+            // Gốc: nhóm Yêu thích lên đầu, cùng một luật thứ tự với phần còn lại.
+            var favorites = new HashSet<string>(CommandCategoryFavorites.All, StringComparer.OrdinalIgnoreCase);
+            bool IsFavorite(Row row) => row.Folder != null && favorites.Contains(row.Folder);
+            var favoriteCount = rows.FindAll(IsFavorite).Count;
+            if (favoriteCount > 0) panel.AddText($"<color={Palette.FAVORITE}><b>Yêu thích</b></color>");
+            foreach (var row in rows)
+                if (IsFavorite(row)) AddRow(panel, row, prefix, leaves, true);
+            if (favoriteCount > 0 && favoriteCount < rows.Count) panel.AddText($"<color={Palette.MUTED}><b>Tất cả</b></color>");
+            foreach (var row in rows)
+                if (!IsFavorite(row)) AddRow(panel, row, prefix, leaves, false);
+        }
+
+        private static void AddRow(DebugHubPanel panel, Row row, string[] prefix, List<DebugRegistry.Entry> leaves, bool favorite)
+        {
+            if (row.Entry != null)
+            {
+                var entry = row.Entry;
                 NodeRenderer.Render(panel, entry.Node, (node, values) => Dispatch(panel, entry, node, values),
                     LabelOf(entry, leaves));
+                return;
             }
-
-            if (folders.Count == 0 && leaves.Count == 0) panel.AddText("Chưa có command nào.");
+            if (prefix.Length == 0)
+            {
+                AddRootCategory(panel, row.Folder, row.Count, favorite);
+                return;
+            }
+            panel.AddNavigation(row.Folder, Folder(Concat(prefix, row.Folder), row.Folder), null, row.Count.ToString());
         }
 
         /// Chỉ tìm trong nhánh đang mở. Không gọi Children của folder động khi tìm registry.
@@ -135,7 +173,8 @@ namespace Hlight.Debug.Hub
 
             panel.Push(new DebugPage(entry.Node.Label, page =>
             {
-                page.AddText($"Xác nhận: <b>{entry.Path} {string.Join(" ", values)}</b>");
+                // Đối số là chữ người dùng gõ: qua Escape.
+                page.AddText($"Xác nhận: <b>{LogText.Escape($"{entry.Path} {string.Join(" ", values)}")}</b>");
                 page.AddPrimary("Chạy", () =>
                 {
                     page.Pop();

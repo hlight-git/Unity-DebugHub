@@ -32,10 +32,15 @@ namespace Hlight.Debug.Hub
             {
                 panel.AddAction("Copy tất cả", () =>
                 {
-                    GUIUtility.systemCopyBuffer = model.CopyAll();
-                    panel.ShowResult($"đã copy {LogText.Count(model.EntryRowCount)} log", false);
+                    GUIUtility.systemCopyBuffer = model.CopyAll(out var kept);
+                    panel.ShowResult($"đã copy {LogText.Count(kept)} log", false);
                     panel.Pop();
                 }, "Theo bộ lọc đang bật. Quá dài thì giữ phần mới nhất.");
+                if (Sending.CanMessage && model.EntryRowCount > 0)
+                {
+                    panel.AddAction("Gửi qua message", () => panel.Replace(Sending.ForLogs(model)),
+                        "Theo bộ lọc đang bật, kèm vào một message. Quá dài thì giữ phần mới nhất.");
+                }
                 panel.AddAction("Xoá", () =>
                 {
                     model.Clear();

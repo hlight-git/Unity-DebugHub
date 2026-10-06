@@ -11,6 +11,10 @@ namespace Hlight.Debug.Hub
         /// dùng được để mở khoá (nhập password) khi chưa xác thực.
         public virtual bool RequiresAlreadyAuthenticated => false;
 
+        /// Một dòng ở trang Trợ giúp: làm cử chỉ này thế nào, đọc từ chính cấu hình đang gắn để không bao giờ ghi sai.
+        /// null = không nhắc.
+        public virtual string Hint => null;
+
         public abstract bool IsPerformedTriggerAction();
     }
 }

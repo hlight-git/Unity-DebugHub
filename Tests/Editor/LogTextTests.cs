@@ -32,6 +32,15 @@ namespace Hlight.Debug.Hub.Tests
             }
         }
 
+        /// Ô tìm so trên chữ nhìn thấy: Unescape lấy lại đúng chuỗi gốc, kể cả `</` đã bị phá; chuỗi chưa escape giữ nguyên.
+        [Test]
+        public void Unescape_RoundTripsEscape()
+        {
+            foreach (var input in new[] { "", "a", "a</noparse><b>x", "<noparse>" })
+                Assert.AreEqual(input, LogText.Unescape(LogText.Escape(input)), input);
+            Assert.AreEqual("plain", LogText.Unescape("plain"));
+        }
+
         /// Ký tự font không có: TMP bắn warning mỗi lần vẽ và warning lại thành log mới. Đổi ra `?` trước khi vẽ;
         /// ZWSP do chính Escape chèn thì giữ.
         [Test]

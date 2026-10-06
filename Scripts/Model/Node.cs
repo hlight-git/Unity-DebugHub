@@ -20,6 +20,16 @@ namespace Hlight.Debug.Hub
             };
         }
 
+        /// Chọn một chuỗi trong danh sách lấy lúc dựng trang — người nhận, assignee… lấy từ API. Danh sách cố định
+        /// trong code thì dùng Value với enum. Cần id thì class gọi tự map từ chuỗi hiển thị.
+        public static ValueNode Choice(string label, Func<string> get, Action<string> set,
+            Func<IReadOnlyList<string>> options, string description = null)
+        {
+            var node = Value(label, get, set, description);
+            node.Options = options;
+            return node;
+        }
+
         public static ActionNode Action(string label, System.Action run, string description = null)
         {
             return new ActionNode

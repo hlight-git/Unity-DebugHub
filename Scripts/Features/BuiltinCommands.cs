@@ -33,9 +33,6 @@ namespace Hlight.Debug.Hub
             DebugHub.Add<float, float>(this, "time.skip", "Tua nhanh sec giây với time scale speed.", FastForward)
                 .Defaults("1", "100");
 
-            DebugHub.Notes.Add("Nút công cụ ở Commands gốc: Objects xem mục đã ghim, Duyệt để tìm type/instance; " +
-                               "nút … trên một dòng để ghim hoặc lưu vào $biến.");
-
             // Debugger của SDK là UI riêng: hub còn hiện thì che mất, phải bấm được vào nó. Tra bằng tên nên
             // package không tham chiếu SDK nào — project không cài SDK đó thì không có row. FlattenHierarchy vì
             // MaxSdk khai method static ở lớp cha theo platform (MaxSdkUnityEditor/Android/iOS).

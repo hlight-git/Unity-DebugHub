@@ -113,7 +113,9 @@ namespace Hlight.Debug.Hub.Tests
 
             var nodes = Reflect.Elements(cursor, root).Cast<ValueNode>().ToList();
 
-            Assert.AreEqual("a", nodes[0].Label);
+            // Khoá là dữ liệu game: nhãn qua Escape, address giữ khoá gốc.
+            Assert.AreEqual(LogText.Escape("a"), nodes[0].Label);
+            StringAssert.EndsWith("[\"a\"]", nodes[0].Address);
             Assert.AreEqual(1, nodes[0].Get());
         }
 

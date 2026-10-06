@@ -18,6 +18,14 @@ namespace Hlight.Debug.Hub
             return node;
         }
 
+        /// Thứ tự trong cây Commands, như MenuItem của Unity: số nhỏ lên trước (mặc định 0, âm để lên đầu). Thư mục
+        /// đứng ở priority nhỏ nhất trong nó; trùng thì thư mục trước, thư mục theo tên, lá theo thứ tự đăng ký.
+        public static T Priority<T>(this T node, int priority) where T : DebugNode
+        {
+            node.priority = priority;
+            return node;
+        }
+
         public static T Confirms<T>(this T node) where T : DebugNode
         {
             node.Confirm = true;

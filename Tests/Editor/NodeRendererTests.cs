@@ -210,6 +210,68 @@ namespace Hlight.Debug.Hub.Tests
             finally { Object.DestroyImmediate(go); }
         }
 
+        /// Spec ④ §2.2: danh sách lấy lúc dựng trang (người nhận từ API). `$` đầu lựa chọn là dữ liệu, không phải biến.
+        [Test]
+        public void Choice_IsAPickerRow_AndPickingSetsTheValue()
+        {
+            var picked = "an";
+            var node = Node.Choice("to", () => picked, v => picked = v, () => new[] { "an", "$bình" });
+            panel.ShowFromRoot(new DebugPage("form",
+                p => NodeRenderer.Render(p, node, (n, values) => NodeRenderer.RunInspect(p, n, values))));
+
+            StringAssert.StartsWith("to:", TestPanel.LabelsOf(panel)[0]);
+            TestPanel.ClickRowContaining(panel, "to:");
+            TestPanel.ClickRowContaining(panel, "$bình");
+
+            Assert.AreEqual("$bình", picked);
+        }
+
+        /// Class con chưa tải xong danh sách từ API (trả null): trang chọn trống, không phải trang lỗi.
+        [Test]
+        public void Choice_WithNoListYet_OpensAnEmptyPicker()
+        {
+            var node = Node.Choice("to", () => "", _ => { }, () => null);
+            panel.ShowFromRoot(new DebugPage("form",
+                p => NodeRenderer.Render(p, node, (n, values) => NodeRenderer.RunInspect(p, n, values))));
+
+            TestPanel.ClickRowContaining(panel, "to:");
+
+            StringAssert.Contains("Chưa có lựa chọn nào.", string.Join("|", TestPanel.LabelsOf(panel)));
+        }
+
+        /// Ô nhập tại chỗ không nhận biến: chữ thật bắt đầu bằng `$` (giá gói IAP…) phải vào setter nguyên văn.
+        [Test]
+        public void InPlaceStringField_TakesLeadingDollarLiterally()
+        {
+            var stored = "";
+            var node = Node.Value("title", () => stored, v => stored = v);
+            panel.ShowFromRoot(new DebugPage("form",
+                p => NodeRenderer.Render(p, node, (n, values) => NodeRenderer.RunInspect(p, n, values))));
+
+            var input = TestPanel.Rows(panel)[0].input;
+            input.text = "$5 pack";
+            input.onEndEdit.Invoke("$5 pack");
+
+            Assert.AreEqual("$5 pack", stored);
+        }
+
+        /// Dòng giá trị: chuỗi chứa chính `</noparse>` không được đóng noparse rồi thành định dạng.
+        [Test]
+        public void ReadOnlyString_CannotCloseNoparse()
+        {
+            Render(Node.Value<string>("text", () => "</noparse><b>x", null));
+
+            StringAssert.DoesNotContain("</noparse><b>", TestPanel.Rows(panel)[0].detail.text);
+        }
+
+        [Test]
+        public void Choice_WhoseOptionsThrow_IsAnErrorRow()
+        {
+            Render(Node.Choice("to", () => "", _ => { }, () => throw new System.InvalidOperationException("chưa tải")));
+
+            StringAssert.Contains("chưa tải", TestPanel.LabelsOf(panel)[0]);
+        }
+
         private void Render(DebugNode node)
         {
             panel.ShowFromRoot(new DebugPage("t", p => NodeRenderer.Render(p, node, (_, _) => { })));

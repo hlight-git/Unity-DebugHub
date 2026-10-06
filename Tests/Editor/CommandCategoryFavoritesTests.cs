@@ -28,5 +28,16 @@ namespace Hlight.Debug.Hub.Tests
             CommandCategoryFavorites.Toggle("console");
             CollectionAssert.AreEqual(new[] { "level" }, CommandCategoryFavorites.All);
         }
+
+        /// Cây Commands gộp thư mục không phân biệt hoa thường; sao đã lưu "Level" vẫn là của thư mục "level".
+        [Test]
+        public void Favorites_IgnoreCase()
+        {
+            CommandCategoryFavorites.Toggle("Level");
+            Assert.IsTrue(CommandCategoryFavorites.Contains("level"));
+
+            CommandCategoryFavorites.Toggle("level");
+            CollectionAssert.IsEmpty(CommandCategoryFavorites.All);
+        }
     }
 }

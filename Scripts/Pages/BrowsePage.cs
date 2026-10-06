@@ -117,7 +117,9 @@ namespace Hlight.Debug.Hub
                 panel.AddPaged(indices, i =>
                 {
                     var address = $"#{type.FullName}[{i}]";
-                    panel.AddNavigation(found[i].name, At(address, found[i].name), address);
+                    // Tên object là dữ liệu game: nhãn và tiêu đề trang đều qua Escape.
+                    var name = LogText.Escape(found[i].name);
+                    panel.AddNavigation(name, At(address, name), address);
                 });
             });
         }
@@ -132,9 +134,10 @@ namespace Hlight.Debug.Hub
         {
             return new DebugPage(title, panel =>
             {
+                // Lỗi resolve chứa chính address (chữ gõ tay, tên object): qua Escape.
                 if (!Address.TryResolve(address, out var cursor, out var error))
                 {
-                    panel.AddText($"<color={Palette.BAD}>{error}</color>");
+                    panel.AddText($"<color={Palette.BAD}>{LogText.Escape(error)}</color>");
                     return;
                 }
 
@@ -144,7 +147,7 @@ namespace Hlight.Debug.Hub
             search: (panel, query) =>
             {
                 if (!Address.TryResolve(address, out var cursor, out var error))
-                    panel.AddText($"<color={Palette.BAD}>{error}</color>");
+                    panel.AddText($"<color={Palette.BAD}>{LogText.Escape(error)}</color>");
                 else
                     NodeRenderer.FilterMembers(panel, cursor, address, query);
             },

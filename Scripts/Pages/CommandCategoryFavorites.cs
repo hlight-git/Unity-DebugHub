@@ -20,12 +20,16 @@ namespace Hlight.Debug.Hub
             }
         }
 
-        public static bool Contains(string category) => All.Contains(category);
+        /// Không phân biệt hoa thường, như cây Commands gộp thư mục: tên thư mục lấy theo node đăng ký trước, có thể khác
+        /// chữ hoa với bản đã lưu — so phân biệt là bỏ sao không được.
+        public static bool Contains(string category) =>
+            All.Any(saved => string.Equals(saved, category, System.StringComparison.OrdinalIgnoreCase));
 
         public static void Toggle(string category)
         {
             var items = new List<string>(All);
-            if (!items.Remove(category)) items.Add(category);
+            if (items.RemoveAll(saved => string.Equals(saved, category, System.StringComparison.OrdinalIgnoreCase)) == 0)
+                items.Add(category);
             PlayerPrefs.SetString(Key, string.Join("\n", items));
             PlayerPrefs.Save();
         }

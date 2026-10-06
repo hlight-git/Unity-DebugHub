@@ -124,7 +124,7 @@ namespace Hlight.Debug.Hub.Tests
 
             panel.Push(LogDetailPage.For(LogModel.Shared, item));
             var subtitle = TestPanel.SubtitleOf(panel);
-            StringAssert.StartsWith(item.Time, subtitle);
+            StringAssert.StartsWith("<noparse>" + item.Time, subtitle);
             StringAssert.Contains("×1.234", subtitle);
         }
 

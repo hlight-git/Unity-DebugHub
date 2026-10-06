@@ -65,6 +65,10 @@ namespace Hlight.Debug.Hub
             Save(list);
         }
 
-        private static void Save(List<string> list) => PlayerPrefs.SetString(KEY, string.Join("\n", list));
+        private static void Save(List<string> list)
+        {
+            PlayerPrefs.SetString(KEY, string.Join("\n", list));
+            PlayerPrefs.Save();
+        }
     }
 }

@@ -76,6 +76,52 @@ namespace Hlight.Debug.Hub.Tests
                 "chính nó không nằm dưới nó");
         }
 
+        private void Register(string path, int priority = 0)
+        {
+            var node = DebugHub.Add<int>(null, path, string.Empty, level => { }, "level").Priority(priority);
+            registered.Add(node);
+        }
+
+        /// Tên hiện trên từng dòng của một tầng, đúng thứ tự trang Commands dựng.
+        private static List<string> Order(params string[] prefix) =>
+            CommandsPage.Rows(DebugRegistry.All, prefix).ConvertAll(row => row.Folder ?? CommandsPage.LabelOf(row.Entry, null));
+
+        /// Không ai gắn priority thì y như trước: thư mục theo tên rồi tới lá theo thứ tự đăng ký.
+        [Test]
+        public void Rows_WithoutPriority_KeepTheOldOrder()
+        {
+            Register("prio.z.one");
+            Register("prio.leafB");
+            Register("prio.a.two");
+            Register("prio.leafA");
+
+            CollectionAssert.AreEqual(new[] { "a", "z", "leafB", "leafA" }, Order("prio"));
+        }
+
+        /// Như MenuItem: số nhỏ lên trước; trùng thì giữ thứ tự đăng ký.
+        [Test]
+        public void Rows_PutLowerPriorityFirst_TiesKeepRegistrationOrder()
+        {
+            Register("prio.leafA");
+            Register("prio.leafB", -5);
+            Register("prio.leafC");
+            Register("prio.leafD", -5);
+
+            CollectionAssert.AreEqual(new[] { "leafB", "leafD", "leafA", "leafC" }, Order("prio"));
+        }
+
+        /// Thư mục đứng ở priority nhỏ nhất bên trong nó (submenu của Unity theo item đầu), xen với lá theo priority.
+        [Test]
+        public void Rows_FolderTakesItsSmallestPriority_AndInterleavesWithLeaves()
+        {
+            Register("prio.leaf", 1);
+            Register("prio.a.x");
+            Register("prio.z.deep");
+            Register("prio.z.deeper.most", -3);
+
+            CollectionAssert.AreEqual(new[] { "z", "a", "leaf" }, Order("prio"));
+        }
+
         [Test]
         public void Matches_LooksAtPathAndDescription()
         {

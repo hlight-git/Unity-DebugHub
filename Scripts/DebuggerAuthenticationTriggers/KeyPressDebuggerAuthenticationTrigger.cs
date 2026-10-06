@@ -11,6 +11,8 @@ namespace Hlight.Debug.Hub
         // Project chạy Input System thuần thì UnityEngine.Input ném exception, phải đọc qua Keyboard.
         [SerializeField] private Key activeKey = Key.Backquote;
 
+        public override string Hint => $"Phím {activeKey} (bàn phím).";
+
         public override bool IsPerformedTriggerAction()
         {
             var keyboard = Keyboard.current;
@@ -18,6 +20,8 @@ namespace Hlight.Debug.Hub
         }
 #else
         [SerializeField] private KeyCode activeKeyCode = KeyCode.BackQuote;
+
+        public override string Hint => $"Phím {activeKeyCode} (bàn phím).";
 
         public override bool IsPerformedTriggerAction()
         {

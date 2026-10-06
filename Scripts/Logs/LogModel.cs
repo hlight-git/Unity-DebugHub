@@ -232,9 +232,11 @@ namespace Hlight.Debug.Hub
             return null;
         }
 
-        /// Text của mọi hàng đang hiện. Quá COPY_LIMIT thì giữ phần mới nhất.
-        public string CopyAll()
+        /// Text của mọi hàng đang hiện. Quá COPY_LIMIT thì giữ phần mới nhất. <paramref name="kept"/> = số log (không
+        /// tính vạch command) thật sự nằm trong chuỗi — "đã copy N log" / "Kèm N log" phải đếm cái này, không phải số hàng.
+        public string CopyAll(out int kept)
         {
+            kept = 0;
             var blocks = new List<string>();
             var length = 0;
             for (var i = rows.Count - 1; i >= 0; i--)
@@ -243,13 +245,29 @@ namespace Hlight.Debug.Hub
                 if (length + block.Length > COPY_LIMIT)
                 {
                     // Block mới nhất một mình đã quá giới hạn: giữ đuôi của nó thay vì trả chuỗi rỗng.
-                    if (blocks.Count == 0) blocks.Add(block.Substring(block.Length - COPY_LIMIT));
+                    if (blocks.Count == 0)
+                    {
+                        blocks.Add(block.Substring(block.Length - COPY_LIMIT));
+                        if (!rows[i].IsMarker) kept++;
+                    }
                     break;
                 }
                 blocks.Add(block);
+                if (!rows[i].IsMarker) kept++;
                 length += block.Length + 1;
             }
             blocks.Reverse();
+            return string.Join("\n", blocks);
+        }
+
+        /// Log cho báo lỗi (spec ④ §2.1): mọi entry còn giữ sau mốc Xoá, bỏ qua lọc / tìm / Gộp — báo lỗi không được
+        /// thiếu log vì QA quên tắt một chip. Đọc thẳng bộ ghi, không kéo vào model: kéo ở đây là ăn mất "N log mới".
+        public string AllText()
+        {
+            var entries = new List<LogEntry>();
+            LogRecorder.CopySince(clearedAt, entries);
+            var blocks = new string[entries.Count];
+            for (var i = 0; i < entries.Count; i++) blocks[i] = Describe(new LogItem(entries[i]));
             return string.Join("\n", blocks);
         }
 

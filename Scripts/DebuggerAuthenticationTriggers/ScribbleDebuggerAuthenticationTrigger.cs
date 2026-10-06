@@ -23,6 +23,10 @@ namespace Hlight.Debug.Hub
         [Tooltip("Điểm thả cách điểm bắt đầu tối đa, tính bằng tỉ lệ cạnh ngắn màn hình (0,08 ≈ 5 mm trên điện thoại).")]
         [SerializeField, Range(0f, 0.5f)] private float maxStartEndGap = 0.08f;
 
+        public override string Hint =>
+            $"Vẽ nguệch ngoạc dài cỡ {minDragScreens.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)} lần " +
+            "cạnh ngắn màn hình, rồi thả tay gần chỗ bắt đầu.";
+
         private bool dragging;
         private float accumulatedDistance;
         private Vector2 startPosition;
