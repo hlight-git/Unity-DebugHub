@@ -1,5 +1,10 @@
 # Changelog
 
+## 3.1.1
+
+### Sửa
+- Gõ sai password không còn hiện "Sai mật khẩu.": ô đóng im lặng, chỉ rung (Android/iOS). Chưa mở khoá thì hub không hiện chữ nào.
+
 ## 3.1.0
 
 ### Thêm

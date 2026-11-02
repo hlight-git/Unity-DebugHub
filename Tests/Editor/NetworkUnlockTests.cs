@@ -71,5 +71,20 @@ namespace Hlight.Debug.Hub.Tests
             Assert.IsFalse(input.gameObject.activeSelf);
             Assert.IsFalse((bool)Get("askingPassword"));
         }
+
+        /// Chưa mở khoá thì không hiện gì: gõ sai chỉ đóng ô, không có dòng chữ báo sai cho người lạ đọc.
+        [Test]
+        public void WrongPassword_ClosesTheBox_WithoutShowingAnything()
+        {
+            Set("password", "right");
+            var input = (TMP_InputField)Get("authenticationInputField");
+            input.gameObject.SetActive(true);
+            Set("askingPassword", true);
+
+            typeof(DebugHub).GetMethod("OnAuthenticationInputFieldSubmitted", PRIVATE).Invoke(hub, new object[] { "wrong" });
+            Assert.IsFalse(HubAccess.ReadUnlocked());
+            Assert.IsFalse(input.gameObject.activeSelf);
+            Assert.IsTrue(string.IsNullOrEmpty(panel.LastResult), "không hiện dòng kết quả khi chưa mở khoá");
+        }
     }
 }

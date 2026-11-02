@@ -301,7 +301,16 @@ namespace Hlight.Debug.Hub
             }
             askingPassword = false;
             authenticationInputField.gameObject.SetActive(false);
-            if (!string.IsNullOrEmpty(input)) panel.ShowResult("Sai mật khẩu.", true);
+            // Chưa mở khoá thì không hiện gì: chữ báo sai là xác nhận cho người lạ rằng đây là cửa có mật khẩu.
+            // Chỉ rung — người trong team biết mình gõ sai, người lạ không có gì để đọc.
+            if (!string.IsNullOrEmpty(input)) VibrateWrongPassword();
+        }
+
+        private static void VibrateWrongPassword()
+        {
+#if (UNITY_ANDROID || UNITY_IOS) && !UNITY_EDITOR
+            Handheld.Vibrate();
+#endif
         }
 
         private void AcceptAuthentication()
@@ -332,7 +341,7 @@ namespace Hlight.Debug.Hub
         /// focusSeq 0 = mở ở cuối, bám log mới.
         private void OpenLog(long focusSeq)
         {
-            // Dòng kết quả hiện được cả trước khi mở khoá ("Sai mật khẩu."): bấm vào không được là cửa vào hub.
+            // Chặn cả khi chưa mở khoá: bấm vào dòng kết quả không được là cửa vào hub.
             if (!Unlocked) return;
             if (!panel.IsOpen) panel.Show(CommandsPage.Root());
             if (panel.TopIsLog) panel.Replace(LogPage.Build(focusSeq));
