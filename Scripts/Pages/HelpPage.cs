@@ -49,6 +49,7 @@ namespace Hlight.Debug.Hub
                     "Log: log của phiên (kèm logcat Android, log hệ thống iOS); chấm đỏ là số lỗi chưa xem.",
                     "Công cụ: Objects (mục đã ghim, biến $) và Duyệt (tìm type / instance rồi mở ra).",
                     "hub.repeat: bật nút nổi chạy lại lệnh cuối.",
+                    "view.fps: ô FPS ở góc trên trái (FPS trung bình, khung chậm nhất ms), vẫn hiện khi hub ẩn.",
                 });
             }, searchable: false);
         }

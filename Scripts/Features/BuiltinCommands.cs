@@ -57,7 +57,10 @@ namespace Hlight.Debug.Hub
                     () => proxima.Enabled, v => proxima.Enabled = v);
             }
 
-            DebugHub.AddValue(this, "hub.repeat", "Nút chạy lại lệnh cuối.", () => repeat.Enabled, v => repeat.Enabled = v);
+            DebugHub.AddValue(this, "view.fps", "Ô FPS ở góc trên trái: FPS trung bình và khung chậm nhất (ms) mỗi 0,5 s. Nhớ qua phiên.",
+                () => FpsOverlay.Enabled, v => FpsOverlay.Enabled = v);
+
+            DebugHub.AddValue(this, "hub.repeat","Nút chạy lại lệnh cuối.", () => repeat.Enabled, v => repeat.Enabled = v);
             DebugHub.Add(this, "hub.hide", "Ẩn hub để nhìn game — gọi lại bằng lắc / gõ 4 góc.", () => { }).HidesHub();
 
             // Root page cũ có toggle "Show entry button" — không qua Visible vì đó có side effect

@@ -153,13 +153,21 @@ Một panel duy nhất điều hướng theo stack. Bấm nền ngoài = đóng 
 - Chạy lại qua đúng luồng của panel: xác nhận (`Confirms()` → mở trang xác nhận), dòng kết quả, `HidesHub`. Command đã mất đăng ký thì báo lỗi và nút tự ẩn.
 - Ẩn khi kéo bubble, và khi hub bị ẩn.
 
+### Ô FPS
+
+`view.fps` bật một ô nhỏ ở góc trên trái (trong safe area): `60 fps  18 ms` = FPS trung bình và khung chậm nhất trong 0,5 s vừa qua (tính bằng giờ thật, không theo `time.scale`). Con số FPS tô màu theo FPS game nhắm tới: xanh ≥ 90%, vàng ≥ 60%, đỏ dưới nữa. FPS nhắm tới: `targetFrameRate`; không đặt thì 30 trên mobile, tần số màn hình trên máy khác; desktop có `vSyncCount` thì theo vSync.
+
+- Canvas riêng (sorting order 32766, dưới hub), không có raycaster: không chặn chạm, panel mở thì che ô.
+- Vẫn hiện khi panel đóng, bong bóng ẩn hay `hub.hide`; chụp ảnh sạch thì tắt `view.fps`.
+- Lưu PlayerPrefs `DebugHub.FpsOverlay`, mở app lại tự hiện (chỉ máy đã mở khoá). Dựng lúc bật lần đầu: máy chưa bật không có object nào.
+
 ### Dòng kết quả
 
 Log mà command in ra trong lúc chạy hiện ở dòng nổi dưới đáy (ngoài panel), chỉ với node có `ShowsResult` (mặc định = `Dismiss == Stay`, ghi đè bằng `.Reports()`/`.Silent()`). Lỗi luôn hiện. Dài quá thì cắt (không cắt giữa một tag); bấm để mở trang log tại vạch của chính lần chạy đã tạo dòng đó (dòng không do command tạo — copy, lỗi nhập — mở ở cuối log).
 
 ### Font
 
-Package **không mang font**. Mọi TMP để trống font nên TMP lấy `TMP_Settings.defaultFontAsset` của game. Điều kiện để hiện đúng:
+Package **không mang font**. Lúc hub hiện lần đầu, `HubFont` tạo font động từ font hệ thống đầu tiên máy có trong Roboto, Noto Sans, Segoe UI, Helvetica Neue, Arial mà vẽ được `ơưựẫđ`, rồi gán cho mọi chữ của hub (cả ô FPS). Máy không có font nào hợp thì chữ để trống font và TMP lấy `TMP_Settings.defaultFontAsset` của game; khi đó điều kiện để hiện đúng:
 
 - Font mặc định có tiếng Việt và `› ‹ … – — ×` (hub chỉ dùng đúng các ký tự này ngoài chữ cái; icon là hình vẽ vector, không phải glyph; trang log chỉ dùng thêm icon vector, không thêm glyph). Kiểm bằng `FontEngine.TryGetGlyphIndex` trên TTF/OTF nguồn, không phải `HasCharacter`.
 - Font Dynamic thì nên bật **Clear Dynamic Data On Build**: không thì glyph sinh ra trong Editor (kể cả từ chữ của hub) được lưu vào asset và đi vào mọi build.

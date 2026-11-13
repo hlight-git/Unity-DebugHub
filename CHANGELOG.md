@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Thêm
+- `view.fps`: ô FPS ở góc trên trái (trong safe area) — FPS trung bình và khung chậm nhất (ms) mỗi 0,5 s, tô xanh/vàng/đỏ theo FPS game nhắm tới. Vẫn hiện khi panel đóng hay bong bóng ẩn, không chặn chạm, nhớ qua phiên.
+
 ### Sửa
 - Chữ của hub vẽ bằng font hệ thống (Roboto, Noto Sans, Segoe UI, Helvetica Neue hoặc Arial — font đầu tiên máy có và đủ dấu tiếng Việt), không bằng font mặc định của TMP Settings (font game, thường thiếu ơ ư ự…). Tạo lúc hub hiện lần đầu; máy không có font nào hợp thì giữ font mặc định.
 

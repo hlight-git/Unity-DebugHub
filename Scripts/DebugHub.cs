@@ -171,6 +171,8 @@ namespace Hlight.Debug.Hub
 
             // Mở khoá rồi và lần trước để bong bóng hiện thì hiện lại, khỏi làm cử chỉ mỗi phiên.
             if (unlocked && PlayerPrefs.GetInt(ENTRY_VISIBLE_KEY) == 1) Visible = true;
+            // Ô FPS lần trước bật thì hiện lại, kể cả khi bong bóng ẩn. Chỉ máy đã mở khoá: lệnh chỉ chạy được từ hub.
+            if (unlocked) FpsOverlay.Refresh();
 
             // Log game có `→`, emoji… mà font không có: tra font của hub để đổi ra `?` trước khi vẽ. Chỉ khi Play — EditMode
             // test không đụng font thật.
