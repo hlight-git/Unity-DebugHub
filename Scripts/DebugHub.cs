@@ -94,6 +94,7 @@ namespace Hlight.Debug.Hub
                 if (value)
                 {
                     if (!instance.Unlocked) return;
+                    if (Application.isPlaying) HubFont.Apply(instance.gameObject);
                     instance.entry.Activating = true;
                     instance.repeat.Refresh();
                     return;
@@ -175,10 +176,13 @@ namespace Hlight.Debug.Hub
             // test không đụng font thật.
             if (Application.isPlaying)
             {
-                // Đúng thứ tự TMP tìm glyph: font mặc định (kèm fallback của chính nó), rồi fallback chung trong TMP Settings.
-                var fonts = new List<TMP_FontAsset> { TMP_Settings.defaultFontAsset };
-                fonts.AddRange(TMP_Settings.fallbackFontAssets);
-                LogText.HasGlyph = code => fonts.Exists(font => font && HasGlyph(font, code));
+                // Đúng thứ tự TMP tìm glyph: font của hub (HubFont, tạo khi hub hiện lần đầu), không có thì font mặc định
+                // (kèm fallback của chính nó), rồi fallback chung trong TMP Settings.
+                var fallbacks = new List<TMP_FontAsset> { TMP_Settings.defaultFontAsset };
+                fallbacks.AddRange(TMP_Settings.fallbackFontAssets);
+                LogText.HasGlyph = code => HubFont.Current
+                    ? HasGlyph(HubFont.Current, code)
+                    : fallbacks.Exists(font => font && HasGlyph(font, code));
             }
         }
 
@@ -256,6 +260,7 @@ namespace Hlight.Debug.Hub
 
                 case DebugHubAction.AskPassword:
                     askingPassword = true;
+                    if (Application.isPlaying) HubFont.Apply(gameObject);
                     authenticationInputField.text = string.Empty;
                     authenticationInputField.gameObject.SetActive(true);
                     StartCoroutine(FocusNextFrame(authenticationInputField));

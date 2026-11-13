@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+### Sửa
+- Chữ của hub vẽ bằng font hệ thống (Roboto, Noto Sans, Segoe UI, Helvetica Neue hoặc Arial — font đầu tiên máy có và đủ dấu tiếng Việt), không bằng font mặc định của TMP Settings (font game, thường thiếu ơ ư ự…). Tạo lúc hub hiện lần đầu; máy không có font nào hợp thì giữ font mặc định.
+
 ## 3.1.1
 
 ### Sửa
