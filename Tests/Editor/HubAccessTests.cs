@@ -48,5 +48,14 @@ namespace Hlight.Debug.Hub.Tests
         {
             Assert.IsTrue(InstallSource.IsInternal);
         }
+
+        /// Editor không phải hỏi hệ thống: bản async trả ngay (máy thật mới đợi khung đầu và hỏi trên thread riêng).
+        [Test]
+        public void Editor_IsInternalAsync_CompletesAtOnce()
+        {
+            var awaiter = InstallSource.IsInternalAsync().GetAwaiter();
+            Assert.IsTrue(awaiter.IsCompleted);
+            Assert.IsTrue(awaiter.GetResult());
+        }
     }
 }

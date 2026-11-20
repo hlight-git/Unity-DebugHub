@@ -45,9 +45,25 @@ namespace Hlight.Debug.Hub
         private static void Boot()
         {
             Reset();
+            // Được ghi log = đã mở khoá hoặc bản nội bộ. Cờ mở khoá là PlayerPrefs của chính app, đọc ngay. Nguồn cài phải hỏi
+            // hệ thống nên hỏi sau khung đầu (InstallSource.IsInternalAsync); log trước đó không mất vì lượt đọc logcat / OSLog
+            // lấy lại từ lúc tiến trình khởi động.
             // ponytail: PlayerPrefs ở SubsystemRegistration chưa kiểm trên máy thật (spec §11.1);
             // hỏng thì lùi sang AfterAssembliesLoaded.
-            if (HubAccess.MayRecordNow()) Start();
+            if (HubAccess.ReadUnlocked()) Start();
+            else StartIfInternal();
+        }
+
+        private static async void StartIfInternal()
+        {
+            try
+            {
+                if (await InstallSource.IsInternalAsync()) Start();
+            }
+            catch (Exception e)
+            {
+                UnityEngine.Debug.LogException(e);
+            }
         }
 
         /// Gọi lại được: mở khoá giữa phiên (DebugHub.Remember) cũng đi qua đây.

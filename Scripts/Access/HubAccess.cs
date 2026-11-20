@@ -20,9 +20,5 @@ namespace Hlight.Debug.Hub
             PlayerPrefs.SetInt(UNLOCK_KEY, UNLOCKED);
             PlayerPrefs.Save();
         }
-
-        /// Được ghi log = đã mở khoá hoặc bản nội bộ. Hỏi nguồn cài trước: bản nội bộ thì khỏi đọc PlayerPrefs ở pha khởi
-        /// động sớm nhất.
-        internal static bool MayRecordNow() => InstallSource.IsInternal || ReadUnlocked();
     }
 }
