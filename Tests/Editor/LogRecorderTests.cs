@@ -58,6 +58,29 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(older, LogRecorder.StartedAt);
         }
 
+        /// Logcat dump đọc trên thread nền: log Unity của callback tới trong lúc đó được giữ, xả sau phần log cũ để thứ tự
+        /// vẫn đúng, seq vẫn liên tục. Ô đếm lỗi tính ngay lúc nhận.
+        [Test]
+        public void Backlog_HoldsUnityLogsUntilTheOldNativeLogsAreIn()
+        {
+            var old = new System.DateTime(2026, 10, 2, 14, 26, 18);
+            LogRecorder.BeginBacklog();
+            LogRecorder.Receive("callback", null, LogType.Error);
+            Assert.AreEqual(1, LogRecorder.ErrorCount);
+            Assert.AreEqual(0, LogRecorder.CopySince(0, got));
+
+            LogRecorder.ReceiveNative(old, LogType.Log, "ActivityThread", "bind", null);
+            LogRecorder.EndBacklog();
+            LogRecorder.EndBacklog();
+            LogRecorder.Receive("later", null, LogType.Log);
+
+            Assert.AreEqual(3, LogRecorder.CopySince(0, got));
+            Assert.AreEqual("bind", got[0].Message);
+            Assert.AreEqual("callback", got[1].Message);
+            Assert.AreEqual("later", got[2].Message);
+            for (var i = 1; i < got.Count; i++) Assert.AreEqual(got[i - 1].Seq + 1, got[i].Seq);
+        }
+
         [Test]
         public void CopySince_ReturnsOnlyNewer_AndNothingWhenUpToDate()
         {

@@ -83,7 +83,7 @@ namespace Hlight.Debug.Hub
         /// vào nhau.
         internal sealed class Sink
         {
-            private readonly bool skipUnity;
+            private readonly DateTime unityBefore;
             private readonly NativeLogEmit emit;
             private readonly StringBuilder stack = new();
             private Line first;
@@ -91,15 +91,21 @@ namespace Hlight.Debug.Hub
 
             /// skipUnity: callback Unity đã gắn thì log Unity đi đường đó (message + stack chuẩn hơn), logcat bỏ.
             internal Sink(bool skipUnity, NativeLogEmit emit)
+                : this(skipUnity ? DateTime.MinValue : DateTime.MaxValue, emit)
             {
-                this.skipUnity = skipUnity;
+            }
+
+            /// Chỉ lấy log Unity ghi trước unityBefore (lúc gắn callback); từ đó callback lo, logcat bỏ để không trùng.
+            internal Sink(DateTime unityBefore, NativeLogEmit emit)
+            {
+                this.unityBefore = unityBefore;
                 this.emit = emit;
             }
 
             internal void Add(in Line line)
             {
                 var unity = line.Tag == UNITY_TAG;
-                if (unity && skipUnity) return;
+                if (unity && line.Time >= unityBefore) return;
                 var end = unity && line.Text.Length == 0;
                 if (pending && line.Header == first.Header)
                 {
@@ -130,11 +136,40 @@ namespace Hlight.Debug.Hub
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-        /// Gọi trên main thread, TRƯỚC khi gắn callback Unity (LogRecorder.Start): dump phần buffer còn giữ từ lúc
-        /// tiến trình khởi động — kể cả log Unity từ trước lúc bắt đầu ghi — rồi stream phần mới trên thread nền.
-        /// ponytail: dump đồng bộ ~50–150 ms, chỉ trên máy được ghi; chuyển async + giữ callback chờ khi hitch đáng kể.
-        internal static void Start()
+        /// Dump chưa xong sau ngần này thì thôi giữ log Unity: trang log không được trống vì logcat chậm.
+        private const int BACKLOG_TIMEOUT_MS = 3000;
+
+        /// Giữ tham chiếu: Timer không ai giữ có thể bị GC thu trước khi chạy.
+        private static Timer backlogTimeout;
+
+        /// Không bao giờ chặn main thread: chạy logcat là việc của tiến trình ngoài (logd bận ngay sau khi tiến trình cũ bị
+        /// giết, ROM chậm) — chặn ở pha SubsystemRegistration thì game không vẽ được khung nào và Android báo ANR. Trên thread
+        /// nền: dump phần buffer còn giữ từ lúc tiến trình khởi động (kể cả log Unity ghi trước unityBefore, lúc gắn callback),
+        /// rồi stream phần mới. LogRecorder giữ log Unity của callback tới khi backlogDone, để phần cũ vẫn đứng trước.
+        internal static void Start(DateTime unityBefore, Action backlogDone)
         {
+            var finished = 0;
+            bool Finish()
+            {
+                if (Interlocked.Exchange(ref finished, 1) != 0) return false;
+                backlogDone();
+                return true;
+            }
+
+            backlogTimeout?.Dispose();
+            backlogTimeout = new Timer(_ =>
+            {
+                if (Finish())
+                    LogRecorder.ReceiveNative(DateTime.Now, LogType.Warning, "DebugHub",
+                        "logcat chưa trả phần log cũ sau " + BACKLOG_TIMEOUT_MS / 1000 + " s: log Unity hiện trước, log cũ tới sau", null);
+            }, null, BACKLOG_TIMEOUT_MS, Timeout.Infinite);
+
+            new Thread(() => Run(unityBefore, Finish)) { IsBackground = true, Name = "DebugHub logcat" }.Start();
+        }
+
+        private static void Run(DateTime unityBefore, Func<bool> finish)
+        {
+            AndroidJNI.AttachCurrentThread();
             try
             {
                 string pid;
@@ -145,7 +180,7 @@ namespace Hlight.Debug.Hub
                 var last = DateTime.Now;
                 var lastLines = new HashSet<string>();
                 int lines = 0, parsed = 0;
-                var dump = new Sink(skipUnity: false, LogRecorder.ReceiveNative);
+                var dump = new Sink(unityBefore, LogRecorder.ReceiveNative);
                 Read(new[] { "logcat", "-d", "-v", "threadtime", "--pid=" + pid }, raw =>
                 {
                     if (raw.StartsWith("---------", StringComparison.Ordinal)) return;   // "--------- beginning of main"
@@ -161,6 +196,7 @@ namespace Hlight.Debug.Hub
                     dump.Add(line);
                 }, null);
                 dump.Flush();
+                finish();
 
                 // Có dòng mà không dòng nào khớp threadtime: ROM đổi định dạng. Báo, không thì trang log im lặng thiếu log native.
                 if (lines > 0 && parsed == 0)
@@ -168,17 +204,22 @@ namespace Hlight.Debug.Hub
                     LogRecorder.ReceiveNative(DateTime.Now, LogType.Warning, "DebugHub", "logcat có định dạng lạ, không đọc được log native", null);
                     return;
                 }
-                new Thread(() => Stream(pid, last, lastLines)) { IsBackground = true, Name = "DebugHub logcat" }.Start();
+                Stream(pid, last, lastLines);
             }
             catch (Exception e)
             {
                 LogRecorder.ReceiveNative(DateTime.Now, LogType.Warning, "DebugHub", "Không đọc được logcat: " + e.Message, null);
             }
+            finally
+            {
+                finish();
+                AndroidJNI.DetachCurrentThread();
+            }
         }
 
+        /// Chạy trên thread của Run (đã gắn JNI) tới khi tiến trình logcat thoát.
         private static void Stream(string pid, DateTime after, HashSet<string> seen)
         {
-            AndroidJNI.AttachCurrentThread();
             try
             {
                 var sink = new Sink(skipUnity: true, LogRecorder.ReceiveNative);
@@ -195,10 +236,6 @@ namespace Hlight.Debug.Hub
             catch (Exception e)
             {
                 LogRecorder.ReceiveNative(DateTime.Now, LogType.Warning, "DebugHub", "logcat dừng: " + e.Message, null);
-            }
-            finally
-            {
-                AndroidJNI.DetachCurrentThread();
             }
         }
 

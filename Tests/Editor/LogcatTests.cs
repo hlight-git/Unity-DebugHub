@@ -118,5 +118,25 @@ namespace Hlight.Debug.Hub.Tests
             Assert.AreEqual(1, got.Count);
             Assert.AreEqual("MiuiPerf", got[0].Tag);
         }
+
+        /// Dump chạy nền sau khi callback đã gắn: log Unity từ lúc gắn callback là của callback, dump bỏ để không trùng;
+        /// log native thì giữ hết.
+        [Test]
+        public void Sink_UnityBefore_KeepsOnlyUnityLogsWrittenBeforeTheCallback()
+        {
+            var sink = new Logcat.Sink(new DateTime(2026, 10, 2, 14, 26, 21, 0),
+                (_, type, tag, message, stack) => got.Add((type, tag, message, stack)));
+            Feed(sink,
+                "10-02 14:26:20.999 12915 12930 I Unity   : before",
+                "10-02 14:26:20.999 12915 12930 I Unity   : ",
+                "10-02 14:26:21.000 12915 12930 I Unity   : after",
+                "10-02 14:26:21.000 12915 12930 I Unity   : ",
+                "10-02 14:26:21.500 12915 12950 W MiuiPerf: slow");
+
+            Assert.AreEqual(2, got.Count);
+            Assert.AreEqual("before", got[0].Message);
+            Assert.IsNull(got[0].Tag);
+            Assert.AreEqual("MiuiPerf", got[1].Tag);
+        }
     }
 }

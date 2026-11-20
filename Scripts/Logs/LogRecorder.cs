@@ -24,6 +24,10 @@ namespace Hlight.Debug.Hub
         /// chấm đỏ lúc nào cũng to, hết tác dụng báo.
         private static readonly long[] unityCounts = new long[3];
 
+        /// Log Unity của callback tới trong lúc phần log native cũ (logcat dump) còn đang đọc trên thread nền: giữ lại, xả sau
+        /// phần cũ để thứ tự vẫn đúng. null = không giữ.
+        private static List<(DateTime Time, LogType Type, string Message, string Stack)> held;
+
         internal static int Budget { get; set; } = DEFAULT_BUDGET;
         internal static bool Recording { get; private set; }
         internal static DateTime StartedAt { get; private set; }
@@ -56,9 +60,10 @@ namespace Hlight.Debug.Hub
                 StartedAt = DateTime.Now;
             }
 #if UNITY_ANDROID && !UNITY_EDITOR
-            // Trước khi gắn callback: phần buffer logcat còn giữ (kể cả log Unity từ trước lúc bắt đầu ghi) vào ring
-            // trước, thứ tự đúng mà không phải sắp lại.
-            Logcat.Start();
+            // Phần buffer logcat còn giữ (kể cả log Unity từ trước lúc gắn callback) đọc trên thread nền, không chặn main
+            // thread; log Unity của callback giữ lại tới khi phần đó vào ring xong.
+            BeginBacklog();
+            Logcat.Start(DateTime.Now, EndBacklog);
 #elif UNITY_IOS && !UNITY_EDITOR
             OsLog.Start();
 #endif
@@ -78,6 +83,7 @@ namespace Hlight.Debug.Hub
                 bytes = 0;
                 nextSeq = 1;
                 dropped = 0;
+                held = null;
                 Array.Clear(unityCounts, 0, unityCounts.Length);
                 Budget = DEFAULT_BUDGET;
             }
@@ -88,9 +94,32 @@ namespace Hlight.Debug.Hub
         {
             lock (Gate)
             {
-                var entry = new LogEntry(nextSeq++, DateTime.Now, type, message, stack, LogKind.Log, LogSource.Unity);
                 unityCounts[(int)LogModel.GroupOf(type)]++;
-                Append(entry);
+                if (held != null)
+                {
+                    held.Add((DateTime.Now, type, message, stack));
+                    return;
+                }
+                Append(new LogEntry(nextSeq++, DateTime.Now, type, message, stack, LogKind.Log, LogSource.Unity));
+            }
+        }
+
+        /// Bắt đầu giữ log Unity của callback (xem held). Gọi trước khi gắn callback.
+        internal static void BeginBacklog()
+        {
+            lock (Gate) held ??= new List<(DateTime, LogType, string, string)>();
+        }
+
+        /// Phần log cũ đã vào ring (hoặc hết giờ chờ): xả log Unity đang giữ theo thứ tự đã nhận, rồi thôi giữ. Gọi lại được.
+        internal static void EndBacklog()
+        {
+            lock (Gate)
+            {
+                if (held == null) return;
+                var pending = held;
+                held = null;
+                foreach (var (time, type, message, stack) in pending)
+                    Append(new LogEntry(nextSeq++, time, type, message, stack, LogKind.Log, LogSource.Unity));
             }
         }
 
